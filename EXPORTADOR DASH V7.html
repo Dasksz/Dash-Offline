@@ -114,6 +114,13 @@
     <script id="worker-script" type="text/worker-javascript">
         self.importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
 
+        const mandatoryColumns = {
+            sales: ['CODCLI', 'NOME', 'SUPERV', 'PEDIDO', 'CODUSUR', 'CODSUPERVISOR', 'DTPED', 'DTSAIDA', 'PRODUTO', 'DESCRICAO', 'FORNECEDOR', 'OBSERVACAOFOR', 'CODFOR', 'QTVENDA', 'VLVENDA', 'VLBONIFIC', 'TOTPESOLIQ', 'POSICAO', 'ESTOQUEUNIT', 'TIPOVENDA', 'FILIAL'],
+            clients: ['Código', 'RCA 1', 'RCA 2', 'Nome da Cidade', 'Fantasia', 'Cliente', 'Bairro', 'CNPJ/CPF', 'Endereço Comercial', 'Endereço', 'Número', 'CEP', 'Telefone Comercial', 'E-mail', 'Descricao', 'Data da Última Compra', 'Data e Hora de Cadastro', 'Bloqueio', 'Insc. Est. / Produtor'],
+            products: ['Código', 'Qtde embalagem master(Compra)', 'Descrição', 'Nome do fornecedor', 'Fornecedor', 'Dt.Cadastro'],
+            history: ['CODCLI', 'NOME', 'SUPERV', 'PEDIDO', 'CODUSUR', 'CODSUPERVISOR', 'DTPED', 'DTSAIDA', 'PRODUTO', 'DESCRICAO', 'FORNECEDOR', 'OBSERVACAOFOR', 'CODFOR', 'QTVENDA', 'VLVENDA', 'VLBONIFIC', 'TOTPESOLIQ', 'POSICAO', 'ESTOQUEUNIT', 'TIPOVENDA', 'FILIAL']
+        };
+
         function parseDate(dateString) {
             if (!dateString) return null;
             if (dateString instanceof Date) {
@@ -154,9 +161,40 @@
             return isNaN(number) ? 0 : number;
         }
 
-        const readFile = (file) => {
+        function validateData(data, fileType, fileName) {
+            if (!data || data.length === 0) {
+                throw new Error(`O arquivo '${fileName}' (${fileType}) está vazio ou não contém dados.`);
+            }
+
+            const requiredColumns = mandatoryColumns[fileType];
+            if (!requiredColumns) return;
+
+            const headers = Object.keys(data[0]);
+            const missingColumns = requiredColumns.filter(col => !headers.includes(col));
+
+            if (missingColumns.length > 0) {
+                throw new Error(`Erro no arquivo '${fileName}'. Colunas obrigatórias não encontradas: ${missingColumns.join(', ')}.`);
+            }
+
+            const emptyOrZeroColumns = requiredColumns.filter(col => {
+                return data.every(row => {
+                    const value = row[col];
+                    return value === null || value === undefined || String(value).trim() === '' || String(value).trim() === '0';
+                });
+            });
+
+            if (emptyOrZeroColumns.length > 0) {
+                throw new Error(`Erro no arquivo '${fileName}'. As seguintes colunas estão vazias ou contêm apenas zeros: ${emptyOrZeroColumns.join(', ')}.`);
+            }
+        }
+
+        const readFile = (file, fileType) => {
             return new Promise((resolve, reject) => {
                 if (!file) {
+                    if (fileType !== 'innovations') {
+                         reject(new Error(`Arquivo obrigatório para '${fileType}' não foi fornecido.`));
+                         return;
+                    }
                     resolve([]);
                     return;
                 }
@@ -175,6 +213,9 @@
 
                             const lines = decodedData.split(/\r?\n/).filter(line => line.trim() !== '');
                             if (lines.length < 1) {
+                                if (fileType !== 'innovations') {
+                                    throw new Error(`O arquivo CSV '${file.name}' está vazio.`);
+                                }
                                 resolve([]);
                                 return;
                             };
@@ -198,6 +239,11 @@
                             const worksheet = workbook.Sheets[firstSheetName];
                             jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false, cellDates: true });
                         }
+
+                        if (fileType !== 'innovations') {
+                            validateData(jsonData, fileType, file.name);
+                        }
+
                         resolve(jsonData);
                     } catch (error) {
                         reject(error);
@@ -360,11 +406,11 @@
             try {
                 self.postMessage({ type: 'progress', status: 'Lendo arquivos...', percentage: 10 });
                 const [salesDataRaw, clientsDataRaw, productsDataRaw, historyDataRaw, innovationsDataRaw] = await Promise.all([
-                    readFile(salesFile),
-                    readFile(clientsFile),
-                    readFile(productsFile),
-                    readFile(historyFile),
-                    readFile(innovationsFile)
+                    readFile(salesFile, 'sales'),
+                    readFile(clientsFile, 'clients'),
+                    readFile(productsFile, 'products'),
+                    readFile(historyFile, 'history'),
+                    readFile(innovationsFile, 'innovations')
                 ]);
 
                 self.postMessage({ type: 'progress', status: 'Criando mapa mestre de supervisores...', percentage: 20 });
