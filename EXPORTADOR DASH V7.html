@@ -770,6 +770,40 @@
     </script>
 
     <script id="report-logic-script" type="text/template">
+        function parseDate(dateString) {
+            if (!dateString) return null;
+            if (dateString instanceof Date) {
+                return !isNaN(dateString.getTime()) ? dateString : null;
+            }
+            if (typeof dateString === 'number') {
+                return new Date(Math.round((dateString - 25569) * 86400 * 1000));
+            }
+            if (typeof dateString !== 'string') return null;
+
+            // NEW: Handle datetime strings by taking only the date part first.
+            const dateOnlyString = dateString.split(' ')[0];
+
+            // Handle "DD/MM/YYYY" format specifically.
+            if (dateOnlyString.length === 10 && dateOnlyString.charAt(2) === '/' && dateOnlyString.charAt(5) === '/') {
+                const [day, month, year] = dateOnlyString.split('/');
+                if (year && year.length === 4) {
+                    // Use UTC to avoid timezone issues when only date is provided.
+                    return new Date(`${year}-${month}-${day}T00:00:00`);
+                }
+            }
+
+            // Fallback for ISO 8601 or other formats that new Date() can parse.
+            // Try parsing the original string first, in case it's a valid ISO datetime.
+            const isoDate = new Date(dateString);
+            if (!isNaN(isoDate.getTime())) {
+                return isoDate;
+            }
+
+            // If that fails, try parsing just the date part.
+            const isoDateFromDateOnly = new Date(dateOnlyString);
+            return !isNaN(isoDateFromDateOnly.getTime()) ? isoDateFromDateOnly : null;
+        }
+
         const allSalesData = embeddedData.detailed;
         const allHistoryData = embeddedData.history;
         const aggregatedOrders = embeddedData.byOrder;
