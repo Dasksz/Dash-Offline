@@ -115,10 +115,10 @@
         self.importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
 
         const mandatoryColumns = {
-            sales: ['CODCLI', 'NOME', 'SUPERV', 'PEDIDO', 'CODUSUR', 'CODSUPERVISOR', 'DTPED', 'DTSAIDA', 'PRODUTO', 'DESCRICAO', 'FORNECEDOR', 'OBSERVACAOFOR', 'CODFOR', 'QTVENDA', 'VLVENDA', 'VLBONIFIC', 'TOTPESOLIQ', 'POSICAO', 'ESTOQUEUNIT', 'TIPOVENDA', 'FILIAL'],
+            sales: ['CODCLI', 'NOME', 'SUPERV', 'PEDIDO', 'CODUSUR', 'CODSUPERVISOR', 'DTPED', 'DTSAIDA', 'PRODUTO', 'DESCRICAO', 'FORNECEDOR', 'OBSERVACAOFOR', 'CODFOR', 'QTVENDA', 'VLVENDA', 'VLBONIFIC', 'TOTPESOLIQ', 'POSICAO', 'ESTOQUEUNIT', 'TIPOVENDA', 'FILIAL', 'ESTOQUECX'],
             clients: ['Código', 'RCA 1', 'RCA 2', 'Nome da Cidade', 'Fantasia', 'Cliente', 'Bairro', 'CNPJ/CPF', 'Endereço Comercial', 'Endereço', 'Número', 'CEP', 'Telefone Comercial', 'E-mail', 'Descricao', 'Data da Última Compra', 'Data e Hora de Cadastro', 'Bloqueio', 'Insc. Est. / Produtor'],
             products: ['Código', 'Qtde embalagem master(Compra)', 'Descrição', 'Nome do fornecedor', 'Fornecedor', 'Dt.Cadastro'],
-            history: ['CODCLI', 'NOME', 'SUPERV', 'PEDIDO', 'CODUSUR', 'CODSUPERVISOR', 'DTPED', 'DTSAIDA', 'PRODUTO', 'DESCRICAO', 'FORNECEDOR', 'OBSERVACAOFOR', 'CODFOR', 'QTVENDA', 'VLVENDA', 'VLBONIFIC', 'TOTPESOLIQ', 'POSICAO', 'ESTOQUEUNIT', 'TIPOVENDA', 'FILIAL']
+            history: ['CODCLI', 'NOME', 'SUPERV', 'PEDIDO', 'CODUSUR', 'CODSUPERVISOR', 'DTPED', 'DTSAIDA', 'PRODUTO', 'DESCRICAO', 'FORNECEDOR', 'OBSERVACAOFOR', 'CODFOR', 'QTVENDA', 'VLVENDA', 'VLBONIFIC', 'TOTPESOLIQ', 'POSICAO', 'ESTOQUEUNIT', 'TIPOVENDA', 'FILIAL', 'ESTOQUECX']
         };
 
         const columnFormats = {
@@ -129,7 +129,12 @@
                 'VLBONIFIC': 'number',
                 'TOTPESOLIQ': 'number',
                 'DTPED': 'date',
-                'DTSAIDA': 'date'
+                'DTSAIDA': 'date',
+                'PEDIDO': 'number',
+                'TIPOVENDA': 'number',
+                'FILIAL': 'number',
+                'ESTOQUEUNIT': 'number',
+                'ESTOQUECX': 'number'
             },
             clients: {
                 'Código': 'number',
@@ -148,7 +153,12 @@
                 'VLBONIFIC': 'number',
                 'TOTPESOLIQ': 'number',
                 'DTPED': 'date',
-                'DTSAIDA': 'date'
+                'DTSAIDA': 'date',
+                'PEDIDO': 'number',
+                'TIPOVENDA': 'number',
+                'FILIAL': 'number',
+                'ESTOQUEUNIT': 'number',
+                'ESTOQUECX': 'number'
             }
         };
 
