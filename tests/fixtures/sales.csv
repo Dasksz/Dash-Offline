@@ -1,0 +1,4 @@
+"CODCLI","NOME","SUPERV","PEDIDO","CODUSUR","CODSUPERVISOR","DTPED","DTSAIDA","PRODUTO","DESCRICAO","FORNECEDOR","OBSERVACAOFOR","CODFOR","QTVENDA","VLVENDA","VLBONIFIC","TOTPESOLIQ","POSICAO","ESTOQUEUNIT","TIPOVENDA","FILIAL","ESTOQUECX"
+"123","Vendedor 1","Supervisor 1","P001","101","S1","25/09/2023","26/09/2023","PROD1","Produto 1","Fornecedor 1","Pepsico","F1","10","100.50",,"1.5","L","10","1","05","5"
+"456","Vendedor 2","Supervisor 2","P002","102","S2","26/09/2023","27/09/2023","PROD2","Produto 2","Fornecedor 2","Multimarcas","F2","20","250.75",,"3.0","M","20","9","08","10"
+"789","Vendedor 1","Supervisor 1","P005","101","S1","27/09/2023","28/09/2023","PROD3","Produto 3","Fornecedor 1","Pepsico","F1","5","50.00",,"0.5","L","5","2","05","1"
