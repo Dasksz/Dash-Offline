@@ -4770,7 +4770,7 @@
                     } else {
                         selectedCityTiposVenda = selectedCityTiposVenda.filter(s => s !== value);
                     }
-                    updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData);
+                    selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData);
                     updateCityView();
                 }
             });
@@ -4864,7 +4864,7 @@
                     } else {
                         selectedComparisonTiposVenda = selectedComparisonTiposVenda.filter(s => s !== value);
                     }
-                    updateTipoVendaFilter(comparisonTipoVendaFilterDropdown, comparisonTipoVendaFilterText, selectedComparisonTiposVenda, allSalesData);
+                    selectedComparisonTiposVenda = updateTipoVendaFilter(comparisonTipoVendaFilterDropdown, comparisonTipoVendaFilterText, selectedComparisonTiposVenda, allSalesData);
                     handleComparisonFilterChange();
                 }
             });
@@ -4982,7 +4982,7 @@
                     } else {
                         selectedStockTiposVenda = selectedStockTiposVenda.filter(s => s !== value);
                     }
-                    updateTipoVendaFilter(stockTipoVendaFilterDropdown, stockTipoVendaFilterText, selectedStockTiposVenda, allSalesData);
+                    selectedStockTiposVenda = updateTipoVendaFilter(stockTipoVendaFilterDropdown, stockTipoVendaFilterText, selectedStockTiposVenda, allSalesData);
                     handleStockFilterChange();
                 }
             });
@@ -5227,7 +5227,7 @@
                     } else {
                         selectedInnovationsTiposVenda = selectedInnovationsTiposVenda.filter(s => s !== value);
                     }
-                    updateTipoVendaFilter(innovationsTipoVendaFilterDropdown, innovationsTipoVendaFilterText, selectedInnovationsTiposVenda, allSalesData);
+                    selectedInnovationsTiposVenda = updateTipoVendaFilter(innovationsTipoVendaFilterDropdown, innovationsTipoVendaFilterText, selectedInnovationsTiposVenda, allSalesData);
                     debouncedUpdateInnovations();
                 }
             });
@@ -5286,7 +5286,7 @@
                     } else {
                         selectedInnovationsMonthTiposVenda = selectedInnovationsMonthTiposVenda.filter(s => s !== value);
                     }
-                    updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
+                    selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
                     debouncedUpdateInnovationsMonth();
                 }
             });
@@ -5353,7 +5353,7 @@
                     } else {
                         selectedCoverageTiposVenda = selectedCoverageTiposVenda.filter(s => s !== value);
                     }
-                    updateTipoVendaFilter(coverageTipoVendaFilterDropdown, coverageTipoVendaFilterText, selectedCoverageTiposVenda, allSalesData);
+                    selectedCoverageTiposVenda = updateTipoVendaFilter(coverageTipoVendaFilterDropdown, coverageTipoVendaFilterText, selectedCoverageTiposVenda, allSalesData);
                     debouncedUpdateCoverage();
                 }
             });
