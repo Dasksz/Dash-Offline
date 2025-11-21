@@ -1451,7 +1451,9 @@
 
         // <!-- INÍCIO DO CÓDIGO RESTAURADO -->
         
-        function getCoverageFilteredData() {
+        function getCoverageFilteredData(options = {}) {
+            const { excludeFilter = null } = options;
+
             const supervisor = coverageSupervisorFilter.value;
             const sellers = selectedCoverageSellers;
             const suppliers = selectedCoverageSuppliers;
@@ -1471,11 +1473,11 @@
                 });
             }
 
-            if (supervisor) {
+            if (excludeFilter !== 'supervisor' && supervisor) {
                 const rcasOfSupervisor = new Set(optimizedData.rcasBySupervisor.get(supervisor) || []);
                 clients = clients.filter(c => c.rcas.some(rca => rcasOfSupervisor.has(rca)));
             }
-            if (sellers.length > 0) {
+            if (excludeFilter !== 'seller' && sellers.length > 0) {
                 const rcasOfSellers = new Set();
                  sellers.forEach(sellerName => {
                     const rcaCode = optimizedData.rcaCodeByName.get(sellerName);
@@ -1483,7 +1485,7 @@
                 });
                 clients = clients.filter(c => c.rcas.some(rca => rcasOfSellers.has(rca)));
             }
-            if (city) {
+            if (excludeFilter !== 'city' && city) {
                 clients = clients.filter(c => c.cidade && c.cidade.toLowerCase() === city);
             }
 
@@ -1495,21 +1497,55 @@
             }
             
             const salesFilter = s => 
-                (suppliers.length === 0 || suppliers.includes(String(s.CODFOR))) &&
-                (products.length === 0 || products.includes(String(s.PRODUTO))) &&
-                (tiposVenda.length === 0 || tiposVenda.includes(String(s.TIPOVENDA))) &&
+                (excludeFilter === 'supplier' || suppliers.length === 0 || suppliers.includes(String(s.CODFOR))) &&
+                (excludeFilter === 'product' || products.length === 0 || products.includes(String(s.PRODUTO))) &&
+                (excludeFilter === 'tipoVenda' || tiposVenda.length === 0 || tiposVenda.includes(String(s.TIPOVENDA))) &&
                 (unitPrice === null || (s.QTVENDA > 0 && Math.abs((s.VLVENDA / s.QTVENDA) - unitPrice) < 0.01));
                 
             sales = sales.filter(salesFilter);
             history = history.filter(salesFilter);
 
+            // Apply client filters to sales data to support cascading filters correctly
+            const clientCodes = new Set(clients.map(c => c['Código']));
+            const clientFilter = s => clientCodes.has(s.CODCLI);
+            sales = sales.filter(clientFilter);
+            history = history.filter(clientFilter);
+
             return { sales, history, clients };
         }
         
-        function updateCoverageFilters() {
-            const { sales, history } = getCoverageFilteredData();
-            let productSource = [...sales, ...history];
-            updateProductFilter(coverageProductFilterDropdown, coverageProductFilterText, selectedCoverageProducts, productSource, 'coverage');
+        function updateAllCoverageFilters() {
+            const { sales: salesSup, history: historySup } = getCoverageFilteredData({ excludeFilter: 'supervisor' });
+            const combinedDataSup = [...salesSup, ...historySup];
+            const currentSupervisor = coverageSupervisorFilter.value;
+
+            // Update Supervisor Filter
+            const supervisors = [...new Set(combinedDataSup.map(item => item.SUPERV).filter(Boolean))].sort();
+            coverageSupervisorFilter.innerHTML = '<option value="">Todos</option>';
+            supervisors.forEach(sup => { coverageSupervisorFilter.innerHTML += `<option value="${sup}">${sup}</option>`; });
+            if (supervisors.includes(currentSupervisor)) coverageSupervisorFilter.value = currentSupervisor;
+            else coverageSupervisorFilter.value = '';
+
+            // Update Seller Filter
+            const { sales: salesSeller, history: historySeller } = getCoverageFilteredData({ excludeFilter: 'seller' });
+            selectedCoverageSellers = updateSellerFilter(coverageSupervisorFilter.value, coverageVendedorFilterDropdown, coverageVendedorFilterText, selectedCoverageSellers, [...salesSeller, ...historySeller]);
+
+            // Update Supplier Filter
+            const { sales: salesSupplier, history: historySupplier } = getCoverageFilteredData({ excludeFilter: 'supplier' });
+            selectedCoverageSuppliers = updateSupplierFilter(coverageSupplierFilterDropdown, coverageSupplierFilterText, selectedCoverageSuppliers, [...salesSupplier, ...historySupplier], 'coverage');
+
+            // Update Product Filter
+            const { sales: salesProd, history: historyProd } = getCoverageFilteredData({ excludeFilter: 'product' });
+            updateProductFilter(coverageProductFilterDropdown, coverageProductFilterText, selectedCoverageProducts, [...salesProd, ...historyProd], 'coverage');
+
+            // Update Tipo Venda Filter
+            const { sales: salesTV, history: historyTV } = getCoverageFilteredData({ excludeFilter: 'tipoVenda' });
+            selectedCoverageTiposVenda = updateTipoVendaFilter(coverageTipoVendaFilterDropdown, coverageTipoVendaFilterText, selectedCoverageTiposVenda, [...salesTV, ...historyTV]);
+        }
+
+        function handleCoverageFilterChange() {
+            updateAllCoverageFilters();
+            updateCoverageView();
         }
         
         function resetCoverageFilters() {
@@ -1527,10 +1563,8 @@
             selectedCoverageSuppliers = [];
             selectedCoverageProducts = [];
             selectedCoverageTiposVenda = [];
-            updateSellerFilter('', coverageVendedorFilterDropdown, coverageVendedorFilterText, [], allSalesData);
-            updateSupplierFilter(coverageSupplierFilterDropdown, coverageSupplierFilterText, [], allSalesData, 'coverage');
-            selectedCoverageTiposVenda = updateTipoVendaFilter(coverageTipoVendaFilterDropdown, coverageTipoVendaFilterText, selectedCoverageTiposVenda, allSalesData);
-            updateCoverageFilters();
+
+            updateAllCoverageFilters();
             updateCoverageView();
         }
         
@@ -1667,10 +1701,24 @@
                     .filter(s => s.PRODUTO === productCode)
                     .reduce((sum, s) => sum + s.QTVENDA_EMBALAGEM_MASTER, 0);
 
+                // Calculate previous month box quantity
+                const boxesSoldPreviousMonth = history
+                    .filter(s => {
+                        const d = parseDate(s.DTPED);
+                        return s.PRODUTO === productCode && d && d.getMonth() === prevMonthIdx && d.getFullYear() === prevMonthYear;
+                    })
+                    .reduce((sum, s) => sum + s.QTVENDA_EMBALAGEM_MASTER, 0);
+
+                const boxesVariation = boxesSoldPreviousMonth > 0
+                    ? ((boxesSoldCurrentMonth - boxesSoldPreviousMonth) / boxesSoldPreviousMonth) * 100
+                    : (boxesSoldCurrentMonth > 0 ? Infinity : 0);
+
                 tableData.push({
                     descricao: `(${productCode}) ${productInfo.descricao}`,
                     stockQty: stockQty,
                     boxesSoldCurrentMonth: boxesSoldCurrentMonth,
+                    boxesSoldPreviousMonth: boxesSoldPreviousMonth,
+                    boxesVariation: boxesVariation,
                     trendDays: trendDays,
                     clientsPreviousCount: clientsWhoGotProductPrevious,
                     clientsCurrentCount: clientsWhoGotProductCurrent,
@@ -1720,16 +1768,27 @@
                 } else {
                     trendText = '-';
                 }
+
+                let variationContent;
+                if (isFinite(item.boxesVariation)) {
+                    const colorClass = item.boxesVariation >= 0 ? 'text-green-400' : 'text-red-400';
+                    variationContent = `<span class="${colorClass}">${item.boxesVariation.toFixed(1)}%</span>`;
+                } else if (item.boxesVariation === Infinity) {
+                    variationContent = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-500/30 text-purple-300">Novo</span>`;
+                } else {
+                    variationContent = `<span>-</span>`;
+                }
                 
                 return `
                     <tr class="hover:bg-slate-700/50">
                         <td class="px-2 py-1.5 text-xs">${item.descricao}</td>
                         <td class="px-2 py-1.5 text-xs text-right">${item.stockQty.toLocaleString('pt-BR')}</td>
+                        <td class="px-2 py-1.5 text-xs text-right">${item.boxesSoldPreviousMonth.toLocaleString('pt-BR', {maximumFractionDigits: 2})}</td>
                         <td class="px-2 py-1.5 text-xs text-right">${item.boxesSoldCurrentMonth.toLocaleString('pt-BR', {maximumFractionDigits: 2})}</td>
                         <td class="px-2 py-1.5 text-xs text-right">${trendText}</td>
                         <td class="px-2 py-1.5 text-xs text-right">${item.clientsPreviousCount.toLocaleString('pt-BR')}</td>
                         <td class="px-2 py-1.5 text-xs text-right">${item.clientsCurrentCount.toLocaleString('pt-BR')}</td>
-                        <td class="px-2 py-1.5 text-xs text-right">${item.coverageCurrent.toFixed(2)}%</td>
+                        <td class="px-2 py-1.5 text-xs text-right">${variationContent}</td>
                     </tr>
                 `;
             }).join('');
@@ -5411,11 +5470,7 @@
                 const workingDaysInput = document.getElementById('coverage-working-days-input');
                 if(workingDaysInput) workingDaysInput.value = customWorkingDaysCoverage;
 
-                populateSupervisors('coverage-supervisor-filter', allSalesData);
-                updateSellerFilter('', coverageVendedorFilterDropdown, coverageVendedorFilterText, [], allSalesData);
-                updateSupplierFilter(coverageSupplierFilterDropdown, coverageSupplierFilterText, [], allSalesData, 'coverage');
-                selectedCoverageTiposVenda = updateTipoVendaFilter(coverageTipoVendaFilterDropdown, coverageTipoVendaFilterText, selectedCoverageTiposVenda, allSalesData);
-                updateCoverageFilters();
+                updateAllCoverageFilters();
                 updateCoverageView();
             });
 
@@ -5425,57 +5480,38 @@
                 updateAllVisuals();
             });
 
-            const debouncedUpdateCoverage = debounce(() => {
-                updateCoverageFilters();
-                updateCoverageView();
-            }, 400);
+            const debouncedHandleCoverageChange = debounce(handleCoverageFilterChange, 400);
 
-            coverageFilialFilter.addEventListener('change', debouncedUpdateCoverage);
+            coverageFilialFilter.addEventListener('change', handleCoverageFilterChange);
             coverageSupervisorFilter.addEventListener('change', () => {
                 selectedCoverageSellers = [];
-                updateSellerFilter(coverageSupervisorFilter.value, coverageVendedorFilterDropdown, coverageVendedorFilterText, selectedCoverageSellers, allSalesData);
-                debouncedUpdateCoverage();
+                handleCoverageFilterChange();
             });
 
-            function updateCoverageDependencies() {
-                const city = coverageCityFilter.value.trim().toLowerCase();
-                const { sales, history } = getCoverageFilteredData();
-                const combinedData = [...sales, ...history];
-
-                // Update Supervisor Filter
-                const supervisors = [...new Set(combinedData.map(item => item.SUPERV).filter(Boolean))].sort();
-                const currentSupervisor = coverageSupervisorFilter.value;
-                coverageSupervisorFilter.innerHTML = '<option value="">Todos</option>';
-                supervisors.forEach(sup => { coverageSupervisorFilter.innerHTML += `<option value="${sup}">${sup}</option>`; });
-                if (supervisors.includes(currentSupervisor)) coverageSupervisorFilter.value = currentSupervisor;
-                else coverageSupervisorFilter.value = '';
-
-                // Update Seller Filter
-                selectedCoverageSellers = updateSellerFilter(coverageSupervisorFilter.value, coverageVendedorFilterDropdown, coverageVendedorFilterText, selectedCoverageSellers, combinedData);
-            }
-
-            coverageCityFilter.addEventListener('input', () => {
-                const cityDataSource = getCoverageFilteredData().clients;
-                coverageCitySuggestions.classList.remove('manual-hide'); // Ensure suggestions are shown
-                updateCitySuggestions(coverageCityFilter, coverageCitySuggestions, cityDataSource);
-                // Do not debounce updateCoverage here to allow typing without lag, but update dependencies
-            });
-            coverageCityFilter.addEventListener('change', () => {
-                updateCoverageDependencies();
-                debouncedUpdateCoverage();
+            coverageCityFilter.addEventListener('input', (e) => {
+                e.target.value = e.target.value.replace(/[0-9]/g, '');
+                const { clients } = getCoverageFilteredData({ excludeFilter: 'city' });
+                coverageCitySuggestions.classList.remove('manual-hide');
+                updateCitySuggestions(coverageCityFilter, coverageCitySuggestions, clients);
             });
             coverageCityFilter.addEventListener('focus', () => {
-                const cityDataSource = getCoverageFilteredData().clients;
+                const { clients } = getCoverageFilteredData({ excludeFilter: 'city' });
                 coverageCitySuggestions.classList.remove('manual-hide');
-                updateCitySuggestions(coverageCityFilter, coverageCitySuggestions, cityDataSource);
+                updateCitySuggestions(coverageCityFilter, coverageCitySuggestions, clients);
             });
             coverageCityFilter.addEventListener('blur', () => setTimeout(() => coverageCitySuggestions.classList.add('hidden'), 150));
+            coverageCityFilter.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    coverageCitySuggestions.classList.add('hidden', 'manual-hide');
+                    handleCoverageFilterChange();
+                    e.target.blur();
+                }
+            });
             coverageCitySuggestions.addEventListener('click', (e) => {
                 if (e.target.tagName === 'DIV') {
                     coverageCityFilter.value = e.target.textContent;
                     coverageCitySuggestions.classList.add('hidden');
-                    updateCoverageDependencies();
-                    debouncedUpdateCoverage();
+                    handleCoverageFilterChange();
                 }
             });
 
@@ -5488,8 +5524,7 @@
                     } else {
                         selectedCoverageTiposVenda = selectedCoverageTiposVenda.filter(s => s !== value);
                     }
-                    selectedCoverageTiposVenda = updateTipoVendaFilter(coverageTipoVendaFilterDropdown, coverageTipoVendaFilterText, selectedCoverageTiposVenda, allSalesData);
-                    debouncedUpdateCoverage();
+                    handleCoverageFilterChange();
                 }
             });
 
@@ -5504,8 +5539,7 @@
                     } else {
                         selectedCoverageSellers = selectedCoverageSellers.filter(s => s !== value);
                     }
-                    updateSellerFilter(coverageSupervisorFilter.value, coverageVendedorFilterDropdown, coverageVendedorFilterText, selectedCoverageSellers, allSalesData);
-                    debouncedUpdateCoverage();
+                    handleCoverageFilterChange();
                 }
             });
 
@@ -5518,40 +5552,49 @@
                     } else {
                         selectedCoverageSuppliers = selectedCoverageSuppliers.filter(s => s !== value);
                     }
-                    updateSupplierFilter(coverageSupplierFilterDropdown, coverageSupplierFilterText, selectedCoverageSuppliers, allSalesData, 'coverage');
-                    
+                    // Pre-select products from this supplier
                     const supplierProducts = new Set();
                     selectedCoverageSuppliers.forEach(codfor => {
                         (optimizedData.productsBySupplier.get(codfor) || []).forEach(prod => supplierProducts.add(prod));
                     });
                     selectedCoverageProducts = Array.from(supplierProducts);
 
-                    debouncedUpdateCoverage();
+                    handleCoverageFilterChange();
                 }
             });
 
             coverageProductFilterBtn.addEventListener('click', () => {
-                updateCoverageFilters();
+                const { sales, history } = getCoverageFilteredData({ excludeFilter: 'product' });
+                updateProductFilter(coverageProductFilterDropdown, coverageProductFilterText, selectedCoverageProducts, [...sales, ...history], 'coverage');
                 coverageProductFilterDropdown.classList.toggle('hidden');
             });
 
-            const debouncedCoverageProductSearch = debounce(updateCoverageFilters, 250);
+            const debouncedCoverageProductUpdate = debounce(() => {
+                 const { sales, history } = getCoverageFilteredData({ excludeFilter: 'product' });
+                 updateProductFilter(coverageProductFilterDropdown, coverageProductFilterText, selectedCoverageProducts, [...sales, ...history], 'coverage');
+            }, 250);
 
             coverageProductFilterDropdown.addEventListener('input', (e) => {
                 if (e.target.id === 'coverage-product-search-input') {
-                    debouncedCoverageProductSearch();
+                    debouncedCoverageProductUpdate();
                 }
             });
 
             coverageProductFilterDropdown.addEventListener('change', (e) => {
                 if (e.target.dataset.filterType === 'coverage' && handleProductFilterChange(e, selectedCoverageProducts)) {
-                    debouncedUpdateCoverage();
+                    handleCoverageFilterChange();
                 }
             });
 
             const coverageUnitPriceInput = document.getElementById('coverage-unit-price-filter');
             if (coverageUnitPriceInput) {
-                coverageUnitPriceInput.addEventListener('input', debouncedUpdateCoverage);
+                coverageUnitPriceInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        handleCoverageFilterChange();
+                        e.target.blur();
+                    }
+                });
+                coverageUnitPriceInput.addEventListener('blur', handleCoverageFilterChange);
             }
 
             const coverageWorkingDaysInput = document.getElementById('coverage-working-days-input');
@@ -5565,7 +5608,7 @@
                         } else {
                              e.target.value = customWorkingDaysCoverage || maxWorkingDaysStock;
                         }
-                        debouncedUpdateCoverage();
+                        handleCoverageFilterChange();
                         e.target.blur();
                     }
                 });
@@ -5575,7 +5618,7 @@
                          e.target.value = customWorkingDaysCoverage || maxWorkingDaysStock;
                     } else if (value !== customWorkingDaysCoverage) {
                         customWorkingDaysCoverage = value;
-                        debouncedUpdateCoverage();
+                        handleCoverageFilterChange();
                     }
                 });
             }
@@ -6522,7 +6565,7 @@
                                 <div id="coverage-results" class="overflow-auto custom-scrollbar" style="max-height: 60vh;">
                                     <table class="min-w-full text-sm text-left text-slate-300">
                                         <thead class="text-xs text-slate-400 uppercase sticky-header">
-                                            <tr><th class="px-2 py-2">PRODUTO</th><th class="px-2 py-2 text-right">ESTOQUE (Cx)</th><th class="px-2 py-2 text-right">QTD. CAIXAS (MÊS)</th><th class="px-2 py-2 text-right">COB. ESTOQUE (Dias)</th><th class="px-2 py-2 text-right">PDVs MÊS ANT.</th><th class="px-2 py-2 text-right">PDVs MÊS ATUAL</th><th class="px-2 py-2 text-right">COB. PDVs (%)</th></tr>
+                                            <tr><th class="px-2 py-2">PRODUTO</th><th class="px-2 py-2 text-right">ESTOQUE (Cx)</th><th class="px-2 py-2 text-right">QTD. CAIXAS (MÊS ANT.)</th><th class="px-2 py-2 text-right">QTD. CAIXAS (MÊS)</th><th class="px-2 py-2 text-right">COB. ESTOQUE (Dias)</th><th class="px-2 py-2 text-right">PDVs MÊS ANT.</th><th class="px-2 py-2 text-right">PDVs MÊS ATUAL</th><th class="px-2 py-2 text-right">CAIXAS (%)</th></tr>
                                         </thead>
                                         <tbody id="coverage-table-body" class="divide-y divide-slate-700"></tbody>
                                     </table>
