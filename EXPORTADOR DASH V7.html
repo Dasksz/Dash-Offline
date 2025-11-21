@@ -841,6 +841,10 @@
                     byClient: new Map(),
                     byTipoVenda: new Map()
                 }
+            },
+            searchIndices: {
+                clients: [], // [{ code, nameLower, cityLower }]
+                products: [] // [{ code, descLower }]
             }
         };
         let clientLastBranch = new Map();
@@ -853,8 +857,16 @@
         let customWorkingDaysStock = 0;
 
         function initializeOptimizedDataStructures() {
+            // 1. Pre-process Clients: Lowercase search fields
             optimizedData.clientsByRca = new Map();
-            allClientsData.forEach(client => {
+            optimizedData.searchIndices.clients = new Array(allClientsData.length);
+
+            for(let i=0; i<allClientsData.length; i++) {
+                const client = allClientsData[i];
+                // Ensure primitives
+                client['Código'] = String(client['Código']);
+                client.cidade = client.cidade || 'N/A';
+
                 clientRamoMap.set(client['Código'], client.ramo || 'N/A');
                 if (client.rcas) {
                     client.rcas.forEach(rca => {
@@ -864,8 +876,31 @@
                         optimizedData.clientsByRca.get(rca).push(client);
                     });
                 }
-            });
 
+                optimizedData.searchIndices.clients[i] = {
+                    code: client['Código'],
+                    nameLower: (client.nomeCliente || '').toLowerCase(),
+                    cityLower: (client.cidade || '').toLowerCase()
+                };
+            }
+
+            // 2. Pre-process Sales & History: Ensure primitives
+            const ensurePrimitives = (data) => {
+                for(let i=0; i<data.length; i++) {
+                    const s = data[i];
+                    s.PRODUTO = String(s.PRODUTO);
+                    s.CODFOR = String(s.CODFOR);
+                    s.TIPOVENDA = String(s.TIPOVENDA);
+                    s.CODCLI = String(s.CODCLI);
+                    s.SUPERV = s.SUPERV || 'N/A';
+                    s.NOME = s.NOME || 'N/A';
+                    s.CIDADE = s.CIDADE || 'N/A';
+                }
+            };
+            ensurePrimitives(allSalesData);
+            ensurePrimitives(allHistoryData);
+
+            // 3. Build optimized indices
             optimizedData.rcasBySupervisor = new Map();
             const supervisorToRcaMap = new Map();
             const populateSupervisorMap = (sale) => {
@@ -886,7 +921,7 @@
             optimizedData.productsBySupplier = new Map();
             const populateProductMap = (sale) => {
                 if (sale.CODFOR && sale.PRODUTO) {
-                    const codfor = String(sale.CODFOR);
+                    const codfor = sale.CODFOR;
                     if (!optimizedData.productsBySupplier.has(codfor)) {
                         optimizedData.productsBySupplier.set(codfor, new Set());
                     }
@@ -935,14 +970,14 @@
                     const id = dataMap.size;
                     dataMap.set(id, sale);
 
-                    const supervisor = sale.SUPERV || 'N/A';
-                    const rca = sale.NOME || 'N/A';
+                    const supervisor = sale.SUPERV;
+                    const rca = sale.NOME;
                     const pasta = sale.OBSERVACAOFOR || 'N/A';
-                    const supplier = sale.CODFOR || 'N/A';
-                    const client = sale.CODCLI || 'N/A';
+                    const supplier = sale.CODFOR;
+                    const client = sale.CODCLI;
                     const position = sale.POSICAO || 'N/A';
                     const rede = clientRamoMap.get(client) || 'N/A';
-                    const tipoVenda = sale.TIPOVENDA || 'N/A';
+                    const tipoVenda = sale.TIPOVENDA;
 
                     if (!bySupervisor.has(supervisor)) bySupervisor.set(supervisor, new Set());
                     bySupervisor.get(supervisor).add(id);
@@ -1455,31 +1490,30 @@
             const { excludeFilter = null } = options;
 
             const supervisor = coverageSupervisorFilter.value;
-            const sellers = selectedCoverageSellers;
-            const suppliers = selectedCoverageSuppliers;
-            const products = selectedCoverageProducts;
+            // Use Sets for O(1) lookups
+            const sellersSet = new Set(selectedCoverageSellers);
+            const suppliersSet = new Set(selectedCoverageSuppliers);
+            const productsSet = new Set(selectedCoverageProducts);
+            const tiposVendaSet = new Set(selectedCoverageTiposVenda);
+
             const city = coverageCityFilter.value.trim().toLowerCase();
             const filial = coverageFilialFilter.value;
-            const tiposVenda = selectedCoverageTiposVenda;
             const unitPriceInput = document.getElementById('coverage-unit-price-filter');
             const unitPrice = unitPriceInput && unitPriceInput.value ? parseFloat(unitPriceInput.value) : null;
 
-            let clients = [...allClientsData];
+            let clients = allClientsData;
 
             if (filial !== 'ambas') {
-                clients = clients.filter(c => {
-                    const lastBranch = clientLastBranch.get(c['Código']);
-                    return lastBranch === filial;
-                });
+                clients = clients.filter(c => clientLastBranch.get(c['Código']) === filial);
             }
 
             if (excludeFilter !== 'supervisor' && supervisor) {
                 const rcasOfSupervisor = new Set(optimizedData.rcasBySupervisor.get(supervisor) || []);
                 clients = clients.filter(c => c.rcas.some(rca => rcasOfSupervisor.has(rca)));
             }
-            if (excludeFilter !== 'seller' && sellers.length > 0) {
+            if (excludeFilter !== 'seller' && sellersSet.size > 0) {
                 const rcasOfSellers = new Set();
-                 sellers.forEach(sellerName => {
+                 sellersSet.forEach(sellerName => {
                     const rcaCode = optimizedData.rcaCodeByName.get(sellerName);
                     if (rcaCode) rcasOfSellers.add(rcaCode);
                 });
@@ -1489,17 +1523,18 @@
                 clients = clients.filter(c => c.cidade && c.cidade.toLowerCase() === city);
             }
 
-            let sales = [...allSalesData];
-            let history = [...allHistoryData];
+            let sales = allSalesData;
+            let history = allHistoryData;
+
             if (filial !== 'ambas') {
                  sales = sales.filter(s => s.FILIAL === filial);
                  history = history.filter(s => s.FILIAL === filial);
             }
             
             const salesFilter = s => 
-                (excludeFilter === 'supplier' || suppliers.length === 0 || suppliers.includes(String(s.CODFOR))) &&
-                (excludeFilter === 'product' || products.length === 0 || products.includes(String(s.PRODUTO))) &&
-                (excludeFilter === 'tipoVenda' || tiposVenda.length === 0 || tiposVenda.includes(String(s.TIPOVENDA))) &&
+                (excludeFilter === 'supplier' || suppliersSet.size === 0 || suppliersSet.has(s.CODFOR)) &&
+                (excludeFilter === 'product' || productsSet.size === 0 || productsSet.has(s.PRODUTO)) &&
+                (excludeFilter === 'tipoVenda' || tiposVendaSet.size === 0 || tiposVendaSet.has(s.TIPOVENDA)) &&
                 (unitPrice === null || (s.QTVENDA > 0 && Math.abs((s.VLVENDA / s.QTVENDA) - unitPrice) < 0.01));
                 
             sales = sales.filter(salesFilter);
@@ -2310,8 +2345,13 @@
             if (!supervisorFilterEl) return;
             const supervisors = [...new Set(dataSource.map(item => item.SUPERV).filter(Boolean))].sort();
             const currentSupervisorValue = supervisorFilterEl.value;
-            supervisorFilterEl.innerHTML = '<option value="">Todos</option>';
-            supervisors.forEach(sup => { supervisorFilterEl.innerHTML += `<option value="${sup}">${sup}</option>`; });
+
+            const options = ['<option value="">Todos</option>'];
+            for (let i = 0; i < supervisors.length; i++) {
+                options.push(`<option value="${supervisors[i]}">${supervisors[i]}</option>`);
+            }
+            supervisorFilterEl.innerHTML = options.join('');
+
             if (supervisors.includes(currentSupervisorValue)) supervisorFilterEl.value = currentSupervisorValue;
             else supervisorFilterEl.value = '';
         }
@@ -2327,17 +2367,25 @@
             });
             const sortedSuppliers = [...suppliers.entries()].sort((a, b) => a[1].localeCompare(b[1]));
 
-            filterEl.innerHTML = '<option value="">Todos</option>';
-            sortedSuppliers.forEach(([cod, name]) => {
-                filterEl.innerHTML += `<option value="${cod}">${cod} - ${name}</option>`;
-            });
+            const options = ['<option value="">Todos</option>'];
+            for (let i = 0; i < sortedSuppliers.length; i++) {
+                options.push(`<option value="${sortedSuppliers[i][0]}">${sortedSuppliers[i][0]} - ${sortedSuppliers[i][1]}</option>`);
+            }
+            filterEl.innerHTML = options.join('');
         }
 
         function updateSellerFilter(supervisor, dropdown, filterText, selectedArray, dataSource) {
             const sellersToShow = supervisor ? [...new Set(dataSource.filter(s => s.SUPERV === supervisor).map(s => s.NOME))].sort() : [...new Set(dataSource.map(item => item.NOME).filter(Boolean))].sort();
             selectedArray = selectedArray.filter(seller => sellersToShow.includes(seller));
-            dropdown.innerHTML = '';
-            sellersToShow.forEach(s => { const isChecked = selectedArray.includes(s); dropdown.innerHTML += `<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${s}" ${isChecked ? 'checked' : ''}><span class="ml-2">${s}</span></label>`; });
+
+            const htmlParts = [];
+            for (let i = 0; i < sellersToShow.length; i++) {
+                const s = sellersToShow[i];
+                const isChecked = selectedArray.includes(s);
+                htmlParts.push(`<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${s}" ${isChecked ? 'checked' : ''}><span class="ml-2">${s}</span></label>`);
+            }
+            dropdown.innerHTML = htmlParts.join('');
+
             if (selectedArray.length === 0 || selectedArray.length === sellersToShow.length) filterText.textContent = 'Todos Vendedores';
             else if (selectedArray.length === 1) filterText.textContent = selectedArray[0];
             else filterText.textContent = `${selectedArray.length} vendedores selecionados`;
@@ -2347,11 +2395,15 @@
         function updateTipoVendaFilter(dropdown, filterText, selectedArray, dataSource) {
             const tiposVendaToShow = [...new Set(dataSource.map(item => item.TIPOVENDA).filter(Boolean))].sort();
             selectedArray = selectedArray.filter(tipo => tiposVendaToShow.includes(tipo));
-            dropdown.innerHTML = '';
-            tiposVendaToShow.forEach(s => { 
-                const isChecked = selectedArray.includes(s); 
-                dropdown.innerHTML += `<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${s}" ${isChecked ? 'checked' : ''}><span class="ml-2">${s}</span></label>`; 
-            });
+
+            const htmlParts = [];
+            for (let i = 0; i < tiposVendaToShow.length; i++) {
+                const s = tiposVendaToShow[i];
+                const isChecked = selectedArray.includes(s);
+                htmlParts.push(`<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${s}" ${isChecked ? 'checked' : ''}><span class="ml-2">${s}</span></label>`);
+            }
+            dropdown.innerHTML = htmlParts.join('');
+
             if (selectedArray.length === 0 || selectedArray.length === tiposVendaToShow.length) filterText.textContent = 'Todos os Tipos';
             else if (selectedArray.length === 1) filterText.textContent = selectedArray[0];
             else filterText.textContent = `${selectedArray.length} tipos selecionados`;
@@ -2362,11 +2414,13 @@
             const redesToShow = [...new Set(dataSource.map(item => item.ramo).filter(r => r && r !== 'N/A'))].sort();
             const validSelected = selectedArray.filter(rede => redesToShow.includes(rede));
 
-            dropdown.innerHTML = '';
-            redesToShow.forEach(r => {
+            const htmlParts = [];
+            for (let i = 0; i < redesToShow.length; i++) {
+                const r = redesToShow[i];
                 const isChecked = validSelected.includes(r);
-                dropdown.innerHTML += `<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${r}" ${isChecked ? 'checked' : ''}><span class="ml-2 text-sm">${r}</span></label>`;
-            });
+                htmlParts.push(`<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${r}" ${isChecked ? 'checked' : ''}><span class="ml-2 text-sm">${r}</span></label>`);
+            }
+            dropdown.innerHTML = htmlParts.join('');
 
             if (validSelected.length === 0) {
                 buttonTextElement.textContent = baseText;
@@ -2755,11 +2809,13 @@
 
             selectedArray = selectedArray.filter(cod => suppliers.has(cod));
 
-            dropdown.innerHTML = '';
-            sortedSuppliers.forEach(([cod, name]) => {
+            const htmlParts = [];
+            for (let i = 0; i < sortedSuppliers.length; i++) {
+                const [cod, name] = sortedSuppliers[i];
                 const isChecked = selectedArray.includes(cod);
-                dropdown.innerHTML += `<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" data-filter-type="${filterType}" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${cod}" ${isChecked ? 'checked' : ''}><span class="ml-2 text-xs">${cod} - ${name}</span></label>`;
-            });
+                htmlParts.push(`<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" data-filter-type="${filterType}" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${cod}" ${isChecked ? 'checked' : ''}><span class="ml-2 text-xs">${cod} - ${name}</span></label>`);
+            }
+            dropdown.innerHTML = htmlParts.join('');
 
             if (selectedArray.length === 0 || selectedArray.length === sortedSuppliers.length) {
                 filterText.textContent = 'Todos Fornecedores';
@@ -2977,36 +3033,41 @@
         function getComparisonFilteredData(options = {}) {
             const { excludeFilter = null } = options;
 
-            let clients = [...allClientsData];
+            // Sets for O(1)
+            const sellersSet = new Set(selectedComparisonSellers);
+            const suppliersSet = new Set(selectedComparisonSuppliers);
+            const productsSet = new Set(selectedComparisonProducts);
+            const tiposVendaSet = new Set(selectedComparisonTiposVenda);
+            const redeSet = new Set(selectedComparisonRedes);
+
+            const supervisor = comparisonSupervisorFilter.value;
+            const pasta = currentComparisonFornecedor;
+            const city = comparisonCityFilter.value.trim().toLowerCase();
+            const filial = comparisonFilialFilter.value;
+
+            let clients = allClientsData;
             if (comparisonRedeGroupFilter === 'com_rede') {
                 clients = clients.filter(c => c.ramo && c.ramo !== 'N/A');
-                 if (selectedComparisonRedes.length > 0) {
-                    clients = clients.filter(c => selectedComparisonRedes.includes(c.ramo));
+                 if (redeSet.size > 0) {
+                    clients = clients.filter(c => redeSet.has(c.ramo));
                 }
             } else if (comparisonRedeGroupFilter === 'sem_rede') {
                 clients = clients.filter(c => !c.ramo || c.ramo === 'N/A');
             }
             const clientCodes = new Set(clients.map(c => c['Código']));
 
-            const supervisor = comparisonSupervisorFilter.value;
-            const sellers = selectedComparisonSellers;
-            const suppliers = selectedComparisonSuppliers;
-            const products = selectedComparisonProducts;
-            const pasta = currentComparisonFornecedor;
-            const city = comparisonCityFilter.value.trim();
-            const filial = comparisonFilialFilter.value;
-            const tiposVenda = selectedComparisonTiposVenda;
+            const filterFunction = s => {
+                if (filial !== 'ambas' && s.FILIAL !== filial) return false;
+                if (excludeFilter !== 'supervisor' && supervisor && s.SUPERV !== supervisor) return false;
+                if (excludeFilter !== 'pasta' && pasta && s.OBSERVACAOFOR !== pasta) return false;
+                if (excludeFilter !== 'tipoVenda' && tiposVendaSet.size > 0 && !tiposVendaSet.has(s.TIPOVENDA)) return false;
+                if (excludeFilter !== 'seller' && sellersSet.size > 0 && !sellersSet.has(s.NOME)) return false;
+                if (excludeFilter !== 'supplier' && suppliersSet.size > 0 && !suppliersSet.has(s.CODFOR)) return false;
+                if (excludeFilter !== 'product' && productsSet.size > 0 && !productsSet.has(s.PRODUTO)) return false;
+                if (excludeFilter !== 'city' && city && (!s.CIDADE || s.CIDADE.toLowerCase() !== city)) return false;
 
-            const filterFunction = s =>
-                (clientCodes.has(s.CODCLI)) &&
-                (filial === 'ambas' || s.FILIAL === filial) &&
-                (excludeFilter === 'supervisor' || !supervisor || s.SUPERV === supervisor) &&
-                (excludeFilter === 'seller' || sellers.length === 0 || sellers.includes(s.NOME)) &&
-                (excludeFilter === 'supplier' || suppliers.length === 0 || suppliers.includes(String(s.CODFOR))) &&
-                (excludeFilter === 'product' || products.length === 0 || products.includes(String(s.PRODUTO))) &&
-                (excludeFilter === 'pasta' || !pasta || s.OBSERVACAOFOR === pasta) &&
-                (excludeFilter === 'city' || !city || (s.CIDADE && s.CIDADE.toLowerCase() === city.toLowerCase())) &&
-                (excludeFilter === 'tipoVenda' || tiposVenda.length === 0 || tiposVenda.includes(String(s.TIPOVENDA)));
+                return clientCodes.has(s.CODCLI);
+            };
 
             return {
                 currentSales: allSalesData.filter(filterFunction),
@@ -3066,15 +3127,17 @@
                   )
                 : products;
 
-            listContainer.innerHTML = '';
-            filteredProducts.forEach(([code, name]) => {
+            const htmlParts = [];
+            for (let i = 0; i < filteredProducts.length; i++) {
+                const [code, name] = filteredProducts[i];
                 const isChecked = selectedArray.includes(code);
-                listContainer.innerHTML += `
+                htmlParts.push(`
                     <label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer">
                         <input type="checkbox" data-filter-type="${filterType}" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${code}" ${isChecked ? 'checked' : ''}>
                         <span class="ml-2 text-xs">(${code}) ${name}</span>
-                    </label>`;
-            });
+                    </label>`);
+            }
+            listContainer.innerHTML = htmlParts.join('');
 
             if (selectedArray.length === 0) {
                 filterText.textContent = 'Todos os Produtos';
@@ -3136,12 +3199,25 @@
         function getStockFilteredData(options = {}) {
             const { excludeFilter = null } = options;
 
-            let clients = [...allClientsData];
+            // Use Sets for O(1) lookups
+            const sellersSet = new Set(selectedStockSellers);
+            const suppliersSet = new Set(selectedStockSuppliers);
+            const productsSet = new Set(selectedStockProducts);
+            const tiposVendaSet = new Set(selectedStockTiposVenda);
+            const redeSet = new Set(selectedStockRedes);
+
+            const supervisor = stockSupervisorFilter.value;
+            const pasta = currentStockFornecedor;
+            const city = stockCityFilter.value.trim().toLowerCase();
+            const filial = stockFilialFilter.value;
+
+            let clients = allClientsData; // Reference, avoid copy if not needed
             if (excludeFilter !== 'rede') {
                 if (stockRedeGroupFilter === 'com_rede') {
+                    // Use indexed lookups later if possible, but for now standard filter is safer with Sets
                     clients = clients.filter(c => c.ramo && c.ramo !== 'N/A');
-                     if (selectedStockRedes.length > 0) {
-                        clients = clients.filter(c => selectedStockRedes.includes(c.ramo));
+                     if (redeSet.size > 0) {
+                        clients = clients.filter(c => redeSet.has(c.ramo));
                     }
                 } else if (stockRedeGroupFilter === 'sem_rede') {
                     clients = clients.filter(c => !c.ramo || c.ramo === 'N/A');
@@ -3149,25 +3225,18 @@
             }
             const clientCodes = new Set(clients.map(c => c['Código']));
 
-            const supervisor = stockSupervisorFilter.value;
-            const sellers = selectedStockSellers;
-            const suppliers = selectedStockSuppliers;
-            const products = selectedStockProducts;
-            const pasta = currentStockFornecedor;
-            const city = stockCityFilter.value.trim();
-            const filial = stockFilialFilter.value;
-            const tiposVenda = selectedStockTiposVenda;
+            const filterFunction = s => {
+                if (filial !== 'ambas' && s.FILIAL !== filial) return false;
+                if (excludeFilter !== 'supervisor' && supervisor && s.SUPERV !== supervisor) return false;
+                if (excludeFilter !== 'pasta' && pasta && s.OBSERVACAOFOR !== pasta) return false;
+                if (excludeFilter !== 'tipoVenda' && tiposVendaSet.size > 0 && !tiposVendaSet.has(s.TIPOVENDA)) return false;
+                if (excludeFilter !== 'seller' && sellersSet.size > 0 && !sellersSet.has(s.NOME)) return false;
+                if (excludeFilter !== 'supplier' && suppliersSet.size > 0 && !suppliersSet.has(s.CODFOR)) return false;
+                if (excludeFilter !== 'product' && productsSet.size > 0 && !productsSet.has(s.PRODUTO)) return false;
+                if (excludeFilter !== 'city' && city && (!s.CIDADE || s.CIDADE.toLowerCase() !== city)) return false;
 
-            const filterFunction = s =>
-                (clientCodes.has(s.CODCLI)) &&
-                (filial === 'ambas' || s.FILIAL === filial) &&
-                (excludeFilter === 'supervisor' || !supervisor || s.SUPERV === supervisor) &&
-                (excludeFilter === 'seller' || sellers.length === 0 || sellers.includes(s.NOME)) &&
-                (excludeFilter === 'supplier' || suppliers.length === 0 || suppliers.includes(String(s.CODFOR))) &&
-                (excludeFilter === 'product' || products.length === 0 || products.includes(String(s.PRODUTO))) &&
-                (excludeFilter === 'pasta' || !pasta || s.OBSERVACAOFOR === pasta) &&
-                (excludeFilter === 'city' || !city || (s.CIDADE && s.CIDADE.toLowerCase() === city.toLowerCase())) &&
-                (excludeFilter === 'tipoVenda' || tiposVenda.length === 0 || tiposVenda.includes(String(s.TIPOVENDA)));
+                return clientCodes.has(s.CODCLI);
+            };
 
             return {
                 sales: allSalesData.filter(filterFunction),
@@ -3850,12 +3919,9 @@
             const city = innovationsCityFilter.value.trim().toLowerCase();
             const filial = innovationsFilialFilter.value;
 
-            let clients = [...allClientsData];
+            let clients = allClientsData;
             if (filial !== 'ambas') {
-                clients = clients.filter(c => {
-                    const lastBranch = clientLastBranch.get(c['Código']);
-                    return lastBranch === filial;
-                });
+                clients = clients.filter(c => clientLastBranch.get(c['Código']) === filial);
             }
 
             if (excludeFilter !== 'supervisor' && supervisor) {
@@ -3874,8 +3940,8 @@
                 clients = clients.filter(c => c.cidade && c.cidade.toLowerCase() === city);
             }
 
-            let sales = [...allSalesData];
-            let history = [...allHistoryData];
+            let sales = allSalesData;
+            let history = allHistoryData;
             if (filial !== 'ambas') {
                  sales = sales.filter(s => s.FILIAL === filial);
                  history = history.filter(s => s.FILIAL === filial);
@@ -4126,13 +4192,10 @@
             const city = innovationsMonthCityFilter.value.trim().toLowerCase();
             const filial = innovationsMonthFilialFilter.value;
 
-            let clients = [...allClientsData];
+            let clients = allClientsData;
 
             if (filial !== 'ambas') {
-                clients = clients.filter(c => {
-                    const lastBranch = clientLastBranch.get(c['Código']);
-                    return lastBranch === filial;
-                });
+                clients = clients.filter(c => clientLastBranch.get(c['Código']) === filial);
             }
 
             if (excludeFilter !== 'supervisor' && supervisor) {
