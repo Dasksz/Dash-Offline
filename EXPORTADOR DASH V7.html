@@ -1533,6 +1533,8 @@
             }
             
             const salesFilter = s => 
+                (excludeFilter === 'supervisor' || !supervisor || s.SUPERV === supervisor) &&
+                (excludeFilter === 'seller' || sellersSet.size === 0 || sellersSet.has(s.NOME)) &&
                 (excludeFilter === 'supplier' || suppliersSet.size === 0 || suppliersSet.has(s.CODFOR)) &&
                 (excludeFilter === 'product' || productsSet.size === 0 || productsSet.has(s.PRODUTO)) &&
                 (excludeFilter === 'tipoVenda' || tiposVendaSet.size === 0 || tiposVendaSet.has(s.TIPOVENDA)) &&
@@ -4901,8 +4903,23 @@
             const chartCanvas = document.getElementById('innovations-month-chart');
             if (chartCanvas && charts['innovations-month-chart'] && chartLabels.length > 0) {
                 try {
+                    const chartInstance = charts['innovations-month-chart'];
+                    const originalColor = chartInstance.options.plugins.datalabels.color;
+                    const originalXColor = chartInstance.options.scales.x.ticks.color;
+                    const originalYColor = chartInstance.options.scales.y.ticks.color;
+
+                    chartInstance.options.plugins.datalabels.color = '#000000';
+                    chartInstance.options.scales.x.ticks.color = '#000000';
+                    chartInstance.options.scales.y.ticks.color = '#000000';
+                    chartInstance.update();
+
                     const chartImage = chartCanvas.toDataURL('image/png', 1.0);
                     doc.addImage(chartImage, 'PNG', 14, 50, 270, 100);
+
+                    chartInstance.options.plugins.datalabels.color = originalColor;
+                    chartInstance.options.scales.x.ticks.color = originalXColor;
+                    chartInstance.options.scales.y.ticks.color = originalYColor;
+                    chartInstance.update();
                 } catch (e) {
                     console.error("Erro ao converter o gráfico para imagem:", e);
                     doc.text("Erro ao gerar a imagem do gráfico.", 14, 50);
@@ -5047,8 +5064,23 @@
             const chartCanvas = document.getElementById('coverageCityChart');
             if (chartCanvas && charts['coverageCityChart']) {
                 try {
+                    const chartInstance = charts['coverageCityChart'];
+                    const originalColor = chartInstance.options.plugins.datalabels.color;
+                    const originalXColor = chartInstance.options.scales.x.ticks.color;
+                    const originalYColor = chartInstance.options.scales.y.ticks.color;
+
+                    chartInstance.options.plugins.datalabels.color = '#000000';
+                    chartInstance.options.scales.x.ticks.color = '#000000';
+                    chartInstance.options.scales.y.ticks.color = '#000000';
+                    chartInstance.update();
+
                     const chartImage = chartCanvas.toDataURL('image/png', 1.0);
                     doc.addImage(chartImage, 'PNG', 14, 50, 270, 80);
+
+                    chartInstance.options.plugins.datalabels.color = originalColor;
+                    chartInstance.options.scales.x.ticks.color = originalXColor;
+                    chartInstance.options.scales.y.ticks.color = originalYColor;
+                    chartInstance.update();
                 } catch (e) {
                     console.error("Erro ao converter o gráfico para imagem:", e);
                 }
