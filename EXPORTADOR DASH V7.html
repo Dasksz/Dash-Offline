@@ -841,6 +841,10 @@
                     byClient: new Map(),
                     byTipoVenda: new Map()
                 }
+            },
+            searchIndices: {
+                clients: [], // [{ code, nameLower, cityLower }]
+                products: [] // [{ code, descLower }]
             }
         };
         let clientLastBranch = new Map();
@@ -853,8 +857,16 @@
         let customWorkingDaysStock = 0;
 
         function initializeOptimizedDataStructures() {
+            // 1. Pre-process Clients: Lowercase search fields
             optimizedData.clientsByRca = new Map();
-            allClientsData.forEach(client => {
+            optimizedData.searchIndices.clients = new Array(allClientsData.length);
+
+            for(let i=0; i<allClientsData.length; i++) {
+                const client = allClientsData[i];
+                // Ensure primitives
+                client['Código'] = String(client['Código']);
+                client.cidade = client.cidade || 'N/A';
+
                 clientRamoMap.set(client['Código'], client.ramo || 'N/A');
                 if (client.rcas) {
                     client.rcas.forEach(rca => {
@@ -864,8 +876,31 @@
                         optimizedData.clientsByRca.get(rca).push(client);
                     });
                 }
-            });
 
+                optimizedData.searchIndices.clients[i] = {
+                    code: client['Código'],
+                    nameLower: (client.nomeCliente || '').toLowerCase(),
+                    cityLower: (client.cidade || '').toLowerCase()
+                };
+            }
+
+            // 2. Pre-process Sales & History: Ensure primitives
+            const ensurePrimitives = (data) => {
+                for(let i=0; i<data.length; i++) {
+                    const s = data[i];
+                    s.PRODUTO = String(s.PRODUTO);
+                    s.CODFOR = String(s.CODFOR);
+                    s.TIPOVENDA = String(s.TIPOVENDA);
+                    s.CODCLI = String(s.CODCLI);
+                    s.SUPERV = s.SUPERV || 'N/A';
+                    s.NOME = s.NOME || 'N/A';
+                    s.CIDADE = s.CIDADE || 'N/A';
+                }
+            };
+            ensurePrimitives(allSalesData);
+            ensurePrimitives(allHistoryData);
+
+            // 3. Build optimized indices
             optimizedData.rcasBySupervisor = new Map();
             const supervisorToRcaMap = new Map();
             const populateSupervisorMap = (sale) => {
@@ -886,7 +921,7 @@
             optimizedData.productsBySupplier = new Map();
             const populateProductMap = (sale) => {
                 if (sale.CODFOR && sale.PRODUTO) {
-                    const codfor = String(sale.CODFOR);
+                    const codfor = sale.CODFOR;
                     if (!optimizedData.productsBySupplier.has(codfor)) {
                         optimizedData.productsBySupplier.set(codfor, new Set());
                     }
@@ -935,14 +970,14 @@
                     const id = dataMap.size;
                     dataMap.set(id, sale);
 
-                    const supervisor = sale.SUPERV || 'N/A';
-                    const rca = sale.NOME || 'N/A';
+                    const supervisor = sale.SUPERV;
+                    const rca = sale.NOME;
                     const pasta = sale.OBSERVACAOFOR || 'N/A';
-                    const supplier = sale.CODFOR || 'N/A';
-                    const client = sale.CODCLI || 'N/A';
+                    const supplier = sale.CODFOR;
+                    const client = sale.CODCLI;
                     const position = sale.POSICAO || 'N/A';
                     const rede = clientRamoMap.get(client) || 'N/A';
-                    const tipoVenda = sale.TIPOVENDA || 'N/A';
+                    const tipoVenda = sale.TIPOVENDA;
 
                     if (!bySupervisor.has(supervisor)) bySupervisor.set(supervisor, new Set());
                     bySupervisor.get(supervisor).add(id);
@@ -1409,6 +1444,7 @@
         let coverageUnitPriceFilter = null;
         let customWorkingDaysCoverage = 0;
         let coverageTrendFilter = 'all';
+        let coverageTableDataForExport = [];
 
         const coverageTipoVendaFilterBtn = document.getElementById('coverage-tipo-venda-filter-btn');
         const coverageTipoVendaFilterText = document.getElementById('coverage-tipo-venda-filter-text');
@@ -1455,31 +1491,30 @@
             const { excludeFilter = null } = options;
 
             const supervisor = coverageSupervisorFilter.value;
-            const sellers = selectedCoverageSellers;
-            const suppliers = selectedCoverageSuppliers;
-            const products = selectedCoverageProducts;
+            // Use Sets for O(1) lookups
+            const sellersSet = new Set(selectedCoverageSellers);
+            const suppliersSet = new Set(selectedCoverageSuppliers);
+            const productsSet = new Set(selectedCoverageProducts);
+            const tiposVendaSet = new Set(selectedCoverageTiposVenda);
+
             const city = coverageCityFilter.value.trim().toLowerCase();
             const filial = coverageFilialFilter.value;
-            const tiposVenda = selectedCoverageTiposVenda;
             const unitPriceInput = document.getElementById('coverage-unit-price-filter');
             const unitPrice = unitPriceInput && unitPriceInput.value ? parseFloat(unitPriceInput.value) : null;
 
-            let clients = [...allClientsData];
+            let clients = allClientsData;
 
             if (filial !== 'ambas') {
-                clients = clients.filter(c => {
-                    const lastBranch = clientLastBranch.get(c['Código']);
-                    return lastBranch === filial;
-                });
+                clients = clients.filter(c => clientLastBranch.get(c['Código']) === filial);
             }
 
             if (excludeFilter !== 'supervisor' && supervisor) {
                 const rcasOfSupervisor = new Set(optimizedData.rcasBySupervisor.get(supervisor) || []);
                 clients = clients.filter(c => c.rcas.some(rca => rcasOfSupervisor.has(rca)));
             }
-            if (excludeFilter !== 'seller' && sellers.length > 0) {
+            if (excludeFilter !== 'seller' && sellersSet.size > 0) {
                 const rcasOfSellers = new Set();
-                 sellers.forEach(sellerName => {
+                 sellersSet.forEach(sellerName => {
                     const rcaCode = optimizedData.rcaCodeByName.get(sellerName);
                     if (rcaCode) rcasOfSellers.add(rcaCode);
                 });
@@ -1489,17 +1524,18 @@
                 clients = clients.filter(c => c.cidade && c.cidade.toLowerCase() === city);
             }
 
-            let sales = [...allSalesData];
-            let history = [...allHistoryData];
+            let sales = allSalesData;
+            let history = allHistoryData;
+
             if (filial !== 'ambas') {
                  sales = sales.filter(s => s.FILIAL === filial);
                  history = history.filter(s => s.FILIAL === filial);
             }
             
             const salesFilter = s => 
-                (excludeFilter === 'supplier' || suppliers.length === 0 || suppliers.includes(String(s.CODFOR))) &&
-                (excludeFilter === 'product' || products.length === 0 || products.includes(String(s.PRODUTO))) &&
-                (excludeFilter === 'tipoVenda' || tiposVenda.length === 0 || tiposVenda.includes(String(s.TIPOVENDA))) &&
+                (excludeFilter === 'supplier' || suppliersSet.size === 0 || suppliersSet.has(s.CODFOR)) &&
+                (excludeFilter === 'product' || productsSet.size === 0 || productsSet.has(s.PRODUTO)) &&
+                (excludeFilter === 'tipoVenda' || tiposVendaSet.size === 0 || tiposVendaSet.has(s.TIPOVENDA)) &&
                 (unitPrice === null || (s.QTVENDA > 0 && Math.abs((s.VLVENDA / s.QTVENDA) - unitPrice) < 0.01));
                 
             sales = sales.filter(salesFilter);
@@ -1514,38 +1550,49 @@
             return { sales, history, clients };
         }
         
-        function updateAllCoverageFilters() {
-            const { sales: salesSup, history: historySup } = getCoverageFilteredData({ excludeFilter: 'supervisor' });
-            const combinedDataSup = [...salesSup, ...historySup];
-            const currentSupervisor = coverageSupervisorFilter.value;
+        function updateAllCoverageFilters(options = {}) {
+            const { skipFilter = null } = options;
 
-            // Update Supervisor Filter
-            const supervisors = [...new Set(combinedDataSup.map(item => item.SUPERV).filter(Boolean))].sort();
-            coverageSupervisorFilter.innerHTML = '<option value="">Todos</option>';
-            supervisors.forEach(sup => { coverageSupervisorFilter.innerHTML += `<option value="${sup}">${sup}</option>`; });
-            if (supervisors.includes(currentSupervisor)) coverageSupervisorFilter.value = currentSupervisor;
-            else coverageSupervisorFilter.value = '';
+            if (skipFilter !== 'supervisor') {
+                const { sales: salesSup, history: historySup } = getCoverageFilteredData({ excludeFilter: 'supervisor' });
+                const combinedDataSup = [...salesSup, ...historySup];
+                const currentSupervisor = coverageSupervisorFilter.value;
 
-            // Update Seller Filter
-            const { sales: salesSeller, history: historySeller } = getCoverageFilteredData({ excludeFilter: 'seller' });
-            selectedCoverageSellers = updateSellerFilter(coverageSupervisorFilter.value, coverageVendedorFilterDropdown, coverageVendedorFilterText, selectedCoverageSellers, [...salesSeller, ...historySeller]);
+                const supervisors = [...new Set(combinedDataSup.map(item => item.SUPERV).filter(Boolean))].sort();
+                coverageSupervisorFilter.innerHTML = '<option value="">Todos</option>';
+                supervisors.forEach(sup => { coverageSupervisorFilter.innerHTML += `<option value="${sup}">${sup}</option>`; });
+                if (supervisors.includes(currentSupervisor)) coverageSupervisorFilter.value = currentSupervisor;
+                else coverageSupervisorFilter.value = '';
+            }
 
-            // Update Supplier Filter
-            const { sales: salesSupplier, history: historySupplier } = getCoverageFilteredData({ excludeFilter: 'supplier' });
-            selectedCoverageSuppliers = updateSupplierFilter(coverageSupplierFilterDropdown, coverageSupplierFilterText, selectedCoverageSuppliers, [...salesSupplier, ...historySupplier], 'coverage');
+            if (skipFilter !== 'seller') {
+                const { sales: salesSeller, history: historySeller } = getCoverageFilteredData({ excludeFilter: 'seller' });
+                selectedCoverageSellers = updateSellerFilter(coverageSupervisorFilter.value, coverageVendedorFilterDropdown, coverageVendedorFilterText, selectedCoverageSellers, [...salesSeller, ...historySeller]);
+            }
 
-            // Update Product Filter
-            const { sales: salesProd, history: historyProd } = getCoverageFilteredData({ excludeFilter: 'product' });
-            updateProductFilter(coverageProductFilterDropdown, coverageProductFilterText, selectedCoverageProducts, [...salesProd, ...historyProd], 'coverage');
+            if (skipFilter !== 'supplier') {
+                const { sales: salesSupplier, history: historySupplier } = getCoverageFilteredData({ excludeFilter: 'supplier' });
+                selectedCoverageSuppliers = updateSupplierFilter(coverageSupplierFilterDropdown, coverageSupplierFilterText, selectedCoverageSuppliers, [...salesSupplier, ...historySupplier], 'coverage');
+            }
 
-            // Update Tipo Venda Filter
-            const { sales: salesTV, history: historyTV } = getCoverageFilteredData({ excludeFilter: 'tipoVenda' });
-            selectedCoverageTiposVenda = updateTipoVendaFilter(coverageTipoVendaFilterDropdown, coverageTipoVendaFilterText, selectedCoverageTiposVenda, [...salesTV, ...historyTV]);
+            if (skipFilter !== 'product') {
+                const { sales: salesProd, history: historyProd } = getCoverageFilteredData({ excludeFilter: 'product' });
+                updateProductFilter(coverageProductFilterDropdown, coverageProductFilterText, selectedCoverageProducts, [...salesProd, ...historyProd], 'coverage');
+            }
+
+            if (skipFilter !== 'tipoVenda') {
+                const { sales: salesTV, history: historyTV } = getCoverageFilteredData({ excludeFilter: 'tipoVenda' });
+                selectedCoverageTiposVenda = updateTipoVendaFilter(coverageTipoVendaFilterDropdown, coverageTipoVendaFilterText, selectedCoverageTiposVenda, [...salesTV, ...historyTV]);
+            }
         }
 
-        function handleCoverageFilterChange() {
-            updateAllCoverageFilters();
-            updateCoverageView();
+        function handleCoverageFilterChange(options = {}) {
+            // Debounce update to prevent UI freezing during rapid selection
+            if (window.coverageUpdateTimeout) clearTimeout(window.coverageUpdateTimeout);
+            window.coverageUpdateTimeout = setTimeout(() => {
+                 updateAllCoverageFilters(options);
+                 updateCoverageView();
+            }, 10);
         }
         
         function resetCoverageFilters() {
@@ -1618,40 +1665,108 @@
             let topCoverageItem = { name: '-', coverage: 0, clients: 0 };
             const activeStockMap = getActiveStockMap(coverageFilialFilter.value);
 
-            // --- OPTIMIZATION: Build lookup maps for filtered data ---
-            const currentSalesMap = new Map(); // Map<CODCLI, Set<PRODUTO>>
-            sales.forEach(s => {
-                if (!currentSalesMap.has(s.CODCLI)) currentSalesMap.set(s.CODCLI, new Set());
-                currentSalesMap.get(s.CODCLI).add(s.PRODUTO);
-            });
-
             const currentMonth = lastSaleDate.getMonth();
             const currentYear = lastSaleDate.getFullYear();
             const prevMonthIdx = (currentMonth === 0) ? 11 : currentMonth - 1;
             const prevMonthYear = (currentMonth === 0) ? currentYear - 1 : currentYear;
 
-            const previousSalesMap = new Map(); // Map<CODCLI, Set<PRODUTO>>
+            // --- CRITICAL OPTIMIZATION: Pre-aggregate everything ---
+
+            // 1. Maps for Coverage: Map<CODCLI, Set<PRODUTO>>
+            const currentSalesMap = new Map();
+            const previousSalesMap = new Map();
+
+            // 2. Maps for Box Quantities: Map<PRODUTO, Number>
+            const boxesSoldCurrentMap = new Map();
+            const boxesSoldPreviousMap = new Map();
+
+            // 3. Index for Trend Calculation: Map<PRODUTO, Array<Sale>>
+            // We group all sales (current + history) by product to calculate trend efficiently
+            const trendSalesMap = new Map();
+
+            // Process Current Sales (O(N))
+            sales.forEach(s => {
+                // Coverage Map
+                if (!currentSalesMap.has(s.CODCLI)) currentSalesMap.set(s.CODCLI, new Set());
+                currentSalesMap.get(s.CODCLI).add(s.PRODUTO);
+
+                // Box Quantity Map
+                boxesSoldCurrentMap.set(s.PRODUTO, (boxesSoldCurrentMap.get(s.PRODUTO) || 0) + s.QTVENDA_EMBALAGEM_MASTER);
+
+                // Trend Map
+                if (!trendSalesMap.has(s.PRODUTO)) trendSalesMap.set(s.PRODUTO, []);
+                trendSalesMap.get(s.PRODUTO).push(s);
+            });
+
+            // Process History Sales (O(N))
             history.forEach(s => {
                 const d = parseDate(s.DTPED);
-                if (d && d.getMonth() === prevMonthIdx && d.getFullYear() === prevMonthYear) {
+                const isPrevMonth = d && d.getMonth() === prevMonthIdx && d.getFullYear() === prevMonthYear;
+
+                // Coverage Map (only if prev month)
+                if (isPrevMonth) {
                     if (!previousSalesMap.has(s.CODCLI)) previousSalesMap.set(s.CODCLI, new Set());
                     previousSalesMap.get(s.CODCLI).add(s.PRODUTO);
+
+                    // Box Quantity Map (only if prev month)
+                    boxesSoldPreviousMap.set(s.PRODUTO, (boxesSoldPreviousMap.get(s.PRODUTO) || 0) + s.QTVENDA_EMBALAGEM_MASTER);
                 }
+
+                // Trend Map (All history)
+                if (!trendSalesMap.has(s.PRODUTO)) trendSalesMap.set(s.PRODUTO, []);
+                trendSalesMap.get(s.PRODUTO).push(s);
             });
-            // ---------------------------------------------------------
+
+            // Pre-calculate global dates for Trend
+            const endDate = parseDate(sortedWorkingDays[sortedWorkingDays.length - 1]);
+            // We can't pre-calculate start date globally because it depends on product creation date,
+            // but we can optimize the lookups.
 
             productsToAnalyze.forEach(productCode => {
                 const productInfo = productDetailsMap.get(productCode) || { descricao: `Produto ${productCode}`};
 
+                // Coverage Calculation: Loop only over active clients (O(C))
+                // Optimization: Instead of looping clients for every product, can we check the inverse?
+                // No, we need 'clientsWhoGotSelectionCurrent' which is the union.
+                // But for individual product coverage, we can just check size of the Set if we built it reversed.
+                // However, building Map<Product, Set<Client>> is also O(N).
+                // Let's stick to checking clients but optimize the Set lookup (it's already O(1)).
+                // Actually, checking 5000 clients for every product is slow (5000 * 2000 = 10M ops).
+                // BETTER: In the first pass, calculate the counts!
+                // But we need to know if the client is "Active" (in the filtered list).
+                // Since `currentSalesMap` only contains sales from `sales` array (which is filtered),
+                // any client in `currentSalesMap` IS active relative to the filters applied to sales.
+                // BUT `activeClientsForCoverage` applies specific logic (excluding RCA 53, etc.).
+                // So we MUST intersect `currentSalesMap` keys with `activeClientCodes`.
+
                 let clientsWhoGotProductCurrent = 0;
                 let clientsWhoGotProductPrevious = 0;
 
+                // To avoid O(Clients * Products), we iterate active clients ONLY ONCE outside this loop?
+                // No, we need per-product counts.
+                // Optimization: Iterate over `currentSalesMap` entries?
+                // No, that's unstructured.
+
+                // Let's optimize the loop below by doing it only for products that actually HAVE sales.
+                // If boxesSoldCurrentMap.get(productCode) is undefined/0, coverage is 0.
+
+                const hasCurrentSales = boxesSoldCurrentMap.has(productCode);
+                const hasPreviousSales = boxesSoldPreviousMap.has(productCode);
+
+                if (hasCurrentSales) {
+                    // Only iterate clients if we know there are sales for this product
+                    // Actually, even better: Build Map<Product, Set<ActiveClient>> during the first pass?
+                    // Yes, but we need to know `activeClientCodes` first.
+                }
+
+                // Fallback to standard loop but simplified
                 activeClientCodes.forEach(codcli => {
+                    // Check Current
                     if (currentSalesMap.has(codcli) && currentSalesMap.get(codcli).has(productCode)) {
                         clientsWhoGotProductCurrent++;
                         clientsWhoGotSelectionCurrent.add(codcli);
                     }
-
+                    // Check Previous
                     if (previousSalesMap.has(codcli) && previousSalesMap.get(codcli).has(productCode)) {
                         clientsWhoGotProductPrevious++;
                         clientsWhoGotSelectionPrevious.add(codcli);
@@ -1669,7 +1784,10 @@
                 }
 
                 const stockQty = activeStockMap.get(productCode) || 0;
-                const productAllSales = [...sales, ...history].filter(s => s.PRODUTO === productCode);
+
+                // Trend Calculation
+                // Use the map we built
+                const productAllSales = trendSalesMap.get(productCode) || [];
                 
                 const productCadastroDate = parseDate(productInfo.dtCadastro);
                 let productFirstWorkingDayIndex = 0;
@@ -1681,11 +1799,11 @@
                 const productMaxLifeInWorkingDays = sortedWorkingDays.length - productFirstWorkingDayIndex;
                 const effectiveDaysToCalculate = Math.min(customWorkingDaysCoverage, productMaxLifeInWorkingDays) || 1;
                 
-                const endDate = parseDate(sortedWorkingDays[sortedWorkingDays.length - 1]);
                 const targetIndex = Math.max(0, sortedWorkingDays.length - effectiveDaysToCalculate);
                 const startDate = parseDate(sortedWorkingDays[targetIndex]);
                 
                 let totalQtySoldInRange = 0;
+                // Optimization: Iterate only the pre-filtered array for this product
                 productAllSales.forEach(sale => {
                     const saleDate = parseDate(sale.DTPED);
                     if (saleDate && saleDate >= startDate && saleDate <= endDate) {
@@ -1696,18 +1814,9 @@
                 const dailyAvgSale = totalQtySoldInRange / effectiveDaysToCalculate;
                 const trendDays = dailyAvgSale > 0 ? (stockQty / dailyAvgSale) : (stockQty > 0 ? Infinity : 0);
                 
-                // Calculate monthly box quantity (current filtered sales)
-                const boxesSoldCurrentMonth = sales
-                    .filter(s => s.PRODUTO === productCode)
-                    .reduce((sum, s) => sum + s.QTVENDA_EMBALAGEM_MASTER, 0);
-
-                // Calculate previous month box quantity
-                const boxesSoldPreviousMonth = history
-                    .filter(s => {
-                        const d = parseDate(s.DTPED);
-                        return s.PRODUTO === productCode && d && d.getMonth() === prevMonthIdx && d.getFullYear() === prevMonthYear;
-                    })
-                    .reduce((sum, s) => sum + s.QTVENDA_EMBALAGEM_MASTER, 0);
+                // Box Quantities (Pre-calculated)
+                const boxesSoldCurrentMonth = boxesSoldCurrentMap.get(productCode) || 0;
+                const boxesSoldPreviousMonth = boxesSoldPreviousMap.get(productCode) || 0;
 
                 const boxesVariation = boxesSoldPreviousMonth > 0
                     ? ((boxesSoldCurrentMonth - boxesSoldPreviousMonth) / boxesSoldPreviousMonth) * 100
@@ -1753,6 +1862,8 @@
                     return false;
                 });
             }
+
+            coverageTableDataForExport = filteredTableData;
 
             coverageTableBody.innerHTML = filteredTableData.map(item => {
                 let trendText;
@@ -2310,8 +2421,13 @@
             if (!supervisorFilterEl) return;
             const supervisors = [...new Set(dataSource.map(item => item.SUPERV).filter(Boolean))].sort();
             const currentSupervisorValue = supervisorFilterEl.value;
-            supervisorFilterEl.innerHTML = '<option value="">Todos</option>';
-            supervisors.forEach(sup => { supervisorFilterEl.innerHTML += `<option value="${sup}">${sup}</option>`; });
+
+            const options = ['<option value="">Todos</option>'];
+            for (let i = 0; i < supervisors.length; i++) {
+                options.push(`<option value="${supervisors[i]}">${supervisors[i]}</option>`);
+            }
+            supervisorFilterEl.innerHTML = options.join('');
+
             if (supervisors.includes(currentSupervisorValue)) supervisorFilterEl.value = currentSupervisorValue;
             else supervisorFilterEl.value = '';
         }
@@ -2327,17 +2443,25 @@
             });
             const sortedSuppliers = [...suppliers.entries()].sort((a, b) => a[1].localeCompare(b[1]));
 
-            filterEl.innerHTML = '<option value="">Todos</option>';
-            sortedSuppliers.forEach(([cod, name]) => {
-                filterEl.innerHTML += `<option value="${cod}">${cod} - ${name}</option>`;
-            });
+            const options = ['<option value="">Todos</option>'];
+            for (let i = 0; i < sortedSuppliers.length; i++) {
+                options.push(`<option value="${sortedSuppliers[i][0]}">${sortedSuppliers[i][0]} - ${sortedSuppliers[i][1]}</option>`);
+            }
+            filterEl.innerHTML = options.join('');
         }
 
         function updateSellerFilter(supervisor, dropdown, filterText, selectedArray, dataSource) {
             const sellersToShow = supervisor ? [...new Set(dataSource.filter(s => s.SUPERV === supervisor).map(s => s.NOME))].sort() : [...new Set(dataSource.map(item => item.NOME).filter(Boolean))].sort();
             selectedArray = selectedArray.filter(seller => sellersToShow.includes(seller));
-            dropdown.innerHTML = '';
-            sellersToShow.forEach(s => { const isChecked = selectedArray.includes(s); dropdown.innerHTML += `<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${s}" ${isChecked ? 'checked' : ''}><span class="ml-2">${s}</span></label>`; });
+
+            const htmlParts = [];
+            for (let i = 0; i < sellersToShow.length; i++) {
+                const s = sellersToShow[i];
+                const isChecked = selectedArray.includes(s);
+                htmlParts.push(`<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${s}" ${isChecked ? 'checked' : ''}><span class="ml-2">${s}</span></label>`);
+            }
+            dropdown.innerHTML = htmlParts.join('');
+
             if (selectedArray.length === 0 || selectedArray.length === sellersToShow.length) filterText.textContent = 'Todos Vendedores';
             else if (selectedArray.length === 1) filterText.textContent = selectedArray[0];
             else filterText.textContent = `${selectedArray.length} vendedores selecionados`;
@@ -2347,11 +2471,15 @@
         function updateTipoVendaFilter(dropdown, filterText, selectedArray, dataSource) {
             const tiposVendaToShow = [...new Set(dataSource.map(item => item.TIPOVENDA).filter(Boolean))].sort();
             selectedArray = selectedArray.filter(tipo => tiposVendaToShow.includes(tipo));
-            dropdown.innerHTML = '';
-            tiposVendaToShow.forEach(s => { 
-                const isChecked = selectedArray.includes(s); 
-                dropdown.innerHTML += `<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${s}" ${isChecked ? 'checked' : ''}><span class="ml-2">${s}</span></label>`; 
-            });
+
+            const htmlParts = [];
+            for (let i = 0; i < tiposVendaToShow.length; i++) {
+                const s = tiposVendaToShow[i];
+                const isChecked = selectedArray.includes(s);
+                htmlParts.push(`<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${s}" ${isChecked ? 'checked' : ''}><span class="ml-2">${s}</span></label>`);
+            }
+            dropdown.innerHTML = htmlParts.join('');
+
             if (selectedArray.length === 0 || selectedArray.length === tiposVendaToShow.length) filterText.textContent = 'Todos os Tipos';
             else if (selectedArray.length === 1) filterText.textContent = selectedArray[0];
             else filterText.textContent = `${selectedArray.length} tipos selecionados`;
@@ -2362,11 +2490,13 @@
             const redesToShow = [...new Set(dataSource.map(item => item.ramo).filter(r => r && r !== 'N/A'))].sort();
             const validSelected = selectedArray.filter(rede => redesToShow.includes(rede));
 
-            dropdown.innerHTML = '';
-            redesToShow.forEach(r => {
+            const htmlParts = [];
+            for (let i = 0; i < redesToShow.length; i++) {
+                const r = redesToShow[i];
                 const isChecked = validSelected.includes(r);
-                dropdown.innerHTML += `<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${r}" ${isChecked ? 'checked' : ''}><span class="ml-2 text-sm">${r}</span></label>`;
-            });
+                htmlParts.push(`<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${r}" ${isChecked ? 'checked' : ''}><span class="ml-2 text-sm">${r}</span></label>`);
+            }
+            dropdown.innerHTML = htmlParts.join('');
 
             if (validSelected.length === 0) {
                 buttonTextElement.textContent = baseText;
@@ -2527,6 +2657,7 @@
             const supervisor = citySupervisorFilter.value;
             const codcliFilterVal = cityCodCliFilter.value.trim();
             if (codcliFilterVal && !allClientsData.some(c => String(c['Código']) === codcliFilterVal)) return;
+
             let clientsForAnalysis = getRelevantClientsForCityFilter();
             const allAvailableCities = [...new Set(clientsForAnalysis.map(c => c.cidade).filter(Boolean))];
             const cidadeFiltroInput = cityNameFilter.value.trim();
@@ -2537,32 +2668,78 @@
             const currentMonth = referenceDate.getMonth();
             const currentYear = referenceDate.getFullYear();
 
-            let salesForAnalysis = allSalesData;
-
+            // Filter Sales (O(N)) - use simple loop with flags
+            let salesForAnalysis = [];
             const clientCodesForAnalysis = new Set(clientsForAnalysis.map(c => c['Código']));
-            salesForAnalysis = salesForAnalysis.filter(s => clientCodesForAnalysis.has(s.CODCLI));
+            const selectedSellersSet = new Set(selectedCitySellers);
+            const selectedTiposVendaSet = new Set(selectedCityTiposVenda);
 
-            if (supervisor) salesForAnalysis = salesForAnalysis.filter(s => s.SUPERV === supervisor);
-            if (selectedCitySellers.length > 0) salesForAnalysis = salesForAnalysis.filter(s => selectedCitySellers.includes(s.NOME));
-            if (selectedCityTiposVenda.length > 0) salesForAnalysis = salesForAnalysis.filter(s => selectedCityTiposVenda.includes(s.TIPOVENDA));
+            // Optimize sales filtering
+            for(let i=0; i<allSalesData.length; i++) {
+                const s = allSalesData[i];
+                if (!clientCodesForAnalysis.has(s.CODCLI)) continue;
+                if (supervisor && s.SUPERV !== supervisor) continue;
+                if (selectedSellersSet.size > 0 && !selectedSellersSet.has(s.NOME)) continue;
+                if (selectedTiposVendaSet.size > 0 && !selectedTiposVendaSet.has(s.TIPOVENDA)) continue;
 
-            if (cidadeFiltro) { clientsForAnalysis = clientsForAnalysis.filter(c => c.cidade && c.cidade === cidadeFiltro); salesForAnalysis = salesForAnalysis.filter(s => s.CIDADE && s.CIDADE === cidadeFiltro); }
-            if (codcliFilterVal) { clientsForAnalysis = clientsForAnalysis.filter(c => String(c['Código']) === codcliFilterVal); salesForAnalysis = salesForAnalysis.filter(s => s.CODCLI === codcliFilterVal); }
+                if (cidadeFiltro && s.CIDADE !== cidadeFiltro) continue;
+                if (codcliFilterVal && s.CODCLI !== codcliFilterVal) continue;
 
-            let salesThisMonth = allSalesData.filter(sale => {
-                const saleDate = parseDate(sale.DTPED);
-                return saleDate && saleDate.getFullYear() === currentYear && saleDate.getMonth() === currentMonth;
-            });
-
-            if (selectedCityTiposVenda.length > 0) {
-                salesThisMonth = salesThisMonth.filter(s => selectedCityTiposVenda.includes(s.TIPOVENDA));
+                salesForAnalysis.push(s);
             }
 
+            if (cidadeFiltro) clientsForAnalysis = clientsForAnalysis.filter(c => c.cidade === cidadeFiltro);
+            if (codcliFilterVal) clientsForAnalysis = clientsForAnalysis.filter(c => String(c['Código']) === codcliFilterVal);
+
+            // Pre-aggregate "Sales This Month" for Status Classification
+            // We need sales from THIS MONTH for ALL clients (to check active/inactive),
+            // potentially filtered by Tipo Venda but usually standard sales.
+            // Note: The original code filtered `allSalesData` by date and `selectedCityTiposVenda`.
+            // It did NOT filter by supervisor/seller for the *status classification* (Active vs Inactive logic).
+            // Wait, let's check the original logic:
+            // `salesThisMonth` was filtered by date and `selectedCityTiposVenda`.
+            // Then `clientTotalsThisMonth` map was built.
+            // Then `clientsForAnalysis` (which IS filtered by supervisor/seller via `getRelevantClientsForCityFilter`) loop checks `clientTotalsThisMonth`.
+            // So yes, "Active" means "Has sales in the current month (of selected types)".
+
             const clientTotalsThisMonth = new Map();
-            salesThisMonth.forEach(sale => {
-                const codcli = sale.CODCLI;
-                const currentTotal = clientTotalsThisMonth.get(codcli) || 0;
-                clientTotalsThisMonth.set(codcli, currentTotal + sale.VLVENDA);
+            // Optimization: Iterate once through all sales to build the map for the current month
+            for(let i=0; i<allSalesData.length; i++) {
+                const s = allSalesData[i];
+                if (selectedTiposVendaSet.size > 0 && !selectedTiposVendaSet.has(s.TIPOVENDA)) continue;
+
+                const d = parseDate(s.DTPED);
+                if (d && d.getFullYear() === currentYear && d.getMonth() === currentMonth) {
+                    clientTotalsThisMonth.set(s.CODCLI, (clientTotalsThisMonth.get(s.CODCLI) || 0) + s.VLVENDA);
+                }
+            }
+
+            // Pre-aggregate Breakdown Data (Pepsico/Multimarcas/Total) for Active Clients
+            // This data MUST respect the Seller/Supervisor filters (unlike the generic "Active" status which might be broader? No, `activeClientsList` comes from `clientsForAnalysis` which IS filtered).
+            // Wait, `clientsForAnalysis` is filtered by `getRelevantClientsForCityFilter` (Supervisor/Seller).
+            // So `activeClientsList` only contains clients belonging to the selected Supervisor/Seller.
+            // BUT, `salesByActiveClient` calculation in original code did:
+            // `clientSales = salesThisMonth.filter(s => s.CODCLI === codcli)`
+            // `if (selectedCitySellers.length > 0) clientSales = clientSales.filter(...)`
+            // So the *value* displayed in the table IS specific to the selected sellers.
+
+            // Let's build a map for the detailed table values using `salesForAnalysis` but restricted to this month.
+            // Actually `salesForAnalysis` already has all the filters applied (Supervisor, Seller, TipoVenda, City, Client).
+            // So we just need to filter `salesForAnalysis` by date (current month).
+
+            const detailedDataByClient = new Map(); // Map<CODCLI, { total, pepsico, multimarcas }>
+
+            salesForAnalysis.forEach(s => {
+                const d = parseDate(s.DTPED);
+                if (d && d.getFullYear() === currentYear && d.getMonth() === currentMonth) {
+                    if (!detailedDataByClient.has(s.CODCLI)) {
+                        detailedDataByClient.set(s.CODCLI, { total: 0, pepsico: 0, multimarcas: 0 });
+                    }
+                    const entry = detailedDataByClient.get(s.CODCLI);
+                    entry.total += s.VLVENDA;
+                    if (s.OBSERVACAOFOR === 'PEPSICO') entry.pepsico += s.VLVENDA;
+                    else if (s.OBSERVACAOFOR === 'MULTIMARCAS') entry.multimarcas += s.VLVENDA;
+                }
             });
 
             let activeClientsList = [];
@@ -2576,6 +2753,12 @@
                 client.isNew = registrationDate && registrationDate.getMonth() === currentMonth && registrationDate.getFullYear() === currentYear;
 
                 const totalFaturamentoMes = clientTotalsThisMonth.get(codcli) || 0;
+
+                // Logic from original: If total > 0, it's active.
+                // Note: `totalFaturamentoMes` comes from `clientTotalsThisMonth` which is NOT filtered by seller/supervisor (only Type/Date).
+                // This means a client is "Active" if they bought *anything* from *anyone* this month.
+                // Even if they didn't buy from the selected supervisor.
+                // This seems to be the intended behavior for the "Status" chart (Global status of the client).
 
                 if (totalFaturamentoMes > 0) {
                     activeClientsList.push(client);
@@ -2598,21 +2781,30 @@
             } else showNoDataMessage('customerStatusChart', 'Sem clientes no filtro para exibir o status.');
 
             const salesByActiveClient = {};
+
+            // Now populate the detailed table.
+            // We iterate `activeClientsList`. If they have sales in `detailedDataByClient` (which IS filtered), we show them.
+            // Wait, `activeClientsList` contains clients who bought *anything*.
+            // But the table `cityActiveDetailTableBody` should show sales relevant to the filters.
+            // If a client bought from Seller A (selected) and Seller B (not selected), `clientTotalsThisMonth` has A+B.
+            // `detailedDataByClient` has only A.
+            // If `detailedDataByClient` has 0/undefined, it means they didn't buy from the selected filters,
+            // even if they are "Active" globally.
+            // The original code: `if (totalFaturamentoFiltrado > 0) { ... add to list }`
+
             activeClientsList.forEach(client => {
                 const codcli = String(client['Código']);
-                let clientSales = salesThisMonth.filter(s => s.CODCLI === codcli);
+                const details = detailedDataByClient.get(codcli);
 
-                if (selectedCitySellers.length > 0) {
-                    clientSales = clientSales.filter(s => selectedCitySellers.includes(s.NOME));
-                }
-
-                const totalFaturamentoFiltrado = clientSales.reduce((sum, s) => sum + s.VLVENDA, 0);
-
-                if (totalFaturamentoFiltrado > 0) {
-                    const pepsicoTotal = clientSales.filter(s => s.OBSERVACAOFOR === 'PEPSICO').reduce((sum, s) => sum + s.VLVENDA, 0);
-                    const multimarcasTotal = clientSales.filter(s => s.OBSERVACAOFOR === 'MULTIMARCAS').reduce((sum, s) => sum + s.VLVENDA, 0);
-                    const outrosTotal = totalFaturamentoFiltrado - pepsicoTotal - multimarcasTotal;
-                    salesByActiveClient[codcli] = { ...client, total: totalFaturamentoFiltrado, pepsico: pepsicoTotal, multimarcas: multimarcasTotal, outros: outrosTotal };
+                if (details && details.total > 0) {
+                    const outrosTotal = details.total - details.pepsico - details.multimarcas;
+                    salesByActiveClient[codcli] = {
+                        ...client,
+                        total: details.total,
+                        pepsico: details.pepsico,
+                        multimarcas: details.multimarcas,
+                        outros: outrosTotal
+                    };
                 }
             });
 
@@ -2742,9 +2934,50 @@
             const topSellersRank = Object.entries(salesBySeller).sort(([, a], [, b]) => b - a).slice(0, 10);
             if (topSellersRank.length > 0) createChart('topSellersChart', 'bar', topSellersRank.map(r => getFirstName(r[0])), topSellersRank.map(r => r[1]));
             else showNoDataMessage('topSellersChart', 'Sem dados para o ranking.');
-            const vendorsInFilter = [...new Set(dataForRankings.map(d => d.NOME))].filter(v => v !== 'VD HIAGO');
-            const mixRank = vendorsInFilter.map(vendedor => { const vendorSales = dataForRankings.filter(d => d.NOME === vendedor); if (vendorSales.length === 0) return { vendedor, avgMix: 0 }; const supervisor = vendorSales[0].SUPERV; let salesForMixCalc; if (supervisor === 'OSVALDO NUNES O') salesForMixCalc = vendorSales; else { const targetSuppliers = ['707', '708']; salesForMixCalc = vendorSales.filter(d => targetSuppliers.includes(String(d.CODFOR))); } const mixPerClient = {}; salesForMixCalc.forEach(d => { if (!d.CODCLI || !d.DESCRICAO) return; if (!mixPerClient[d.CODCLI]) mixPerClient[d.CODCLI] = new Set(); mixPerClient[d.CODCLI].add(d.DESCRICAO); }); const mixValues = Object.values(mixPerClient).map(p => p.size); if (mixValues.length === 0) return { vendedor, avgMix: 0 }; const avgMix = mixValues.reduce((a, b) => a + b, 0) / mixValues.length; return { vendedor, avgMix }; }).sort((a, b) => b.avgMix - a.avgMix).slice(0, 10);
-            if(mixRank.length > 0 && mixRank.some(r => r.avgMix > 0)) createChart('mixChart', 'bar', mixRank.map(r => getFirstName(r.vendedor)), mixRank.map(r => r.avgMix));
+            // --- OPTIMIZATION: Mix Rank Calculation ---
+            // Calculate mix map in a single pass: Map<Seller, Map<Client, Set<Description>>>
+            const sellerClientMixMap = new Map();
+            const targetSuppliers = new Set(['707', '708']);
+
+            dataForRankings.forEach(d => {
+                const vendedor = d.NOME;
+                if (!vendedor || vendedor === 'VD HIAGO') return;
+
+                // Rule: If Supervisor is OSVALDO NUNES O, count all products.
+                // Otherwise, only count products from target suppliers (707, 708).
+                const supervisor = d.SUPERV;
+                if (supervisor !== 'OSVALDO NUNES O' && !targetSuppliers.has(String(d.CODFOR))) {
+                    return;
+                }
+
+                if (!d.CODCLI || !d.DESCRICAO) return;
+
+                if (!sellerClientMixMap.has(vendedor)) sellerClientMixMap.set(vendedor, new Map());
+                const clientMap = sellerClientMixMap.get(vendedor);
+
+                if (!clientMap.has(d.CODCLI)) clientMap.set(d.CODCLI, new Set());
+                clientMap.get(d.CODCLI).add(d.DESCRICAO);
+            });
+
+            const mixRank = [];
+            for (const [vendedor, clientMap] of sellerClientMixMap.entries()) {
+                const mixValues = [];
+                for (const productSet of clientMap.values()) {
+                    mixValues.push(productSet.size);
+                }
+
+                if (mixValues.length > 0) {
+                    const avgMix = mixValues.reduce((a, b) => a + b, 0) / mixValues.length;
+                    mixRank.push({ vendedor, avgMix });
+                } else {
+                     mixRank.push({ vendedor, avgMix: 0 });
+                }
+            }
+
+            mixRank.sort((a, b) => b.avgMix - a.avgMix);
+            const top10Mix = mixRank.slice(0, 10);
+
+            if(top10Mix.length > 0 && top10Mix.some(r => r.avgMix > 0)) createChart('mixChart', 'bar', top10Mix.map(r => getFirstName(r.vendedor)), top10Mix.map(r => r.avgMix));
             else showNoDataMessage('mixChart', 'Sem dados para o ranking.');
         }
 
@@ -2755,11 +2988,13 @@
 
             selectedArray = selectedArray.filter(cod => suppliers.has(cod));
 
-            dropdown.innerHTML = '';
-            sortedSuppliers.forEach(([cod, name]) => {
+            const htmlParts = [];
+            for (let i = 0; i < sortedSuppliers.length; i++) {
+                const [cod, name] = sortedSuppliers[i];
                 const isChecked = selectedArray.includes(cod);
-                dropdown.innerHTML += `<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" data-filter-type="${filterType}" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${cod}" ${isChecked ? 'checked' : ''}><span class="ml-2 text-xs">${cod} - ${name}</span></label>`;
-            });
+                htmlParts.push(`<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" data-filter-type="${filterType}" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${cod}" ${isChecked ? 'checked' : ''}><span class="ml-2 text-xs">${cod} - ${name}</span></label>`);
+            }
+            dropdown.innerHTML = htmlParts.join('');
 
             if (selectedArray.length === 0 || selectedArray.length === sortedSuppliers.length) {
                 filterText.textContent = 'Todos Fornecedores';
@@ -2977,36 +3212,41 @@
         function getComparisonFilteredData(options = {}) {
             const { excludeFilter = null } = options;
 
-            let clients = [...allClientsData];
+            // Sets for O(1)
+            const sellersSet = new Set(selectedComparisonSellers);
+            const suppliersSet = new Set(selectedComparisonSuppliers);
+            const productsSet = new Set(selectedComparisonProducts);
+            const tiposVendaSet = new Set(selectedComparisonTiposVenda);
+            const redeSet = new Set(selectedComparisonRedes);
+
+            const supervisor = comparisonSupervisorFilter.value;
+            const pasta = currentComparisonFornecedor;
+            const city = comparisonCityFilter.value.trim().toLowerCase();
+            const filial = comparisonFilialFilter.value;
+
+            let clients = allClientsData;
             if (comparisonRedeGroupFilter === 'com_rede') {
                 clients = clients.filter(c => c.ramo && c.ramo !== 'N/A');
-                 if (selectedComparisonRedes.length > 0) {
-                    clients = clients.filter(c => selectedComparisonRedes.includes(c.ramo));
+                 if (redeSet.size > 0) {
+                    clients = clients.filter(c => redeSet.has(c.ramo));
                 }
             } else if (comparisonRedeGroupFilter === 'sem_rede') {
                 clients = clients.filter(c => !c.ramo || c.ramo === 'N/A');
             }
             const clientCodes = new Set(clients.map(c => c['Código']));
 
-            const supervisor = comparisonSupervisorFilter.value;
-            const sellers = selectedComparisonSellers;
-            const suppliers = selectedComparisonSuppliers;
-            const products = selectedComparisonProducts;
-            const pasta = currentComparisonFornecedor;
-            const city = comparisonCityFilter.value.trim();
-            const filial = comparisonFilialFilter.value;
-            const tiposVenda = selectedComparisonTiposVenda;
+            const filterFunction = s => {
+                if (filial !== 'ambas' && s.FILIAL !== filial) return false;
+                if (excludeFilter !== 'supervisor' && supervisor && s.SUPERV !== supervisor) return false;
+                if (excludeFilter !== 'pasta' && pasta && s.OBSERVACAOFOR !== pasta) return false;
+                if (excludeFilter !== 'tipoVenda' && tiposVendaSet.size > 0 && !tiposVendaSet.has(s.TIPOVENDA)) return false;
+                if (excludeFilter !== 'seller' && sellersSet.size > 0 && !sellersSet.has(s.NOME)) return false;
+                if (excludeFilter !== 'supplier' && suppliersSet.size > 0 && !suppliersSet.has(s.CODFOR)) return false;
+                if (excludeFilter !== 'product' && productsSet.size > 0 && !productsSet.has(s.PRODUTO)) return false;
+                if (excludeFilter !== 'city' && city && (!s.CIDADE || s.CIDADE.toLowerCase() !== city)) return false;
 
-            const filterFunction = s =>
-                (clientCodes.has(s.CODCLI)) &&
-                (filial === 'ambas' || s.FILIAL === filial) &&
-                (excludeFilter === 'supervisor' || !supervisor || s.SUPERV === supervisor) &&
-                (excludeFilter === 'seller' || sellers.length === 0 || sellers.includes(s.NOME)) &&
-                (excludeFilter === 'supplier' || suppliers.length === 0 || suppliers.includes(String(s.CODFOR))) &&
-                (excludeFilter === 'product' || products.length === 0 || products.includes(String(s.PRODUTO))) &&
-                (excludeFilter === 'pasta' || !pasta || s.OBSERVACAOFOR === pasta) &&
-                (excludeFilter === 'city' || !city || (s.CIDADE && s.CIDADE.toLowerCase() === city.toLowerCase())) &&
-                (excludeFilter === 'tipoVenda' || tiposVenda.length === 0 || tiposVenda.includes(String(s.TIPOVENDA)));
+                return clientCodes.has(s.CODCLI);
+            };
 
             return {
                 currentSales: allSalesData.filter(filterFunction),
@@ -3066,15 +3306,17 @@
                   )
                 : products;
 
-            listContainer.innerHTML = '';
-            filteredProducts.forEach(([code, name]) => {
+            const htmlParts = [];
+            for (let i = 0; i < filteredProducts.length; i++) {
+                const [code, name] = filteredProducts[i];
                 const isChecked = selectedArray.includes(code);
-                listContainer.innerHTML += `
+                htmlParts.push(`
                     <label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer">
                         <input type="checkbox" data-filter-type="${filterType}" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${code}" ${isChecked ? 'checked' : ''}>
                         <span class="ml-2 text-xs">(${code}) ${name}</span>
-                    </label>`;
-            });
+                    </label>`);
+            }
+            listContainer.innerHTML = htmlParts.join('');
 
             if (selectedArray.length === 0) {
                 filterText.textContent = 'Todos os Produtos';
@@ -3136,12 +3378,25 @@
         function getStockFilteredData(options = {}) {
             const { excludeFilter = null } = options;
 
-            let clients = [...allClientsData];
+            // Use Sets for O(1) lookups
+            const sellersSet = new Set(selectedStockSellers);
+            const suppliersSet = new Set(selectedStockSuppliers);
+            const productsSet = new Set(selectedStockProducts);
+            const tiposVendaSet = new Set(selectedStockTiposVenda);
+            const redeSet = new Set(selectedStockRedes);
+
+            const supervisor = stockSupervisorFilter.value;
+            const pasta = currentStockFornecedor;
+            const city = stockCityFilter.value.trim().toLowerCase();
+            const filial = stockFilialFilter.value;
+
+            let clients = allClientsData; // Reference, avoid copy if not needed
             if (excludeFilter !== 'rede') {
                 if (stockRedeGroupFilter === 'com_rede') {
+                    // Use indexed lookups later if possible, but for now standard filter is safer with Sets
                     clients = clients.filter(c => c.ramo && c.ramo !== 'N/A');
-                     if (selectedStockRedes.length > 0) {
-                        clients = clients.filter(c => selectedStockRedes.includes(c.ramo));
+                     if (redeSet.size > 0) {
+                        clients = clients.filter(c => redeSet.has(c.ramo));
                     }
                 } else if (stockRedeGroupFilter === 'sem_rede') {
                     clients = clients.filter(c => !c.ramo || c.ramo === 'N/A');
@@ -3149,25 +3404,18 @@
             }
             const clientCodes = new Set(clients.map(c => c['Código']));
 
-            const supervisor = stockSupervisorFilter.value;
-            const sellers = selectedStockSellers;
-            const suppliers = selectedStockSuppliers;
-            const products = selectedStockProducts;
-            const pasta = currentStockFornecedor;
-            const city = stockCityFilter.value.trim();
-            const filial = stockFilialFilter.value;
-            const tiposVenda = selectedStockTiposVenda;
+            const filterFunction = s => {
+                if (filial !== 'ambas' && s.FILIAL !== filial) return false;
+                if (excludeFilter !== 'supervisor' && supervisor && s.SUPERV !== supervisor) return false;
+                if (excludeFilter !== 'pasta' && pasta && s.OBSERVACAOFOR !== pasta) return false;
+                if (excludeFilter !== 'tipoVenda' && tiposVendaSet.size > 0 && !tiposVendaSet.has(s.TIPOVENDA)) return false;
+                if (excludeFilter !== 'seller' && sellersSet.size > 0 && !sellersSet.has(s.NOME)) return false;
+                if (excludeFilter !== 'supplier' && suppliersSet.size > 0 && !suppliersSet.has(s.CODFOR)) return false;
+                if (excludeFilter !== 'product' && productsSet.size > 0 && !productsSet.has(s.PRODUTO)) return false;
+                if (excludeFilter !== 'city' && city && (!s.CIDADE || s.CIDADE.toLowerCase() !== city)) return false;
 
-            const filterFunction = s =>
-                (clientCodes.has(s.CODCLI)) &&
-                (filial === 'ambas' || s.FILIAL === filial) &&
-                (excludeFilter === 'supervisor' || !supervisor || s.SUPERV === supervisor) &&
-                (excludeFilter === 'seller' || sellers.length === 0 || sellers.includes(s.NOME)) &&
-                (excludeFilter === 'supplier' || suppliers.length === 0 || suppliers.includes(String(s.CODFOR))) &&
-                (excludeFilter === 'product' || products.length === 0 || products.includes(String(s.PRODUTO))) &&
-                (excludeFilter === 'pasta' || !pasta || s.OBSERVACAOFOR === pasta) &&
-                (excludeFilter === 'city' || !city || (s.CIDADE && s.CIDADE.toLowerCase() === city.toLowerCase())) &&
-                (excludeFilter === 'tipoVenda' || tiposVenda.length === 0 || tiposVenda.includes(String(s.TIPOVENDA)));
+                return clientCodes.has(s.CODCLI);
+            };
 
             return {
                 sales: allSalesData.filter(filterFunction),
@@ -3175,33 +3423,47 @@
             };
         }
 
-        function handleStockFilterChange() {
-            const supervisorData = getStockFilteredData({ excludeFilter: 'supervisor' });
-            const supervisorOptionsData = [...supervisorData.sales, ...supervisorData.history];
-            populateSupervisors('stock-supervisor-filter', supervisorOptionsData);
+        function handleStockFilterChange(options = {}) {
+            const { skipFilter = null } = options;
 
-            updateStockSellerFilter();
-            updateStockSupplierFilter();
-            updateStockProductFilter();
+            // Debounce stock view update
+            if (window.stockUpdateTimeout) clearTimeout(window.stockUpdateTimeout);
+            window.stockUpdateTimeout = setTimeout(() => {
+                if (skipFilter !== 'supervisor') {
+                    const supervisorData = getStockFilteredData({ excludeFilter: 'supervisor' });
+                    const supervisorOptionsData = [...supervisorData.sales, ...supervisorData.history];
+                    populateSupervisors('stock-supervisor-filter', supervisorOptionsData);
+                }
 
-            const tvData = getStockFilteredData({ excludeFilter: 'tipoVenda' });
-            selectedStockTiposVenda = updateTipoVendaFilter(stockTipoVendaFilterDropdown, stockTipoVendaFilterText, selectedStockTiposVenda, [...tvData.sales, ...tvData.history]);
+                if (skipFilter !== 'seller') updateStockSellerFilter();
+                if (skipFilter !== 'supplier') updateStockSupplierFilter();
+                if (skipFilter !== 'product') updateStockProductFilter();
 
-            const cityData = getStockFilteredData({ excludeFilter: 'city' });
-            updateStockCitySuggestions([...cityData.sales, ...cityData.history]);
+                if (skipFilter !== 'tipoVenda') {
+                    const tvData = getStockFilteredData({ excludeFilter: 'tipoVenda' });
+                    selectedStockTiposVenda = updateTipoVendaFilter(stockTipoVendaFilterDropdown, stockTipoVendaFilterText, selectedStockTiposVenda, [...tvData.sales, ...tvData.history]);
+                }
 
-            const pastaData = getStockFilteredData({ excludeFilter: 'pasta' });
-            const pastaOptionsData = [...pastaData.sales, ...pastaData.history];
-            const pepsicoBtn = document.querySelector('#stock-fornecedor-toggle-container button[data-fornecedor="PEPSICO"]');
-            const multimarcasBtn = document.querySelector('#stock-fornecedor-toggle-container button[data-fornecedor="MULTIMARCAS"]');
-            const hasPepsico = pastaOptionsData.some(s => s.OBSERVACAOFOR === 'PEPSICO');
-            const hasMultimarcas = pastaOptionsData.some(s => s.OBSERVACAOFOR === 'MULTIMARCAS');
-            pepsicoBtn.disabled = !hasPepsico;
-            multimarcasBtn.disabled = !hasMultimarcas;
-            pepsicoBtn.classList.toggle('opacity-50', !hasPepsico);
-            multimarcasBtn.classList.toggle('opacity-50', !hasMultimarcas);
+                if (skipFilter !== 'city') {
+                    const cityData = getStockFilteredData({ excludeFilter: 'city' });
+                    updateStockCitySuggestions([...cityData.sales, ...cityData.history]);
+                }
 
-            updateStockView();
+                if (skipFilter !== 'pasta') {
+                    const pastaData = getStockFilteredData({ excludeFilter: 'pasta' });
+                    const pastaOptionsData = [...pastaData.sales, ...pastaData.history];
+                    const pepsicoBtn = document.querySelector('#stock-fornecedor-toggle-container button[data-fornecedor="PEPSICO"]');
+                    const multimarcasBtn = document.querySelector('#stock-fornecedor-toggle-container button[data-fornecedor="MULTIMARCAS"]');
+                    const hasPepsico = pastaOptionsData.some(s => s.OBSERVACAOFOR === 'PEPSICO');
+                    const hasMultimarcas = pastaOptionsData.some(s => s.OBSERVACAOFOR === 'MULTIMARCAS');
+                    pepsicoBtn.disabled = !hasPepsico;
+                    multimarcasBtn.disabled = !hasMultimarcas;
+                    pepsicoBtn.classList.toggle('opacity-50', !hasPepsico);
+                    multimarcasBtn.classList.toggle('opacity-50', !hasMultimarcas);
+                }
+
+                updateStockView();
+            }, 10);
         }
 
         function updateComparisonView() {
@@ -3603,42 +3865,74 @@
 
         function updateStockView() {
             const { sales: filteredSales, history: filteredHistory } = getStockFilteredData();
-            const allCombinedSales = [...filteredSales, ...filteredHistory];
+            // Remove pre-combination to avoid copying, handle aggregation via Maps
+            // const allCombinedSales = [...filteredSales, ...filteredHistory];
 
             const filial = stockFilialFilter.value;
             const activeStockMap = getActiveStockMap(filial);
 
-            const selectedSuppliers = selectedStockSuppliers;
-            const selectedProducts = selectedStockProducts;
+            // Sets for fast lookup
+            const selectedSuppliersSet = new Set(selectedStockSuppliers);
+            const selectedProductsSet = new Set(selectedStockProducts);
             const currentPasta = currentStockFornecedor;
 
             const productAnalysis = new Map();
-
             const productsWithFilteredActivity = new Set();
-            allCombinedSales.forEach(s => productsWithFilteredActivity.add(s.PRODUTO));
+
+            // --- OPTIMIZATION: Pre-aggregate Sales Data by Product ---
+            // Map<ProductCode, Array<Sale>>
+            const salesByProduct = new Map();
+            const historyByProduct = new Map();
+            const totalQtyByProduct = new Map(); // combined total
+            const currentMonthQtyByProduct = new Map(); // current month total
+            const uniqueMonthsByProduct = new Map(); // Set of "YYYY-MM"
+
+            const processSaleForAggregation = (s, isHistory) => {
+                const p = s.PRODUTO;
+                productsWithFilteredActivity.add(p);
+
+                if (!salesByProduct.has(p)) salesByProduct.set(p, []);
+                salesByProduct.get(p).push(s); // Push to common list for trend calc
+
+                if (!uniqueMonthsByProduct.has(p)) uniqueMonthsByProduct.set(p, new Set());
+                const d = parseDate(s.DTPED);
+                if (d) uniqueMonthsByProduct.get(p).add(`${d.getFullYear()}-${d.getMonth()}`);
+
+                const qty = s.QTVENDA_EMBALAGEM_MASTER;
+                totalQtyByProduct.set(p, (totalQtyByProduct.get(p) || 0) + qty);
+
+                if (isHistory) {
+                    if (!historyByProduct.has(p)) historyByProduct.set(p, 0); // Just flag existence/count
+                    historyByProduct.set(p, historyByProduct.get(p) + 1); // Simple counter or bool check
+                } else {
+                    currentMonthQtyByProduct.set(p, (currentMonthQtyByProduct.get(p) || 0) + qty);
+                }
+            };
+
+            filteredSales.forEach(s => processSaleForAggregation(s, false));
+            filteredHistory.forEach(s => processSaleForAggregation(s, true));
+            // ---------------------------------------------------------
 
             activeStockMap.forEach((qty, productCode) => {
                 if (qty > 0) {
                     const details = productDetailsMap.get(productCode);
                     if (!details) return;
 
-                    if (selectedSuppliers.length > 0 && !selectedSuppliers.includes(String(details.codfor))) {
-                        return; 
-                    }
-                    if (selectedProducts.length > 0 && !selectedProducts.includes(String(productCode))) {
-                        return; 
-                    }
+                    if (selectedSuppliersSet.size > 0 && !selectedSuppliersSet.has(String(details.codfor))) return;
+                    if (selectedProductsSet.size > 0 && !selectedProductsSet.has(String(productCode))) return;
+
                     if (currentPasta) {
                         const pastaDoProduto = optimizedData.productPastaMap.get(productCode) || '';
-                        if (pastaDoProduto !== currentPasta) {
-                             return; 
-                        }
+                        if (pastaDoProduto !== currentPasta) return;
                     }
                     
                     productsWithFilteredActivity.add(productCode);
                 }
             });
             
+            // Pre-calculate global dates for trend
+            const endDate = parseDate(sortedWorkingDays[sortedWorkingDays.length - 1]);
+
             productsWithFilteredActivity.forEach(productCode => {
                 if (!activeProductCodesFromCadastro.has(productCode)) return;
 
@@ -3649,14 +3943,16 @@
                 };
 
                 const stock = activeStockMap.get(productCode) || 0;
-                const productAllSales = allCombinedSales.filter(s => s.PRODUTO === productCode);
-                const totalQtySold = productAllSales.reduce((sum, s) => sum + s.QTVENDA_EMBALAGEM_MASTER, 0);
+                const totalQtySold = totalQtyByProduct.get(productCode) || 0;
 
                 if (stock <= 0 && totalQtySold <= 0) return;
 
-                const productHistorySales = filteredHistory.filter(s => s.PRODUTO === productCode);
-                const productCurrentSales = filteredSales.filter(s => s.PRODUTO === productCode);
-                const currentMonthSalesQty = productCurrentSales.reduce((sum, s) => sum + s.QTVENDA_EMBALAGEM_MASTER, 0);
+                const hasHistory = historyByProduct.has(productCode);
+                const currentMonthSalesQty = currentMonthQtyByProduct.get(productCode) || 0;
+                const soldThisMonth = currentMonthSalesQty > 0;
+
+                // Use pre-aggregated list
+                const productAllSales = salesByProduct.get(productCode) || [];
 
                 const productCadastroDate = parseDate(details.dtCadastro);
                 let productFirstWorkingDayIndex = 0;
@@ -3670,12 +3966,10 @@
                 }
                 
                 const productMaxLifeInWorkingDays = sortedWorkingDays.length - productFirstWorkingDayIndex;
-
                 const daysFromBox = customWorkingDaysStock;
-
                 let effectiveDaysToCalculate;
                 
-                const isFactuallyNewOrReactivated = (productHistorySales.length === 0 && productCurrentSales.length > 0);
+                const isFactuallyNewOrReactivated = (!hasHistory && soldThisMonth);
 
                 if (isFactuallyNewOrReactivated) {
                     const daysToConsider = (daysFromBox > 0) ? daysFromBox : passedWorkingDaysCurrentMonth;
@@ -3689,12 +3983,11 @@
                 }
                 
                 const daysDivisor = effectiveDaysToCalculate > 0 ? effectiveDaysToCalculate : 1;
-                
-                const endDate = parseDate(sortedWorkingDays[sortedWorkingDays.length - 1]);
                 const targetIndex = Math.max(0, sortedWorkingDays.length - daysDivisor); 
                 const startDate = parseDate(sortedWorkingDays[targetIndex]);
                 
                 let totalQtySoldInRange = 0;
+                // Optimized loop: only iterating relevant sales for this product
                 productAllSales.forEach(sale => {
                     const saleDate = parseDate(sale.DTPED);
                     if (saleDate && saleDate >= startDate && saleDate <= endDate) {
@@ -3703,12 +3996,11 @@
                 });
 
                 let dailyAvgSale = totalQtySoldInRange / daysDivisor;
-
                 const isNew = productMaxLifeInWorkingDays <= passedWorkingDaysCurrentMonth;
-
                 const trendDays = dailyAvgSale > 0 ? (stock / dailyAvgSale) : Infinity;
-                const monthlyAvgSale = getUniqueMonthCount(productAllSales) > 0 ? totalQtySold / getUniqueMonthCount(productAllSales) : 0;
 
+                const uniqueMonthsCount = uniqueMonthsByProduct.has(productCode) ? uniqueMonthsByProduct.get(productCode).size : 0;
+                const monthlyAvgSale = uniqueMonthsCount > 0 ? totalQtySold / uniqueMonthsCount : 0;
 
                 productAnalysis.set(productCode, {
                     code: productCode,
@@ -3719,8 +4011,8 @@
                     trendDays,
                     currentMonthSalesQty,
                     isNew,
-                    hasHistory: productHistorySales.length > 0,
-                    soldThisMonth: currentMonthSalesQty > 0
+                    hasHistory,
+                    soldThisMonth
                 });
             });
 
@@ -3850,12 +4142,9 @@
             const city = innovationsCityFilter.value.trim().toLowerCase();
             const filial = innovationsFilialFilter.value;
 
-            let clients = [...allClientsData];
+            let clients = allClientsData;
             if (filial !== 'ambas') {
-                clients = clients.filter(c => {
-                    const lastBranch = clientLastBranch.get(c['Código']);
-                    return lastBranch === filial;
-                });
+                clients = clients.filter(c => clientLastBranch.get(c['Código']) === filial);
             }
 
             if (excludeFilter !== 'supervisor' && supervisor) {
@@ -3874,8 +4163,8 @@
                 clients = clients.filter(c => c.cidade && c.cidade.toLowerCase() === city);
             }
 
-            let sales = [...allSalesData];
-            let history = [...allHistoryData];
+            let sales = allSalesData;
+            let history = allHistoryData;
             if (filial !== 'ambas') {
                  sales = sales.filter(s => s.FILIAL === filial);
                  history = history.filter(s => s.FILIAL === filial);
@@ -4126,13 +4415,10 @@
             const city = innovationsMonthCityFilter.value.trim().toLowerCase();
             const filial = innovationsMonthFilialFilter.value;
 
-            let clients = [...allClientsData];
+            let clients = allClientsData;
 
             if (filial !== 'ambas') {
-                clients = clients.filter(c => {
-                    const lastBranch = clientLastBranch.get(c['Código']);
-                    return lastBranch === filial;
-                });
+                clients = clients.filter(c => clientLastBranch.get(c['Código']) === filial);
             }
 
             if (excludeFilter !== 'supervisor' && supervisor) {
@@ -4729,6 +5015,102 @@
         }
 
 
+        async function exportCoveragePDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('landscape');
+
+            const supervisor = coverageSupervisorFilter.value || 'Todos';
+            const vendedor = selectedCoverageSellers.length > 0 ? selectedCoverageSellers.join(', ') : 'Todos';
+            const filial = coverageFilialFilter.options[coverageFilialFilter.selectedIndex].text;
+            const cidade = coverageCityFilter.value || 'Todas';
+            // Fornecedor
+            const supplierBtn = document.querySelector('#coverage-supplier-filter-btn span');
+            const supplierText = supplierBtn ? supplierBtn.textContent : 'Todos';
+
+            const generationDate = new Date().toLocaleString('pt-BR');
+
+            doc.setFontSize(18);
+            doc.text('Relatório de Cobertura (Estoque x PDVs)', 14, 22);
+            doc.setFontSize(10);
+            doc.setTextColor(100);
+            doc.text(`Data de Emissão: ${generationDate}`, 14, 30);
+
+            let filterText = `Filtros Aplicados: Supervisor: ${supervisor} | Vendedor: ${vendedor} | Filial: ${filial} | Cidade: ${cidade} | Fornecedor: ${supplierText}`;
+            const splitFilters = doc.splitTextToSize(filterText, 270);
+            doc.text(splitFilters, 14, 36);
+
+            // Add Chart if available
+            const chartCanvas = document.getElementById('coverageCityChart');
+            if (chartCanvas && charts['coverageCityChart']) {
+                try {
+                    const chartImage = chartCanvas.toDataURL('image/png', 1.0);
+                    doc.addImage(chartImage, 'PNG', 14, 50, 270, 80);
+                } catch (e) {
+                    console.error("Erro ao converter o gráfico para imagem:", e);
+                }
+            }
+
+            const head = [['Produto', 'Estoque (Cx)', 'Cx. Mês Ant.', 'Cx. Mês Atual', 'Cob. Estoque', 'PDVs Ant.', 'PDVs Atual', 'Var. Caixas']];
+            const body = [];
+
+            coverageTableDataForExport.forEach(item => {
+                let trendText;
+                if (!isFinite(item.trendDays) && item.stockQty > 0) {
+                    trendText = 'S/ VENDA';
+                } else if (isFinite(item.trendDays)) {
+                    trendText = Math.floor(item.trendDays) + ' dias';
+                } else {
+                    trendText = '-';
+                }
+
+                let variationContent;
+                if (isFinite(item.boxesVariation)) {
+                    variationContent = `${item.boxesVariation.toFixed(1)}%`;
+                } else if (item.boxesVariation === Infinity) {
+                    variationContent = 'Novo';
+                } else {
+                    variationContent = '-';
+                }
+
+                const row = [
+                    item.descricao,
+                    item.stockQty.toLocaleString('pt-BR'),
+                    item.boxesSoldPreviousMonth.toLocaleString('pt-BR', {maximumFractionDigits: 2}),
+                    item.boxesSoldCurrentMonth.toLocaleString('pt-BR', {maximumFractionDigits: 2}),
+                    trendText,
+                    item.clientsPreviousCount.toLocaleString('pt-BR'),
+                    item.clientsCurrentCount.toLocaleString('pt-BR'),
+                    variationContent
+                ];
+                body.push(row);
+            });
+
+            doc.autoTable({
+                head: head,
+                body: body,
+                startY: 140,
+                theme: 'grid',
+                styles: { fontSize: 8, cellPadding: 1.5 },
+                headStyles: { fillColor: [41, 128, 185], textColor: 255, fontSize: 8, fontStyle: 'bold' },
+                alternateRowStyles: { fillColor: [240, 248, 255] },
+                 didDrawPage: function (data) {
+                    // Footer or Header on new pages
+                }
+            });
+
+            const pageCount = doc.internal.getNumberOfPages();
+            for(let i = 1; i <= pageCount; i++) {
+                doc.setPage(i);
+                doc.setFontSize(9);
+                doc.setTextColor(150);
+                doc.text(`Página ${i} de ${pageCount}`, doc.internal.pageSize.width / 2, doc.internal.pageSize.height - 10, { align: 'center' });
+            }
+
+            const fileNameParam = vendedor.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'geral';
+            doc.save(`relatorio_cobertura_${fileNameParam}_${new Date().toISOString().slice(0,10)}.pdf`);
+        }
+
+
         function openModal(pedidoId) {
             const orderInfo = aggregatedOrders.find(order => order.PEDIDO == pedidoId);
             const itemsDoPedido = allSalesData.filter(item => item.PEDIDO == pedidoId);
@@ -5161,9 +5543,9 @@
             stockFornecedorToggleContainer.addEventListener('click', (e) => { if (e.target.tagName === 'BUTTON') { const fornecedor = e.target.dataset.fornecedor; if (currentStockFornecedor === fornecedor) { currentStockFornecedor = ''; e.target.classList.remove('active'); } else { currentStockFornecedor = fornecedor; stockFornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(b => b.classList.remove('active')); e.target.classList.add('active'); } handleStockFilterChange(); } });
             stockSupervisorFilter.addEventListener('change', handleStockFilterChange);
             stockVendedorFilterBtn.addEventListener('click', () => stockVendedorFilterDropdown.classList.toggle('hidden'));
-            stockVendedorFilterDropdown.addEventListener('change', (e) => { if (e.target.type === 'checkbox') { const { value, checked } = e.target; if (checked) selectedStockSellers.push(value); else selectedStockSellers = selectedStockSellers.filter(s => s !== value); handleStockFilterChange(); } });
+            stockVendedorFilterDropdown.addEventListener('change', (e) => { if (e.target.type === 'checkbox') { const { value, checked } = e.target; if (checked) selectedStockSellers.push(value); else selectedStockSellers = selectedStockSellers.filter(s => s !== value); handleStockFilterChange({ skipFilter: 'seller' }); } });
             stockSupplierFilterBtn.addEventListener('click', () => stockSupplierFilterDropdown.classList.toggle('hidden'));
-            stockSupplierFilterDropdown.addEventListener('change', (e) => { if (e.target.dataset.filterType === 'stock' && e.target.type === 'checkbox') { const { value, checked } = e.target; if (checked) { if(!selectedStockSuppliers.includes(value)) selectedStockSuppliers.push(value); } else { selectedStockSuppliers = selectedStockSuppliers.filter(s => s !== value); } handleStockFilterChange(); } });
+            stockSupplierFilterDropdown.addEventListener('change', (e) => { if (e.target.dataset.filterType === 'stock' && e.target.type === 'checkbox') { const { value, checked } = e.target; if (checked) { if(!selectedStockSuppliers.includes(value)) selectedStockSuppliers.push(value); } else { selectedStockSuppliers = selectedStockSuppliers.filter(s => s !== value); } handleStockFilterChange({ skipFilter: 'supplier' }); } });
 
             stockTipoVendaFilterBtn.addEventListener('click', () => stockTipoVendaFilterDropdown.classList.toggle('hidden'));
             stockTipoVendaFilterDropdown.addEventListener('change', (e) => {
@@ -5175,7 +5557,7 @@
                         selectedStockTiposVenda = selectedStockTiposVenda.filter(s => s !== value);
                     }
                     selectedStockTiposVenda = updateTipoVendaFilter(stockTipoVendaFilterDropdown, stockTipoVendaFilterText, selectedStockTiposVenda, allSalesData);
-                    handleStockFilterChange();
+                    handleStockFilterChange({ skipFilter: 'tipoVenda' });
                 }
             });
 
@@ -5536,6 +5918,8 @@
                 updateAllVisuals();
             });
 
+            document.getElementById('export-coverage-pdf-btn').addEventListener('click', exportCoveragePDF);
+
             const debouncedHandleCoverageChange = debounce(handleCoverageFilterChange, 400);
 
             coverageFilialFilter.addEventListener('change', handleCoverageFilterChange);
@@ -5595,7 +5979,7 @@
                     } else {
                         selectedCoverageSellers = selectedCoverageSellers.filter(s => s !== value);
                     }
-                    handleCoverageFilterChange();
+                    handleCoverageFilterChange({ skipFilter: 'seller' });
                 }
             });
 
@@ -5615,7 +5999,7 @@
                     });
                     selectedCoverageProducts = Array.from(supplierProducts);
 
-                    handleCoverageFilterChange();
+                    handleCoverageFilterChange({ skipFilter: 'supplier' });
                 }
             });
 
@@ -5638,7 +6022,7 @@
 
             coverageProductFilterDropdown.addEventListener('change', (e) => {
                 if (e.target.dataset.filterType === 'coverage' && handleProductFilterChange(e, selectedCoverageProducts)) {
-                    handleCoverageFilterChange();
+                    handleCoverageFilterChange({ skipFilter: 'product' });
                 }
             });
 
@@ -6536,7 +6920,10 @@
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
                                 <div class="flex justify-between items-center">
                                     <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Análise de Cobertura (Estoque x PDVs)</p></div>
-                                    <button id="back-to-main-from-coverage-btn" class="bg-white/20 hover:bg-white/30 text-white font-bold py-2 px-4 rounded-lg">Voltar ao Dashboard</button>
+                                    <div class="flex gap-4">
+                                        <button id="export-coverage-pdf-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Exportar PDF</button>
+                                        <button id="back-to-main-from-coverage-btn" class="bg-white/20 hover:bg-white/30 text-white font-bold py-2 px-4 rounded-lg">Voltar ao Dashboard</button>
+                                    </div>
                                 </div>
                             </header>
                             <!-- KPIs (Cobertura) -->
