@@ -1260,7 +1260,9 @@
         const innovationsBonusCoverageCountKpiPrevious = document.getElementById('innovations-bonus-coverage-count-kpi-previous');
         const innovationsMonthBtn = document.getElementById('innovations-month-btn');
         const innovationsFilialFilter = document.getElementById('innovations-filial-filter');
-        const innovationsIncludeBonusCheckbox = document.getElementById('innovations-include-bonus');
+        const innovationsTipoVendaFilterBtn = document.getElementById('innovations-tipo-venda-filter-btn');
+        const innovationsTipoVendaFilterText = document.getElementById('innovations-tipo-venda-filter-text');
+        const innovationsTipoVendaFilterDropdown = document.getElementById('innovations-tipo-venda-filter-dropdown');
 
         const innovationsMonthView = document.getElementById('innovations-month-view');
         const backToInnovationsFromMonthBtn = document.getElementById('back-to-innovations-from-month-btn');
@@ -1288,7 +1290,9 @@
         const innovationsMonthBonusCoverageValueKpiPrevious = document.getElementById('innovations-month-bonus-coverage-value-kpi-previous');
         const innovationsMonthBonusCoverageCountKpiPrevious = document.getElementById('innovations-month-bonus-coverage-count-kpi-previous');
         const exportInnovationsMonthPdfBtn = document.getElementById('export-innovations-month-pdf-btn');
-        const innovationsMonthIncludeBonusCheckbox = document.getElementById('innovations-month-include-bonus');
+        const innovationsMonthTipoVendaFilterBtn = document.getElementById('innovations-month-tipo-venda-filter-btn');
+        const innovationsMonthTipoVendaFilterText = document.getElementById('innovations-month-tipo-venda-filter-text');
+        const innovationsMonthTipoVendaFilterDropdown = document.getElementById('innovations-month-tipo-venda-filter-dropdown');
 
         const coverageView = document.getElementById('coverage-view');
         const viewCoverageBtn = document.getElementById('viewCoverageBtn');
@@ -1383,11 +1387,13 @@
         let selectedInnovationsSellers = [];
         let selectedInnovationsSuppliers = [];
         let selectedInnovationsProducts = [];
+        let selectedInnovationsTiposVenda = [];
         let selectedInnovationsMonthSellers = [];
+        let selectedInnovationsMonthTiposVenda = [];
 
         let globalInnovationsKPI = { activeClients: 0, topProduct: { product: '-', coverage: 0, clients: 0 } };
-        let innovationsIncludeBonus = true;
-        let innovationsMonthIncludeBonus = true;
+        // let innovationsIncludeBonus = true; // REMOVED
+        // let innovationsMonthIncludeBonus = true; // REMOVED
 
         let innovationsMonthTableDataForExport = [];
         let innovationsByClientForExport = [];
@@ -1420,6 +1426,24 @@
             if (!d || isNaN(d.getTime())) return '';
             const userTimezoneOffset = d.getTimezoneOffset() * 60000;
             return new Date(d.getTime() + userTimezoneOffset).toLocaleDateString('pt-BR');
+        }
+
+        function buildClientSalesMap(salesData, typeFilter) {
+            const map = new Map(); // Map<CODCLI, Map<PRODUTO, Set<CODUSUR>>>
+            salesData.forEach(sale => {
+                if (typeFilter.length > 0 && !typeFilter.includes(sale.TIPOVENDA)) return;
+
+                const codCli = sale.CODCLI;
+                const prod = sale.PRODUTO;
+                const rca = sale.CODUSUR;
+
+                if (!map.has(codCli)) map.set(codCli, new Map());
+                const clientMap = map.get(codCli);
+
+                if (!clientMap.has(prod)) clientMap.set(prod, new Set());
+                clientMap.get(prod).add(rca);
+            });
+            return map;
         }
 
         // <!-- INÍCIO DO CÓDIGO RESTAURADO -->
@@ -1494,6 +1518,7 @@
             selectedCoverageTiposVenda = [];
             updateSellerFilter('', coverageVendedorFilterDropdown, coverageVendedorFilterText, [], allSalesData);
             updateSupplierFilter(coverageSupplierFilterDropdown, coverageSupplierFilterText, [], allSalesData, 'coverage');
+            selectedCoverageTiposVenda = updateTipoVendaFilter(coverageTipoVendaFilterDropdown, coverageTipoVendaFilterText, selectedCoverageTiposVenda, allSalesData);
             updateCoverageFilters();
             updateCoverageView();
         }
@@ -2242,6 +2267,7 @@
             selectedCityTiposVenda = [];
 
             selectedCitySellers = updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData);
+            selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData);
 
             cityRedeGroupContainer.querySelectorAll('button').forEach(b => b.classList.remove('active'));
             cityRedeGroupContainer.querySelector('button[data-group=""]').classList.add('active');
@@ -2381,10 +2407,14 @@
             if (cidadeFiltro) { clientsForAnalysis = clientsForAnalysis.filter(c => c.cidade && c.cidade === cidadeFiltro); salesForAnalysis = salesForAnalysis.filter(s => s.CIDADE && s.CIDADE === cidadeFiltro); }
             if (codcliFilterVal) { clientsForAnalysis = clientsForAnalysis.filter(c => String(c['Código']) === codcliFilterVal); salesForAnalysis = salesForAnalysis.filter(s => s.CODCLI === codcliFilterVal); }
 
-            const salesThisMonth = allSalesData.filter(sale => {
+            let salesThisMonth = allSalesData.filter(sale => {
                 const saleDate = parseDate(sale.DTPED);
                 return saleDate && saleDate.getFullYear() === currentYear && saleDate.getMonth() === currentMonth;
             });
+
+            if (selectedCityTiposVenda.length > 0) {
+                salesThisMonth = salesThisMonth.filter(s => selectedCityTiposVenda.includes(s.TIPOVENDA));
+            }
 
             const clientTotalsThisMonth = new Map();
             salesThisMonth.forEach(sale => {
@@ -2860,6 +2890,9 @@
             const supplierOptionsData = [...supplierCurrent, ...supplierHistory];
             selectedComparisonSuppliers = updateSupplierFilter(comparisonSupplierFilterDropdown, comparisonSupplierFilterText, selectedComparisonSuppliers, supplierOptionsData, 'comparison');
 
+            const { currentSales: tvCurrent, historySales: tvHistory } = getComparisonFilteredData({ excludeFilter: 'tipoVenda' });
+            selectedComparisonTiposVenda = updateTipoVendaFilter(comparisonTipoVendaFilterDropdown, comparisonTipoVendaFilterText, selectedComparisonTiposVenda, [...tvCurrent, ...tvHistory]);
+
             updateComparisonProductFilter();
 
             const { currentSales: cityCurrent, historySales: cityHistory } = getComparisonFilteredData({ excludeFilter: 'city' });
@@ -3008,6 +3041,9 @@
             updateStockSellerFilter();
             updateStockSupplierFilter();
             updateStockProductFilter();
+
+            const tvData = getStockFilteredData({ excludeFilter: 'tipoVenda' });
+            selectedStockTiposVenda = updateTipoVendaFilter(stockTipoVendaFilterDropdown, stockTipoVendaFilterText, selectedStockTiposVenda, [...tvData.sales, ...tvData.history]);
 
             const cityData = getStockFilteredData({ excludeFilter: 'city' });
             updateStockCitySuggestions([...cityData.sales, ...cityData.history]);
@@ -3720,13 +3756,13 @@
             innovationsSupervisorFilter.value = '';
             innovationsCityFilter.value = '';
             innovationsFilialFilter.value = 'ambas';
-            innovationsIncludeBonusCheckbox.checked = true;
-            innovationsIncludeBonus = true;
             selectedInnovationsSellers = [];
             selectedInnovationsSuppliers = [];
             selectedInnovationsProducts = [];
+            selectedInnovationsTiposVenda = [];
             updateSellerFilter('', innovationsVendedorFilterDropdown, innovationsVendedorFilterText, [], allSalesData);
             updateSupplierFilter(innovationsSupplierFilterDropdown, innovationsSupplierFilterText, [], allSalesData, 'innovations');
+            selectedInnovationsTiposVenda = updateTipoVendaFilter(innovationsTipoVendaFilterDropdown, innovationsTipoVendaFilterText, selectedInnovationsTiposVenda, allSalesData);
             updateInnovationsFilters();
             updateInnovationsView();
         }
@@ -3747,22 +3783,11 @@
                 (optimizedData.rcasBySupervisor.get(supervisor) || []).forEach(rca => sellerRcaCodes.add(rca));
             }
 
-
             const activeClientsForCoverage = clients.filter(c => {
                 const codcli = c['Código'];
                 const rca1 = String(c.rca1 || '').trim();
-                
-                // --- INÍCIO DA MODIFICAÇÃO ---
-                // REGRA DE EXCLUSÃO: Ignora clientes destes RCAs
-                if (rca1 === '306' || rca1 === '300') {
-                    return false;
-                }
-                // --- FIM DA MODIFICAÇÃO ---
-
+                if (rca1 === '306' || rca1 === '300') return false;
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                // const isVdHiago = vdHiagoClients.has(codcli); // REGRA REMOVIDA
-                
-                // Regra de inclusão
                 return (isAmericanas || rca1 !== '53');
             });
 
@@ -3791,6 +3816,15 @@
             innovationsPlaceholder.classList.add('hidden');
             innovationsResults.classList.remove('hidden');
 
+            // Build maps based on filters
+            // Main Coverage: Uses selected Tipo Venda (or All if empty)
+            const clientSalesCurrentMap = buildClientSalesMap(allSalesData, selectedInnovationsTiposVenda);
+            const clientSalesPreviousMap = buildClientSalesMap(allHistoryData, selectedInnovationsTiposVenda);
+
+            // Bonus Coverage: Always uses types '5' and '11'
+            const clientBonusCurrentMap = buildClientSalesMap(allSalesData, ['5', '11']);
+            const clientBonusPreviousMap = buildClientSalesMap(allHistoryData, ['5', '11']);
+
             const tableData = [];
             const clientsWhoGotSelectionCurrent = new Set();
             const clientsWhoGotSelectionPrevious = new Set();
@@ -3805,9 +3839,8 @@
                 let clientsWhoGotProductPrevious = 0;
 
                 activeClientCodes.forEach(codcli => {
-                    const clientSalesCurrent = optimizedData.salesByClientAndRca_CurrentMonth.get(codcli);
-                    const clientBonusCurrent = innovationsIncludeBonus ? optimizedData.bonificationsByClientAndRca_CurrentMonth.get(codcli) : null;
-
+                    // Main Coverage Calculation (Current)
+                    const clientSalesCurrent = clientSalesCurrentMap.get(codcli);
                     let boughtCurrent = false;
                     if (clientSalesCurrent && clientSalesCurrent.has(productCode)) {
                         const rcasWhoSold = clientSalesCurrent.get(productCode);
@@ -3815,36 +3848,42 @@
                             boughtCurrent = true;
                         }
                     }
-                    let bonusCurrent = false;
-                    if (clientBonusCurrent && clientBonusCurrent.has(productCode)) {
-                        const rcasWhoBonused = clientBonusCurrent.get(productCode);
-                         if (sellerRcaCodes.size === 0 || [...rcasWhoBonused].some(rca => sellerRcaCodes.has(rca))) {
-                            bonusCurrent = true;
-                        }
+                    if (boughtCurrent) {
+                        clientsWhoGotProductCurrent++;
+                        clientsWhoGotSelectionCurrent.add(codcli);
                     }
 
-                    if(boughtCurrent || bonusCurrent) clientsWhoGotProductCurrent++;
-
-
-                    const clientSalesPrevious = optimizedData.salesByClientAndRca_PreviousMonth.get(codcli);
-                    const clientBonusPrevious = innovationsIncludeBonus ? optimizedData.bonificationsByClientAndRca_PreviousMonth.get(codcli) : null;
-
+                    // Main Coverage Calculation (Previous)
+                    const clientSalesPrevious = clientSalesPreviousMap.get(codcli);
                     let boughtPrevious = false;
-                     if (clientSalesPrevious && clientSalesPrevious.has(productCode)) {
+                    if (clientSalesPrevious && clientSalesPrevious.has(productCode)) {
                         const rcasWhoSold = clientSalesPrevious.get(productCode);
                         if (sellerRcaCodes.size === 0 || [...rcasWhoSold].some(rca => sellerRcaCodes.has(rca))) {
                             boughtPrevious = true;
                         }
                     }
-                    let bonusPrevious = false;
-                    if (clientBonusPrevious && clientBonusPrevious.has(productCode)) {
-                        const rcasWhoBonused = clientBonusPrevious.get(productCode);
-                         if (sellerRcaCodes.size === 0 || [...rcasWhoBonused].some(rca => sellerRcaCodes.has(rca))) {
-                            bonusPrevious = true;
+                    if (boughtPrevious) {
+                        clientsWhoGotProductPrevious++;
+                        clientsWhoGotSelectionPrevious.add(codcli);
+                    }
+
+                    // Bonus Coverage Calculation (Current)
+                    const clientBonusCurrent = clientBonusCurrentMap.get(codcli);
+                    if (clientBonusCurrent && clientBonusCurrent.has(productCode)) {
+                        const rcasWhoBonused = clientBonusCurrent.get(productCode);
+                        if (sellerRcaCodes.size === 0 || [...rcasWhoBonused].some(rca => sellerRcaCodes.has(rca))) {
+                            clientsWhoGotBonusSelectionCurrent.add(codcli);
                         }
                     }
-                    if(boughtPrevious || bonusPrevious) clientsWhoGotProductPrevious++;
 
+                    // Bonus Coverage Calculation (Previous)
+                    const clientBonusPrevious = clientBonusPreviousMap.get(codcli);
+                    if (clientBonusPrevious && clientBonusPrevious.has(productCode)) {
+                        const rcasWhoBonused = clientBonusPrevious.get(productCode);
+                        if (sellerRcaCodes.size === 0 || [...rcasWhoBonused].some(rca => sellerRcaCodes.has(rca))) {
+                            clientsWhoGotBonusSelectionPrevious.add(codcli);
+                        }
+                    }
                 });
 
                 const coverageCurrent = activeClientsCount > 0 ? (clientsWhoGotProductCurrent / activeClientsCount) * 100 : 0;
@@ -3857,30 +3896,6 @@
                         clients: clientsWhoGotProductCurrent
                     };
                 }
-
-                activeClientCodes.forEach(codcli => {
-                    const currentSales = optimizedData.salesByClientAndRca_CurrentMonth.get(codcli);
-                    const currentBonus = innovationsIncludeBonus ? optimizedData.bonificationsByClientAndRca_CurrentMonth.get(codcli) : null;
-
-                    if ((currentSales && currentSales.has(productCode) && (sellerRcaCodes.size === 0 || [...currentSales.get(productCode)].some(rca => sellerRcaCodes.has(rca)))) ||
-                        (currentBonus && currentBonus.has(productCode) && (sellerRcaCodes.size === 0 || [...currentBonus.get(productCode)].some(rca => sellerRcaCodes.has(rca))))) {
-                        clientsWhoGotSelectionCurrent.add(codcli);
-                    }
-                    if (currentBonus && currentBonus.has(productCode) && (sellerRcaCodes.size === 0 || [...currentBonus.get(productCode)].some(rca => sellerRcaCodes.has(rca)))) {
-                        clientsWhoGotBonusSelectionCurrent.add(codcli);
-                    }
-
-                    const previousSales = optimizedData.salesByClientAndRca_PreviousMonth.get(codcli);
-                    const previousBonus = innovationsIncludeBonus ? optimizedData.bonificationsByClientAndRca_PreviousMonth.get(codcli) : null;
-
-                    if ((previousSales && previousSales.has(productCode) && (sellerRcaCodes.size === 0 || [...previousSales.get(productCode)].some(rca => sellerRcaCodes.has(rca)))) ||
-                        (previousBonus && previousBonus.has(productCode) && (sellerRcaCodes.size === 0 || [...previousBonus.get(productCode)].some(rca => sellerRcaCodes.has(rca))))) {
-                        clientsWhoGotSelectionPrevious.add(codcli);
-                    }
-                    if (previousBonus && previousBonus.has(productCode) && (sellerRcaCodes.size === 0 || [...previousBonus.get(productCode)].some(rca => sellerRcaCodes.has(rca)))) {
-                        clientsWhoGotBonusSelectionPrevious.add(codcli);
-                    }
-                });
 
                 const variation = coveragePrevious > 0 ? ((coverageCurrent - coveragePrevious) / coveragePrevious) * 100 : (coverageCurrent > 0 ? Infinity : 0);
                 const stockQty = getActiveStockMap(innovationsFilialFilter.value).get(productCode) || 0;
@@ -3989,10 +4004,10 @@
             innovationsMonthCityFilter.value = '';
             innovationsMonthFilialFilter.value = 'ambas';
             innovationsMonthCategoryFilter.value = '';
-            innovationsMonthIncludeBonusCheckbox.checked = true;
-            innovationsMonthIncludeBonus = true;
             selectedInnovationsMonthSellers = [];
+            selectedInnovationsMonthTiposVenda = [];
             updateSellerFilter('', innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
+            selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
             updateInnovationsMonthView();
         }
 
@@ -4037,22 +4052,11 @@
                 innovationsMonthCategoryFilter.value = currentFilterValue;
             }
 
-
             const activeClients = filteredClients.filter(c => {
                 const codcli = c['Código'];
                 const rca1 = String(c.rca1 || '').trim();
-                
-                // --- INÍCIO DA MODIFICAÇÃO ---
-                // REGRA DE EXCLUSÃO: Ignora clientes destes RCAs
-                if (rca1 === '306' || rca1 === '300') {
-                    return false;
-                }
-                // --- FIM DA MODIFICAÇÃO ---
-                
+                if (rca1 === '306' || rca1 === '300') return false;
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                // const isVdHiago = vdHiagoClients.has(codcli); // REGRA REMOVIDA
-                
-                // Regra de inclusão
                 return (isAmericanas || rca1 !== '53');
             });
             const activeClientsCount = activeClients.length;
@@ -4066,6 +4070,12 @@
             const clientsWhoGotBonusAnyVisibleProductCurrent = new Set();
             const clientsWhoGotBonusAnyVisibleProductPrevious = new Set();
 
+            // Build maps
+            const clientSalesCurrentMap = buildClientSalesMap(allSalesData, selectedInnovationsMonthTiposVenda);
+            const clientSalesPreviousMap = buildClientSalesMap(allHistoryData, selectedInnovationsMonthTiposVenda);
+            const clientBonusCurrentMap = buildClientSalesMap(allSalesData, ['5', '11']);
+            const clientBonusPreviousMap = buildClientSalesMap(allHistoryData, ['5', '11']);
+
             for (const categoryName in categories) {
                  if(selectedCategory && categoryName !== selectedCategory) continue;
 
@@ -4074,15 +4084,18 @@
                 let clientsPreviousCount = 0;
 
                 activeClientCodes.forEach(codcli => {
-                    const currentSales = optimizedData.salesByClientAndRca_CurrentMonth.get(codcli);
-                    const currentBonus = innovationsMonthIncludeBonus ? optimizedData.bonificationsByClientAndRca_CurrentMonth.get(codcli) : null;
-                    if ((currentSales && [...productCodes].some(p => {
+                    const currentSales = clientSalesCurrentMap.get(codcli);
+                    const currentBonus = clientBonusCurrentMap.get(codcli);
+
+                    let gotItCurrent = false;
+                    if (currentSales && [...productCodes].some(p => {
                         const rcasWhoSold = currentSales.get(p);
                         return rcasWhoSold && (sellerRcaCodes.size === 0 || [...rcasWhoSold].some(rca => sellerRcaCodes.has(rca)));
-                    })) || (currentBonus && [...productCodes].some(p => {
-                        const rcasWhoBonused = currentBonus.get(p);
-                        return rcasWhoBonused && (sellerRcaCodes.size === 0 || [...rcasWhoBonused].some(rca => sellerRcaCodes.has(rca)));
-                    }))) {
+                    })) {
+                        gotItCurrent = true;
+                    }
+
+                    if (gotItCurrent) {
                         clientsCurrentCount++;
                         clientsWhoGotAnyVisibleProductCurrent.add(codcli);
                     }
@@ -4094,19 +4107,22 @@
                         clientsWhoGotBonusAnyVisibleProductCurrent.add(codcli);
                     }
 
+                    const previousSales = clientSalesPreviousMap.get(codcli);
+                    const previousBonus = clientBonusPreviousMap.get(codcli);
 
-                    const previousSales = optimizedData.salesByClientAndRca_PreviousMonth.get(codcli);
-                    const previousBonus = innovationsMonthIncludeBonus ? optimizedData.bonificationsByClientAndRca_PreviousMonth.get(codcli) : null;
-                    if ((previousSales && [...productCodes].some(p => {
+                    let gotItPrevious = false;
+                    if (previousSales && [...productCodes].some(p => {
                         const rcasWhoSold = previousSales.get(p);
                         return rcasWhoSold && (sellerRcaCodes.size === 0 || [...rcasWhoSold].some(rca => sellerRcaCodes.has(rca)));
-                    })) || (previousBonus && [...productCodes].some(p => {
-                        const rcasWhoBonused = previousBonus.get(p);
-                        return rcasWhoBonused && (sellerRcaCodes.size === 0 || [...rcasWhoBonused].some(rca => sellerRcaCodes.has(rca)));
-                    }))) {
+                    })) {
+                        gotItPrevious = true;
+                    }
+
+                    if(gotItPrevious) {
                         clientsPreviousCount++;
                         clientsWhoGotAnyVisibleProductPrevious.add(codcli);
                     }
+
                      if (previousBonus && [...productCodes].some(p => {
                         const rcasWhoBonused = previousBonus.get(p);
                         return rcasWhoBonused && (sellerRcaCodes.size === 0 || [...rcasWhoBonused].some(rca => sellerRcaCodes.has(rca)));
@@ -4141,21 +4157,13 @@
                     const productCode = product.Codigo;
                     let clientsWhoGotProduct = 0;
                     activeClientCodes.forEach(codcli => {
-                        const currentSales = optimizedData.salesByClientAndRca_CurrentMonth.get(codcli);
-                        const currentBonus = innovationsMonthIncludeBonus ? optimizedData.bonificationsByClientAndRca_CurrentMonth.get(codcli) : null;
-
+                        const currentSales = clientSalesCurrentMap.get(codcli);
                         let gotIt = false;
                         if (currentSales && currentSales.has(productCode)) {
                              const rcasWhoSold = currentSales.get(productCode);
                              if (sellerRcaCodes.size === 0 || [...rcasWhoSold].some(rca => sellerRcaCodes.has(rca))) {
                                 gotIt = true;
                              }
-                        }
-                        if (!gotIt && currentBonus && currentBonus.has(productCode)) {
-                            const rcasWhoBonused = currentBonus.get(productCode);
-                            if (sellerRcaCodes.size === 0 || [...rcasWhoBonused].some(rca => sellerRcaCodes.has(rca))) {
-                                gotIt = true;
-                            }
                         }
                         if(gotIt) clientsWhoGotProduct++;
                     });
@@ -4661,7 +4669,7 @@
                 if(daysInput && parseInt(daysInput.value) === 0) daysInput.value = customWorkingDaysStock;
                 handleStockFilterChange(); 
             });
-            showCityBtn.addEventListener('click', () => { resetMainFilters(); mainDashboard.classList.add('hidden'); cityView.classList.remove('hidden'); document.getElementById('city-view-content').classList.add('hidden'); document.getElementById('city-view-loader').classList.remove('hidden'); setTimeout(() => { populateSupervisors('city-supervisor-filter', allSalesData); selectedCitySellers = updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData); updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData); updateCityView(); document.getElementById('city-view-loader').classList.add('hidden'); document.getElementById('city-view-content').classList.remove('hidden'); }, 10); });
+            showCityBtn.addEventListener('click', () => { resetMainFilters(); mainDashboard.classList.add('hidden'); cityView.classList.remove('hidden'); document.getElementById('city-view-content').classList.add('hidden'); document.getElementById('city-view-loader').classList.remove('hidden'); setTimeout(() => { populateSupervisors('city-supervisor-filter', allSalesData); selectedCitySellers = updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData); selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData); updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData); updateCityView(); document.getElementById('city-view-loader').classList.add('hidden'); document.getElementById('city-view-content').classList.remove('hidden'); }, 10); });
             backToMainFromCityBtn.addEventListener('click', () => { resetCityFilters(); cityView.classList.add('hidden'); mainDashboard.classList.remove('hidden'); updateAllVisuals(); });
             showWeeklyBtn.addEventListener('click', () => { resetMainFilters(); mainDashboard.classList.add('hidden'); weeklyView.classList.remove('hidden'); populateWeeklyFilters(); updateWeeklyView(); });
             backToMainFromWeeklyBtn.addEventListener('click', () => { weeklyView.classList.add('hidden'); mainDashboard.classList.remove('hidden'); currentWeeklyFornecedor = ''; updateAllVisuals(); });
@@ -5081,6 +5089,7 @@
                 populateSupervisors('innovations-supervisor-filter', allSalesData);
                 updateSellerFilter('', innovationsVendedorFilterDropdown, innovationsVendedorFilterText, [], allSalesData);
                 updateSupplierFilter(innovationsSupplierFilterDropdown, innovationsSupplierFilterText, [], allSalesData, 'innovations');
+                selectedInnovationsTiposVenda = updateTipoVendaFilter(innovationsTipoVendaFilterDropdown, innovationsTipoVendaFilterText, selectedInnovationsTiposVenda, allSalesData);
                 updateInnovationsFilters();
                 updateInnovationsView();
             });
@@ -5096,6 +5105,7 @@
                 innovationsMonthView.classList.remove('hidden');
                 populateSupervisors('innovations-month-supervisor-filter', allSalesData);
                 updateSellerFilter('', innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
+                selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
                 updateInnovationsMonthView();
             });
 
@@ -5106,10 +5116,6 @@
 
             innovationsMonthCategoryFilter.addEventListener('change', updateInnovationsMonthView);
             innovationsFilialFilter.addEventListener('change', debouncedUpdateInnovations);
-            innovationsIncludeBonusCheckbox.addEventListener('change', (e) => {
-                innovationsIncludeBonus = e.target.checked;
-                updateInnovationsView();
-            });
 
             innovationsSupervisorFilter.addEventListener('change', () => {
                 selectedInnovationsSellers = [];
@@ -5193,11 +5199,21 @@
                 }
             });
 
-            const debouncedUpdateInnovationsMonth = debounce(updateInnovationsMonthView, 400);
-            innovationsMonthIncludeBonusCheckbox.addEventListener('change', (e) => {
-                innovationsMonthIncludeBonus = e.target.checked;
-                updateInnovationsMonthView();
+            innovationsTipoVendaFilterBtn.addEventListener('click', () => innovationsTipoVendaFilterDropdown.classList.toggle('hidden'));
+            innovationsTipoVendaFilterDropdown.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox') {
+                    const { value, checked } = e.target;
+                    if (checked) {
+                        if (!selectedInnovationsTiposVenda.includes(value)) selectedInnovationsTiposVenda.push(value);
+                    } else {
+                        selectedInnovationsTiposVenda = selectedInnovationsTiposVenda.filter(s => s !== value);
+                    }
+                    updateTipoVendaFilter(innovationsTipoVendaFilterDropdown, innovationsTipoVendaFilterText, selectedInnovationsTiposVenda, allSalesData);
+                    debouncedUpdateInnovations();
+                }
             });
+
+            const debouncedUpdateInnovationsMonth = debounce(updateInnovationsMonthView, 400);
 
             innovationsMonthSupervisorFilter.addEventListener('change', () => {
                 selectedInnovationsMonthSellers = [];
@@ -5242,12 +5258,27 @@
             clearInnovationsMonthFiltersBtn.addEventListener('click', resetInnovationsMonthFilters);
             exportInnovationsMonthPdfBtn.addEventListener('click', exportInnovationsMonthPDF);
 
+            innovationsMonthTipoVendaFilterBtn.addEventListener('click', () => innovationsMonthTipoVendaFilterDropdown.classList.toggle('hidden'));
+            innovationsMonthTipoVendaFilterDropdown.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox') {
+                    const { value, checked } = e.target;
+                    if (checked) {
+                        if (!selectedInnovationsMonthTiposVenda.includes(value)) selectedInnovationsMonthTiposVenda.push(value);
+                    } else {
+                        selectedInnovationsMonthTiposVenda = selectedInnovationsMonthTiposVenda.filter(s => s !== value);
+                    }
+                    updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
+                    debouncedUpdateInnovationsMonth();
+                }
+            });
+
             viewCoverageBtn.addEventListener('click', () => {
                 mainDashboard.classList.add('hidden');
                 coverageView.classList.remove('hidden');
                 populateSupervisors('coverage-supervisor-filter', allSalesData);
                 updateSellerFilter('', coverageVendedorFilterDropdown, coverageVendedorFilterText, [], allSalesData);
                 updateSupplierFilter(coverageSupplierFilterDropdown, coverageSupplierFilterText, [], allSalesData, 'coverage');
+                selectedCoverageTiposVenda = updateTipoVendaFilter(coverageTipoVendaFilterDropdown, coverageTipoVendaFilterText, selectedCoverageTiposVenda, allSalesData);
                 updateCoverageFilters();
                 updateCoverageView();
             });
@@ -5369,7 +5400,9 @@
                 if (!innovationsVendedorFilterBtn.contains(e.target) && !innovationsVendedorFilterDropdown.contains(e.target)) innovationsVendedorFilterDropdown.classList.add('hidden');
                 if (!innovationsSupplierFilterBtn.contains(e.target) && !innovationsSupplierFilterDropdown.contains(e.target)) innovationsSupplierFilterDropdown.classList.add('hidden');
                 if (!innovationsProductFilterBtn.contains(e.target) && !innovationsProductFilterDropdown.contains(e.target)) innovationsProductFilterDropdown.classList.add('hidden');
+                if (!innovationsTipoVendaFilterBtn.contains(e.target) && !innovationsTipoVendaFilterDropdown.contains(e.target)) innovationsTipoVendaFilterDropdown.classList.add('hidden');
                 if (!innovationsMonthVendedorFilterBtn.contains(e.target) && !innovationsMonthVendedorFilterDropdown.contains(e.target)) innovationsMonthVendedorFilterDropdown.classList.add('hidden');
+                if (!innovationsMonthTipoVendaFilterBtn.contains(e.target) && !innovationsMonthTipoVendaFilterDropdown.contains(e.target)) innovationsMonthTipoVendaFilterDropdown.classList.add('hidden');
                 if (!coverageVendedorFilterBtn.contains(e.target) && !coverageVendedorFilterDropdown.contains(e.target)) coverageVendedorFilterDropdown.classList.add('hidden');
                 if (!coverageSupplierFilterBtn.contains(e.target) && !coverageSupplierFilterDropdown.contains(e.target)) coverageSupplierFilterDropdown.classList.add('hidden');
                 if (!coverageProductFilterBtn.contains(e.target) && !coverageProductFilterDropdown.contains(e.target)) coverageProductFilterDropdown.classList.add('hidden');
@@ -6117,7 +6150,14 @@
                                             <div id="innovations-product-list" class="max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
                                         </div>
                                     </div>
-                                    <div class="flex items-center justify-start h-full pb-1"><div class="flex items-center"><input id="innovations-include-bonus" type="checkbox" checked class="w-4 h-4 text-teal-500 bg-slate-600 border-slate-500 rounded focus:ring-teal-500"><label for="innovations-include-bonus" class="ml-2 text-sm font-medium text-slate-300">Incluir Bonificações</label></div></div>
+                                    <div class="relative">
+                                        <label for="innovations-tipo-venda-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Tipo Venda</label>
+                                        <button id="innovations-tipo-venda-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
+                                            <span id="innovations-tipo-venda-filter-text">Todos os Tipos</span>
+                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
+                                        </button>
+                                        <div id="innovations-tipo-venda-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
+                                    </div>
                                     <button id="clear-innovations-filters-btn" class="w-full bg-slate-600 hover:bg-slate-500 text-white font-bold py-2.5 px-4 rounded-lg">Limpar Filtros</button>
                                 </div>
                             </div>
@@ -6160,7 +6200,14 @@
                                     <div class="relative"><label for="innovations-month-vendedor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Vendedor</label><button id="innovations-month-vendedor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="innovations-month-vendedor-filter-text">Todos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button><div id="innovations-month-vendedor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
                                     <div class="relative"><label for="innovations-month-city-filter" class="block mb-2 text-sm font-medium text-slate-400">Cidade</label><input type="text" id="innovations-month-city-filter" placeholder="Digite a cidade..." class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5" autocomplete="off"><div id="innovations-month-city-suggestions" class="absolute z-10 w-full bg-slate-800 border border-slate-600 rounded-lg mt-1 hidden max-h-48 overflow-y-auto custom-scrollbar text-white"></div></div>
                                     <div><label for="innovations-month-filial-filter" class="block mb-2 text-sm font-medium text-slate-400">Filial</label><select id="innovations-month-filial-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="ambas" selected>Ambas</option><option value="05">Filial 05</option><option value="08">Filial 08</option></select></div>
-                                    <div class="flex items-center justify-start h-full pb-1"><div class="flex items-center"><input id="innovations-month-include-bonus" type="checkbox" checked class="w-4 h-4 text-teal-500 bg-slate-600 border-slate-500 rounded focus:ring-teal-500"><label for="innovations-month-include-bonus" class="ml-2 text-sm font-medium text-slate-300">Incluir Bonificações</label></div></div>
+                                    <div class="relative">
+                                        <label for="innovations-month-tipo-venda-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Tipo Venda</label>
+                                        <button id="innovations-month-tipo-venda-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
+                                            <span id="innovations-month-tipo-venda-filter-text">Todos os Tipos</span>
+                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
+                                        </button>
+                                        <div id="innovations-month-tipo-venda-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
+                                    </div>
                                     <button id="clear-innovations-month-filters-btn" class="w-full bg-slate-600 hover:bg-slate-500 text-white font-bold py-2.5 px-4 rounded-lg">Limpar Filtros</button>
                                 </div>
                                 <div class="mt-4 border-t border-slate-700 pt-4">
