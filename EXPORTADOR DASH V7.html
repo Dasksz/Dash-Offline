@@ -1494,6 +1494,7 @@
             selectedCoverageTiposVenda = [];
             updateSellerFilter('', coverageVendedorFilterDropdown, coverageVendedorFilterText, [], allSalesData);
             updateSupplierFilter(coverageSupplierFilterDropdown, coverageSupplierFilterText, [], allSalesData, 'coverage');
+            selectedCoverageTiposVenda = updateTipoVendaFilter(coverageTipoVendaFilterDropdown, coverageTipoVendaFilterText, selectedCoverageTiposVenda, allSalesData);
             updateCoverageFilters();
             updateCoverageView();
         }
@@ -2242,6 +2243,7 @@
             selectedCityTiposVenda = [];
 
             selectedCitySellers = updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData);
+            selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData);
 
             cityRedeGroupContainer.querySelectorAll('button').forEach(b => b.classList.remove('active'));
             cityRedeGroupContainer.querySelector('button[data-group=""]').classList.add('active');
@@ -2381,10 +2383,14 @@
             if (cidadeFiltro) { clientsForAnalysis = clientsForAnalysis.filter(c => c.cidade && c.cidade === cidadeFiltro); salesForAnalysis = salesForAnalysis.filter(s => s.CIDADE && s.CIDADE === cidadeFiltro); }
             if (codcliFilterVal) { clientsForAnalysis = clientsForAnalysis.filter(c => String(c['Código']) === codcliFilterVal); salesForAnalysis = salesForAnalysis.filter(s => s.CODCLI === codcliFilterVal); }
 
-            const salesThisMonth = allSalesData.filter(sale => {
+            let salesThisMonth = allSalesData.filter(sale => {
                 const saleDate = parseDate(sale.DTPED);
                 return saleDate && saleDate.getFullYear() === currentYear && saleDate.getMonth() === currentMonth;
             });
+
+            if (selectedCityTiposVenda.length > 0) {
+                salesThisMonth = salesThisMonth.filter(s => selectedCityTiposVenda.includes(s.TIPOVENDA));
+            }
 
             const clientTotalsThisMonth = new Map();
             salesThisMonth.forEach(sale => {
@@ -2860,6 +2866,9 @@
             const supplierOptionsData = [...supplierCurrent, ...supplierHistory];
             selectedComparisonSuppliers = updateSupplierFilter(comparisonSupplierFilterDropdown, comparisonSupplierFilterText, selectedComparisonSuppliers, supplierOptionsData, 'comparison');
 
+            const { currentSales: tvCurrent, historySales: tvHistory } = getComparisonFilteredData({ excludeFilter: 'tipoVenda' });
+            selectedComparisonTiposVenda = updateTipoVendaFilter(comparisonTipoVendaFilterDropdown, comparisonTipoVendaFilterText, selectedComparisonTiposVenda, [...tvCurrent, ...tvHistory]);
+
             updateComparisonProductFilter();
 
             const { currentSales: cityCurrent, historySales: cityHistory } = getComparisonFilteredData({ excludeFilter: 'city' });
@@ -3008,6 +3017,9 @@
             updateStockSellerFilter();
             updateStockSupplierFilter();
             updateStockProductFilter();
+
+            const tvData = getStockFilteredData({ excludeFilter: 'tipoVenda' });
+            selectedStockTiposVenda = updateTipoVendaFilter(stockTipoVendaFilterDropdown, stockTipoVendaFilterText, selectedStockTiposVenda, [...tvData.sales, ...tvData.history]);
 
             const cityData = getStockFilteredData({ excludeFilter: 'city' });
             updateStockCitySuggestions([...cityData.sales, ...cityData.history]);
@@ -4661,7 +4673,7 @@
                 if(daysInput && parseInt(daysInput.value) === 0) daysInput.value = customWorkingDaysStock;
                 handleStockFilterChange(); 
             });
-            showCityBtn.addEventListener('click', () => { resetMainFilters(); mainDashboard.classList.add('hidden'); cityView.classList.remove('hidden'); document.getElementById('city-view-content').classList.add('hidden'); document.getElementById('city-view-loader').classList.remove('hidden'); setTimeout(() => { populateSupervisors('city-supervisor-filter', allSalesData); selectedCitySellers = updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData); updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData); updateCityView(); document.getElementById('city-view-loader').classList.add('hidden'); document.getElementById('city-view-content').classList.remove('hidden'); }, 10); });
+            showCityBtn.addEventListener('click', () => { resetMainFilters(); mainDashboard.classList.add('hidden'); cityView.classList.remove('hidden'); document.getElementById('city-view-content').classList.add('hidden'); document.getElementById('city-view-loader').classList.remove('hidden'); setTimeout(() => { populateSupervisors('city-supervisor-filter', allSalesData); selectedCitySellers = updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData); selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData); updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData); updateCityView(); document.getElementById('city-view-loader').classList.add('hidden'); document.getElementById('city-view-content').classList.remove('hidden'); }, 10); });
             backToMainFromCityBtn.addEventListener('click', () => { resetCityFilters(); cityView.classList.add('hidden'); mainDashboard.classList.remove('hidden'); updateAllVisuals(); });
             showWeeklyBtn.addEventListener('click', () => { resetMainFilters(); mainDashboard.classList.add('hidden'); weeklyView.classList.remove('hidden'); populateWeeklyFilters(); updateWeeklyView(); });
             backToMainFromWeeklyBtn.addEventListener('click', () => { weeklyView.classList.add('hidden'); mainDashboard.classList.remove('hidden'); currentWeeklyFornecedor = ''; updateAllVisuals(); });
@@ -5248,6 +5260,7 @@
                 populateSupervisors('coverage-supervisor-filter', allSalesData);
                 updateSellerFilter('', coverageVendedorFilterDropdown, coverageVendedorFilterText, [], allSalesData);
                 updateSupplierFilter(coverageSupplierFilterDropdown, coverageSupplierFilterText, [], allSalesData, 'coverage');
+                selectedCoverageTiposVenda = updateTipoVendaFilter(coverageTipoVendaFilterDropdown, coverageTipoVendaFilterText, selectedCoverageTiposVenda, allSalesData);
                 updateCoverageFilters();
                 updateCoverageView();
             });
