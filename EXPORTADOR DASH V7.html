@@ -1432,14 +1432,14 @@
             const map = new Map(); // Map<CODCLI, Map<PRODUTO, Set<CODUSUR>>>
             salesData.forEach(sale => {
                 if (typeFilter.length > 0 && !typeFilter.includes(sale.TIPOVENDA)) return;
-                
+
                 const codCli = sale.CODCLI;
                 const prod = sale.PRODUTO;
                 const rca = sale.CODUSUR;
 
                 if (!map.has(codCli)) map.set(codCli, new Map());
                 const clientMap = map.get(codCli);
-                
+
                 if (!clientMap.has(prod)) clientMap.set(prod, new Set());
                 clientMap.get(prod).add(rca);
             });
@@ -3830,7 +3830,7 @@
             // Use empty Map if the filter array is empty (meaning we shouldn't match anything for that category)
             const clientSalesCurrentMap = mainTypes.length > 0 ? buildClientSalesMap(allSalesData, mainTypes) : new Map();
             const clientSalesPreviousMap = mainTypes.length > 0 ? buildClientSalesMap(allHistoryData, mainTypes) : new Map();
-            
+
             const clientBonusCurrentMap = bonusTypes.length > 0 ? buildClientSalesMap(allSalesData, bonusTypes) : new Map();
             const clientBonusPreviousMap = bonusTypes.length > 0 ? buildClientSalesMap(allHistoryData, bonusTypes) : new Map();
 
@@ -4105,7 +4105,7 @@
                 activeClientCodes.forEach(codcli => {
                     const currentSales = clientSalesCurrentMap.get(codcli);
                     const currentBonus = clientBonusCurrentMap.get(codcli);
-                    
+
                     let gotItCurrent = false;
                     if (currentSales && [...productCodes].some(p => {
                         const rcasWhoSold = currentSales.get(p);
@@ -4113,7 +4113,7 @@
                     })) {
                         gotItCurrent = true;
                     }
-                    
+
                     if (gotItCurrent) {
                         clientsCurrentCount++;
                         clientsWhoGotAnyVisibleProductCurrent.add(codcli);
@@ -4128,7 +4128,7 @@
 
                     const previousSales = clientSalesPreviousMap.get(codcli);
                     const previousBonus = clientBonusPreviousMap.get(codcli);
-                    
+
                     let gotItPrevious = false;
                     if (previousSales && [...productCodes].some(p => {
                         const rcasWhoSold = previousSales.get(p);
@@ -4136,7 +4136,7 @@
                     })) {
                         gotItPrevious = true;
                     }
-                    
+
                     if(gotItPrevious) {
                         clientsPreviousCount++;
                         clientsWhoGotAnyVisibleProductPrevious.add(codcli);
@@ -4274,19 +4274,40 @@
                     let clientsPreviousCount = 0;
 
                     activeClientCodes.forEach(codcli => {
-                         const currentSales = optimizedData.salesByClientAndRca_CurrentMonth.get(codcli);
-                         const currentBonus = innovationsMonthIncludeBonus ? optimizedData.bonificationsByClientAndRca_CurrentMonth.get(codcli) : null;
-                         if((currentSales && currentSales.has(productCode) && (sellerRcaCodes.size === 0 || [...currentSales.get(productCode)].some(rca => sellerRcaCodes.has(rca)))) ||
-                            (currentBonus && currentBonus.has(productCode) && (sellerRcaCodes.size === 0 || [...currentBonus.get(productCode)].some(rca => sellerRcaCodes.has(rca))))) {
-                                clientsCurrentCount++;
-                         }
+                         // Use the maps built inside updateInnovationsMonthView (clientSalesCurrentMap, clientBonusCurrentMap, etc.)
+                         // instead of the global optimizedData which doesn't respect the specific type filters of this view for this specific calculation block.
+                         // Ideally we should use the same maps we built earlier in this function.
 
-                         const previousSales = optimizedData.salesByClientAndRca_PreviousMonth.get(codcli);
-                         const previousBonus = innovationsMonthIncludeBonus ? optimizedData.bonificationsByClientAndRca_PreviousMonth.get(codcli) : null;
-                         if((previousSales && previousSales.has(productCode) && (sellerRcaCodes.size === 0 || [...previousSales.get(productCode)].some(rca => sellerRcaCodes.has(rca)))) ||
-                           (previousBonus && previousBonus.has(productCode) && (sellerRcaCodes.size === 0 || [...previousBonus.get(productCode)].some(rca => sellerRcaCodes.has(rca))))) {
-                            clientsPreviousCount++;
+                         // Re-using the maps defined at the start of updateInnovationsMonthView:
+                         // clientSalesCurrentMap, clientBonusCurrentMap, clientSalesPreviousMap, clientBonusPreviousMap
+
+                         const currentSales = clientSalesCurrentMap.get(codcli);
+                         const currentBonus = clientBonusCurrentMap.get(codcli);
+
+                         let gotItCurrent = false;
+                         if (currentSales && currentSales.has(productCode)) {
+                             const rcas = currentSales.get(productCode);
+                             if (sellerRcaCodes.size === 0 || [...rcas].some(rca => sellerRcaCodes.has(rca))) gotItCurrent = true;
                          }
+                         if (!gotItCurrent && currentBonus && currentBonus.has(productCode)) {
+                             const rcas = currentBonus.get(productCode);
+                             if (sellerRcaCodes.size === 0 || [...rcas].some(rca => sellerRcaCodes.has(rca))) gotItCurrent = true;
+                         }
+                         if (gotItCurrent) clientsCurrentCount++;
+
+                         const previousSales = clientSalesPreviousMap.get(codcli);
+                         const previousBonus = clientBonusPreviousMap.get(codcli);
+
+                         let gotItPrevious = false;
+                         if (previousSales && previousSales.has(productCode)) {
+                             const rcas = previousSales.get(productCode);
+                             if (sellerRcaCodes.size === 0 || [...rcas].some(rca => sellerRcaCodes.has(rca))) gotItPrevious = true;
+                         }
+                         if (!gotItPrevious && previousBonus && previousBonus.has(productCode)) {
+                             const rcas = previousBonus.get(productCode);
+                             if (sellerRcaCodes.size === 0 || [...rcas].some(rca => sellerRcaCodes.has(rca))) gotItPrevious = true;
+                         }
+                         if (gotItPrevious) clientsPreviousCount++;
                     });
 
                     const coverageCurrent = activeClientsCount > 0 ? (clientsCurrentCount / activeClientsCount) * 100 : 0;
@@ -4362,16 +4383,24 @@
             innovationsByClientTableHead.innerHTML = tableHeadHTML;
 
             const clientInnovationStatus = activeClients.map(client => {
-                const clientBoughtProducts = optimizedData.salesByClientAndRca_CurrentMonth.get(client['Código']) || new Map();
-                const clientBonusedProducts = innovationsMonthIncludeBonus ? optimizedData.bonificationsByClientAndRca_CurrentMonth.get(client['Código']) : null;
+                const codcli = client['Código'];
+                const clientBoughtProducts = clientSalesCurrentMap.get(codcli);
+                const clientBonusedProducts = clientBonusCurrentMap.get(codcli);
+
                 const status = {};
                 categoryNames.forEach(catName => {
                     const productCodes = categories[catName].productCodes;
                     status[catName] = [...productCodes].some(p => {
-                        const rcasWhoSold = clientBoughtProducts.get(p);
-                        const rcasWhoBonused = clientBonusedProducts ? clientBonusedProducts.get(p) : null;
-                        const sold = rcasWhoSold && (sellerRcaCodes.size === 0 || [...rcasWhoSold].some(rca => sellerRcaCodes.has(rca)));
-                        const bonused = rcasWhoBonused && (sellerRcaCodes.size === 0 || [...rcasWhoBonused].some(rca => sellerRcaCodes.has(rca)));
+                        let sold = false;
+                        if (clientBoughtProducts && clientBoughtProducts.has(p)) {
+                            const rcas = clientBoughtProducts.get(p);
+                            if (sellerRcaCodes.size === 0 || [...rcas].some(rca => sellerRcaCodes.has(rca))) sold = true;
+                        }
+                        let bonused = false;
+                        if (clientBonusedProducts && clientBonusedProducts.has(p)) {
+                            const rcas = clientBonusedProducts.get(p);
+                            if (sellerRcaCodes.size === 0 || [...rcas].some(rca => sellerRcaCodes.has(rca))) bonused = true;
+                        }
                         return sold || bonused;
                     });
                 });
