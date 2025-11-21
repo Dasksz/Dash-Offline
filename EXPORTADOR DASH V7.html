@@ -1405,7 +1405,9 @@
         let selectedCoverageSellers = [];
         let selectedCoverageSuppliers = [];
         let selectedCoverageProducts = [];
-        let coverageIncludeBonus = true;
+        let coverageUnitPriceFilter = null;
+        let customWorkingDaysCoverage = 0;
+        let coverageTrendFilter = 'all';
 
         const coverageTipoVendaFilterBtn = document.getElementById('coverage-tipo-venda-filter-btn');
         const coverageTipoVendaFilterText = document.getElementById('coverage-tipo-venda-filter-text');
@@ -1456,6 +1458,8 @@
             const city = coverageCityFilter.value.trim().toLowerCase();
             const filial = coverageFilialFilter.value;
             const tiposVenda = selectedCoverageTiposVenda;
+            const unitPriceInput = document.getElementById('coverage-unit-price-filter');
+            const unitPrice = unitPriceInput && unitPriceInput.value ? parseFloat(unitPriceInput.value) : null;
 
             let clients = [...allClientsData];
 
@@ -1492,7 +1496,8 @@
             const salesFilter = s => 
                 (suppliers.length === 0 || suppliers.includes(String(s.CODFOR))) &&
                 (products.length === 0 || products.includes(String(s.PRODUTO))) &&
-                (tiposVenda.length === 0 || tiposVenda.includes(String(s.TIPOVENDA)));
+                (tiposVenda.length === 0 || tiposVenda.includes(String(s.TIPOVENDA))) &&
+                (unitPrice === null || (s.QTVENDA > 0 && Math.abs((s.VLVENDA / s.QTVENDA) - unitPrice) < 0.01));
                 
             sales = sales.filter(salesFilter);
             history = history.filter(salesFilter);
@@ -1510,8 +1515,13 @@
             coverageSupervisorFilter.value = '';
             coverageCityFilter.value = '';
             coverageFilialFilter.value = 'ambas';
-            coverageIncludeBonusCheckbox.checked = true;
-            coverageIncludeBonus = true;
+
+            const unitPriceInput = document.getElementById('coverage-unit-price-filter');
+            if(unitPriceInput) unitPriceInput.value = '';
+
+            const workingDaysInput = document.getElementById('coverage-working-days-input');
+            if(workingDaysInput) workingDaysInput.value = customWorkingDaysCoverage;
+
             selectedCoverageSellers = [];
             selectedCoverageSuppliers = [];
             selectedCoverageProducts = [];
@@ -1543,17 +1553,11 @@
                 const codcli = c['Código'];
                 const rca1 = String(c.rca1 || '').trim();
                 
-                // --- INÍCIO DA MODIFICAÇÃO ---
-                // REGRA DE EXCLUSÃO: Ignora clientes destes RCAs
                 if (rca1 === '306' || rca1 === '300') {
                     return false;
                 }
-                // --- FIM DA MODIFICAÇÃO ---
 
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                // const isVdHiago = vdHiagoClients.has(codcli); // REGRA REMOVIDA
-                
-                // Regra de inclusão
                 return (isAmericanas || rca1 !== '53');
             });
             const activeClientsCount = activeClientsForCoverage.length;
@@ -1568,7 +1572,8 @@
                 coverageSelectionCoverageCountKpiPrevious.textContent = `0 de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
                 coverageTopCoverageValueKpi.textContent = '0%';
                 coverageTopCoverageProductKpi.textContent = '-';
-                coverageTableBody.innerHTML = '<tr><td colspan="6" class="text-center p-8 text-slate-500">Nenhum produto selecionado ou encontrado para os filtros.</td></tr>';
+                coverageTableBody.innerHTML = '<tr><td colspan="7" class="text-center p-8 text-slate-500">Nenhum produto selecionado ou encontrado para os filtros.</td></tr>';
+                showNoDataMessage('coverageCityChart', 'Sem dados para exibir.');
                 return;
             }
 
@@ -1578,6 +1583,28 @@
             let topCoverageItem = { name: '-', coverage: 0, clients: 0 };
             const activeStockMap = getActiveStockMap(coverageFilialFilter.value);
 
+            // --- OPTIMIZATION: Build lookup maps for filtered data ---
+            const currentSalesMap = new Map(); // Map<CODCLI, Set<PRODUTO>>
+            sales.forEach(s => {
+                if (!currentSalesMap.has(s.CODCLI)) currentSalesMap.set(s.CODCLI, new Set());
+                currentSalesMap.get(s.CODCLI).add(s.PRODUTO);
+            });
+
+            const currentMonth = lastSaleDate.getMonth();
+            const currentYear = lastSaleDate.getFullYear();
+            const prevMonthIdx = (currentMonth === 0) ? 11 : currentMonth - 1;
+            const prevMonthYear = (currentMonth === 0) ? currentYear - 1 : currentYear;
+
+            const previousSalesMap = new Map(); // Map<CODCLI, Set<PRODUTO>>
+            history.forEach(s => {
+                const d = parseDate(s.DTPED);
+                if (d && d.getMonth() === prevMonthIdx && d.getFullYear() === prevMonthYear) {
+                    if (!previousSalesMap.has(s.CODCLI)) previousSalesMap.set(s.CODCLI, new Set());
+                    previousSalesMap.get(s.CODCLI).add(s.PRODUTO);
+                }
+            });
+            // ---------------------------------------------------------
+
             productsToAnalyze.forEach(productCode => {
                 const productInfo = productDetailsMap.get(productCode) || { descricao: `Produto ${productCode}`};
 
@@ -1585,18 +1612,12 @@
                 let clientsWhoGotProductPrevious = 0;
 
                 activeClientCodes.forEach(codcli => {
-                    const clientSalesCurrent = optimizedData.salesByClientAndRca_CurrentMonth.get(codcli);
-                    const clientBonusCurrent = coverageIncludeBonus ? optimizedData.bonificationsByClientAndRca_CurrentMonth.get(codcli) : null;
-                    if ((clientSalesCurrent && clientSalesCurrent.has(productCode) && (sellerRcaCodes.size === 0 || [...clientSalesCurrent.get(productCode)].some(rca => sellerRcaCodes.has(rca)))) ||
-                        (clientBonusCurrent && clientBonusCurrent.has(productCode) && (sellerRcaCodes.size === 0 || [...clientBonusCurrent.get(productCode)].some(rca => sellerRcaCodes.has(rca))))) {
+                    if (currentSalesMap.has(codcli) && currentSalesMap.get(codcli).has(productCode)) {
                         clientsWhoGotProductCurrent++;
                         clientsWhoGotSelectionCurrent.add(codcli);
                     }
 
-                    const clientSalesPrevious = optimizedData.salesByClientAndRca_PreviousMonth.get(codcli);
-                    const clientBonusPrevious = coverageIncludeBonus ? optimizedData.bonificationsByClientAndRca_PreviousMonth.get(codcli) : null;
-                    if ((clientSalesPrevious && clientSalesPrevious.has(productCode) && (sellerRcaCodes.size === 0 || [...clientSalesPrevious.get(productCode)].some(rca => sellerRcaCodes.has(rca)))) ||
-                        (clientBonusPrevious && clientBonusPrevious.has(productCode) && (sellerRcaCodes.size === 0 || [...clientBonusPrevious.get(productCode)].some(rca => sellerRcaCodes.has(rca))))) {
+                    if (previousSalesMap.has(codcli) && previousSalesMap.get(codcli).has(productCode)) {
                         clientsWhoGotProductPrevious++;
                         clientsWhoGotSelectionPrevious.add(codcli);
                     }
@@ -1623,7 +1644,7 @@
                     if (productFirstWorkingDayIndex === -1) productFirstWorkingDayIndex = sortedWorkingDays.length;
                 }
                 const productMaxLifeInWorkingDays = sortedWorkingDays.length - productFirstWorkingDayIndex;
-                const effectiveDaysToCalculate = Math.min(customWorkingDaysStock, productMaxLifeInWorkingDays) || 1;
+                const effectiveDaysToCalculate = Math.min(customWorkingDaysCoverage, productMaxLifeInWorkingDays) || 1;
                 
                 const endDate = parseDate(sortedWorkingDays[sortedWorkingDays.length - 1]);
                 const targetIndex = Math.max(0, sortedWorkingDays.length - effectiveDaysToCalculate);
@@ -1640,9 +1661,15 @@
                 const dailyAvgSale = totalQtySoldInRange / effectiveDaysToCalculate;
                 const trendDays = dailyAvgSale > 0 ? (stockQty / dailyAvgSale) : (stockQty > 0 ? Infinity : 0);
                 
+                // Calculate monthly box quantity (current filtered sales)
+                const boxesSoldCurrentMonth = sales
+                    .filter(s => s.PRODUTO === productCode)
+                    .reduce((sum, s) => sum + s.QTVENDA_EMBALAGEM_MASTER, 0);
+
                 tableData.push({
                     descricao: `(${productCode}) ${productInfo.descricao}`,
                     stockQty: stockQty,
+                    boxesSoldCurrentMonth: boxesSoldCurrentMonth,
                     trendDays: trendDays,
                     clientsPreviousCount: clientsWhoGotProductPrevious,
                     clientsCurrentCount: clientsWhoGotProductCurrent,
@@ -1666,7 +1693,18 @@
             
             tableData.sort((a, b) => b.coverageCurrent - a.coverageCurrent);
 
-            coverageTableBody.innerHTML = tableData.map(item => {
+            let filteredTableData = tableData;
+            if (coverageTrendFilter !== 'all') {
+                filteredTableData = tableData.filter(item => {
+                    const trend = item.trendDays;
+                    if (coverageTrendFilter === 'low') return isFinite(trend) && trend < 15;
+                    if (coverageTrendFilter === 'medium') return isFinite(trend) && trend >= 15 && trend < 30;
+                    if (coverageTrendFilter === 'good') return isFinite(trend) && trend >= 30;
+                    return false;
+                });
+            }
+
+            coverageTableBody.innerHTML = filteredTableData.map(item => {
                 let trendText;
                 if (!isFinite(item.trendDays) && item.stockQty > 0) {
                     trendText = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-500/30 text-gray-300">S/ VENDA</span>`;
@@ -1685,6 +1723,7 @@
                     <tr class="hover:bg-slate-700/50">
                         <td class="px-2 py-1.5 text-xs">${item.descricao}</td>
                         <td class="px-2 py-1.5 text-xs text-right">${item.stockQty.toLocaleString('pt-BR')}</td>
+                        <td class="px-2 py-1.5 text-xs text-right">${item.boxesSoldCurrentMonth.toLocaleString('pt-BR', {maximumFractionDigits: 2})}</td>
                         <td class="px-2 py-1.5 text-xs text-right">${trendText}</td>
                         <td class="px-2 py-1.5 text-xs text-right">${item.clientsPreviousCount.toLocaleString('pt-BR')}</td>
                         <td class="px-2 py-1.5 text-xs text-right">${item.clientsCurrentCount.toLocaleString('pt-BR')}</td>
@@ -1692,6 +1731,34 @@
                     </tr>
                 `;
             }).join('');
+
+            // Render Top 10 Cities Chart
+            const salesByCity = {};
+            sales.forEach(s => {
+                const city = s.CIDADE || 'N/A';
+                salesByCity[city] = (salesByCity[city] || 0) + s.QTVENDA_EMBALAGEM_MASTER;
+            });
+
+            const sortedCities = Object.entries(salesByCity)
+                .sort(([,a], [,b]) => b - a)
+                .slice(0, 10);
+
+            if (sortedCities.length > 0) {
+                createChart('coverageCityChart', 'bar', sortedCities.map(([city]) => city), sortedCities.map(([, qty]) => qty), {
+                    indexAxis: 'y',
+                    plugins: {
+                        datalabels: {
+                            align: 'end',
+                            anchor: 'end',
+                            color: '#cbd5e1',
+                            font: { weight: 'bold' },
+                            formatter: (value) => value.toLocaleString('pt-BR', { maximumFractionDigits: 1 })
+                        }
+                    }
+                });
+            } else {
+                showNoDataMessage('coverageCityChart', 'Sem dados para exibir.');
+            }
         }
         
         // <!-- FIM DO CÓDIGO RESTAURADO -->
@@ -5323,6 +5390,11 @@
             viewCoverageBtn.addEventListener('click', () => {
                 mainDashboard.classList.add('hidden');
                 coverageView.classList.remove('hidden');
+
+                customWorkingDaysCoverage = maxWorkingDaysStock;
+                const workingDaysInput = document.getElementById('coverage-working-days-input');
+                if(workingDaysInput) workingDaysInput.value = customWorkingDaysCoverage;
+
                 populateSupervisors('coverage-supervisor-filter', allSalesData);
                 updateSellerFilter('', coverageVendedorFilterDropdown, coverageVendedorFilterText, [], allSalesData);
                 updateSupplierFilter(coverageSupplierFilterDropdown, coverageSupplierFilterText, [], allSalesData, 'coverage');
@@ -5343,11 +5415,6 @@
             }, 400);
 
             coverageFilialFilter.addEventListener('change', debouncedUpdateCoverage);
-            coverageIncludeBonusCheckbox.addEventListener('change', (e) => {
-                coverageIncludeBonus = e.target.checked;
-                updateCoverageView();
-            });
-
             coverageSupervisorFilter.addEventListener('change', () => {
                 selectedCoverageSellers = [];
                 updateSellerFilter(coverageSupervisorFilter.value, coverageVendedorFilterDropdown, coverageVendedorFilterText, selectedCoverageSellers, allSalesData);
@@ -5443,6 +5510,45 @@
                 }
             });
 
+            const coverageUnitPriceInput = document.getElementById('coverage-unit-price-filter');
+            if (coverageUnitPriceInput) {
+                coverageUnitPriceInput.addEventListener('input', debouncedUpdateCoverage);
+            }
+
+            const coverageWorkingDaysInput = document.getElementById('coverage-working-days-input');
+            if (coverageWorkingDaysInput) {
+                coverageWorkingDaysInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const value = parseInt(e.target.value);
+                        if (!isNaN(value) && value > 0 && value <= maxWorkingDaysStock) {
+                            customWorkingDaysCoverage = value;
+                        } else {
+                             e.target.value = customWorkingDaysCoverage || maxWorkingDaysStock;
+                        }
+                        debouncedUpdateCoverage();
+                        e.target.blur();
+                    }
+                });
+                coverageWorkingDaysInput.addEventListener('blur', (e) => {
+                    const value = parseInt(e.target.value);
+                     if (isNaN(value) || value <= 0 || value > maxWorkingDaysStock) {
+                         e.target.value = customWorkingDaysCoverage || maxWorkingDaysStock;
+                    } else if (value !== customWorkingDaysCoverage) {
+                        customWorkingDaysCoverage = value;
+                        debouncedUpdateCoverage();
+                    }
+                });
+            }
+
+            document.querySelectorAll('.coverage-trend-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    coverageTrendFilter = btn.dataset.trend;
+                    document.querySelectorAll('.coverage-trend-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    updateCoverageView();
+                });
+            });
 
             document.addEventListener('click', (e) => {
                 if (!innovationsVendedorFilterBtn.contains(e.target) && !innovationsVendedorFilterDropdown.contains(e.target)) innovationsVendedorFilterDropdown.classList.add('hidden');
@@ -5695,7 +5801,7 @@
                             }
                             
                             /* Botão de tendência de estoque ativo */
-                            .stock-trend-btn.active { 
+        .stock-trend-btn.active, .coverage-trend-btn.active {
                                 outline: 2px solid #38b2ac; /* Destaque teal-500 */
                                 outline-offset: 2px; 
                                 transform: scale(1.1); 
@@ -6327,7 +6433,7 @@
                                     <div class="relative"><label for="coverage-city-filter" class="block mb-2 text-sm font-medium text-slate-400">Cidade</label><input type="text" id="coverage-city-filter" placeholder="Digite a cidade..." class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5" autocomplete="off"><div id="coverage-city-suggestions" class="absolute z-10 w-full bg-slate-800 border border-slate-600 rounded-lg mt-1 hidden max-h-48 overflow-y-auto custom-scrollbar text-white"></div></div>
                                     <div><label for="coverage-filial-filter" class="block mb-2 text-sm font-medium text-slate-400">Filial</label><select id="coverage-filial-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="ambas" selected>Ambas</option><option value="05">Filial 05</option><option value="08">Filial 08</option></select></div>
                                 </div>
-                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
                                     <div class="lg:col-span-2 relative">
                                         <label for="coverage-product-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Produto</label>
                                         <button id="coverage-product-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="coverage-product-filter-text">Todos os Produtos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button>
@@ -6344,16 +6450,40 @@
                                         </button>
                                         <div id="coverage-tipo-venda-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
                                     </div>
-                                    <div class="flex items-center justify-start h-full pb-1"><div class="flex items-center"><input id="coverage-include-bonus" type="checkbox" checked class="w-4 h-4 text-teal-500 bg-slate-600 border-slate-500 rounded focus:ring-teal-500"><label for="coverage-include-bonus" class="ml-2 text-sm font-medium text-slate-300">Incluir Bonificações</label></div></div>
+                                    <div>
+                                        <label for="coverage-unit-price-filter" class="block mb-2 text-sm font-medium text-slate-400">Valor Unitário</label>
+                                        <input type="number" id="coverage-unit-price-filter" placeholder="Ex: 1.89" step="0.01" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5">
+                                    </div>
                                     <button id="clear-coverage-filters-btn" class="w-full bg-slate-600 hover:bg-slate-500 text-white font-bold py-2.5 px-4 rounded-lg">Limpar Filtros</button>
                                 </div>
                             </div>
+                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm mb-6">
+                                <h2 class="text-lg font-semibold text-white text-center mb-4">Top 10 Cidades (Quantidade de Caixas)</h2>
+                                <div id="coverageCityChartContainer" class="relative h-80"></div>
+                            </div>
                             <!-- Tabela (Cobertura) -->
                             <div id="coverage-table-container" class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
+                                <div class="flex justify-between items-center mb-4">
+                                    <h2 class="text-lg font-semibold text-white">Resultados da Análise</h2>
+                                    <div class="flex items-end gap-4">
+                                        <div>
+                                            <label for="coverage-working-days-input" class="block text-xs font-medium text-slate-400 mb-1 text-center">Dias Úteis</label>
+                                            <div class="flex items-center justify-center gap-1">
+                                                <input type="number" id="coverage-working-days-input" value="0" min="1" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg block w-20 p-1.5 text-center focus:outline-none focus:ring-2 focus:ring-teal-500">
+                                            </div>
+                                        </div>
+                                        <div id="coverage-trend-filter-container" class="flex items-center gap-2">
+                                            <button data-trend="all" class="coverage-trend-btn active p-1 rounded-full transition-transform duration-200"><div class="w-5 h-5 rounded-full bg-gray-400"></div></button>
+                                            <button data-trend="low" class="coverage-trend-btn p-1 rounded-full transition-transform duration-200"><div class="w-5 h-5 rounded-full bg-red-500"></div></button>
+                                            <button data-trend="medium" class="coverage-trend-btn p-1 rounded-full transition-transform duration-200"><div class="w-5 h-5 rounded-full bg-yellow-500"></div></button>
+                                            <button data-trend="good" class="coverage-trend-btn p-1 rounded-full transition-transform duration-200"><div class="w-5 h-5 rounded-full bg-green-500"></div></button>
+                                        </div>
+                                    </div>
+                                </div>
                                 <div id="coverage-results" class="overflow-auto custom-scrollbar" style="max-height: 60vh;">
                                     <table class="min-w-full text-sm text-left text-slate-300">
                                         <thead class="text-xs text-slate-400 uppercase sticky-header">
-                                            <tr><th class="px-2 py-2">PRODUTO</th><th class="px-2 py-2 text-right">ESTOQUE (Cx)</th><th class="px-2 py-2 text-right">COB. ESTOQUE (Dias)</th><th class="px-2 py-2 text-right">PDVs MÊS ANT.</th><th class="px-2 py-2 text-right">PDVs MÊS ATUAL</th><th class="px-2 py-2 text-right">COB. PDVs (%)</th></tr>
+                                            <tr><th class="px-2 py-2">PRODUTO</th><th class="px-2 py-2 text-right">ESTOQUE (Cx)</th><th class="px-2 py-2 text-right">QTD. CAIXAS (MÊS)</th><th class="px-2 py-2 text-right">COB. ESTOQUE (Dias)</th><th class="px-2 py-2 text-right">PDVs MÊS ANT.</th><th class="px-2 py-2 text-right">PDVs MÊS ATUAL</th><th class="px-2 py-2 text-right">COB. PDVs (%)</th></tr>
                                         </thead>
                                         <tbody id="coverage-table-body" class="divide-y divide-slate-700"></tbody>
                                     </table>
