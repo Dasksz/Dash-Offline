@@ -576,8 +576,10 @@
                     if (isNaN(qtdeMaster) || qtdeMaster <= 0) qtdeMaster = 1;
                     productMasterMap.set(productCode, qtdeMaster);
                     if (!productDetailsMap.has(productCode)) {
+                        const descricao = String(prod['Descrição'] || `Produto ${productCode}`);
                         productDetailsMap.set(productCode, {
-                            descricao: String(prod['Descrição'] || `Produto ${productCode}`),
+                            descricao: descricao,
+                            descricaoNormalizada: normalize(descricao),
                             fornecedor: String(prod['Nome do fornecedor'] || 'N/A'),
                             codfor: String(prod['Fornecedor'] || 'N/A'),
                             dtCadastro: prod['Dt.Cadastro'] || null
@@ -851,7 +853,10 @@
                     byClient: new Map(),
                     byPosition: new Map(),
                     byRede: new Map(),
-                    byTipoVenda: new Map()
+                    byTipoVenda: new Map(),
+                    byProduct: new Map(),
+                    byCity: new Map(),
+                    byFilial: new Map()
                 },
                 history: {
                     bySupervisor: new Map(),
@@ -859,7 +864,10 @@
                     byPasta: new Map(),
                     bySupplier: new Map(),
                     byClient: new Map(),
-                    byTipoVenda: new Map()
+                    byTipoVenda: new Map(),
+                    byProduct: new Map(),
+                    byCity: new Map(),
+                    byFilial: new Map()
                 }
             },
             searchIndices: {
@@ -869,6 +877,7 @@
         };
         let clientLastBranch = new Map();
         let clientRamoMap = new Map();
+        let globalSupplierMap = new Map();
 
         const QUARTERLY_DIVISOR = 3;
 
@@ -889,6 +898,15 @@
                 });
             };
             populateSellerDetails([...allSalesData, ...allHistoryData]);
+
+            const populateSupplierMap = (data) => {
+                data.forEach(s => {
+                    if (s.CODFOR && s.FORNECEDOR) {
+                        globalSupplierMap.set(String(s.CODFOR), s.FORNECEDOR);
+                    }
+                });
+            };
+            populateSupplierMap([...allSalesData, ...allHistoryData]);
 
             const clientToCurrentSellerMap = new Map();
             let americanasCodCli = null;
@@ -1033,7 +1051,7 @@
             });
 
             const buildIndex = (data, indexSet, dataMap) => {
-                const { bySupervisor, byRca, byPasta, bySupplier, byClient, byPosition, byRede, byTipoVenda } = indexSet;
+                const { bySupervisor, byRca, byPasta, bySupplier, byClient, byPosition, byRede, byTipoVenda, byProduct, byCity, byFilial } = indexSet;
                 
                 data.forEach((sale, index) => {
                     const id = dataMap.size;
@@ -1047,6 +1065,9 @@
                     const position = sale.POSICAO || 'N/A';
                     const rede = clientRamoMap.get(client) || 'N/A';
                     const tipoVenda = sale.TIPOVENDA;
+                    const product = sale.PRODUTO;
+                    const city = (sale.CIDADE || 'N/A').toLowerCase();
+                    const filial = sale.FILIAL;
 
                     if (!bySupervisor.has(supervisor)) bySupervisor.set(supervisor, new Set());
                     bySupervisor.get(supervisor).add(id);
@@ -1076,6 +1097,21 @@
                     if (byRede) {
                          if (!byRede.has(rede)) byRede.set(rede, new Set());
                          byRede.get(rede).add(id);
+                    }
+
+                    if (byProduct) {
+                        if (!byProduct.has(product)) byProduct.set(product, new Set());
+                        byProduct.get(product).add(id);
+                    }
+
+                    if (byCity) {
+                        if (!byCity.has(city)) byCity.set(city, new Set());
+                        byCity.get(city).add(id);
+                    }
+
+                    if (byFilial && filial) {
+                        if (!byFilial.has(filial)) byFilial.set(filial, new Set());
+                        byFilial.get(filial).add(id);
                     }
                 });
             };
@@ -2537,9 +2573,20 @@
             filterEl.innerHTML = options.join('');
         }
 
-        function updateSellerFilter(supervisor, dropdown, filterText, selectedArray, dataSource) {
+        function updateSellerFilter(supervisor, dropdown, filterText, selectedArray, dataSource, renderList = true) {
+            if (!renderList) {
+                 if (selectedArray.length === 0) filterText.textContent = 'Todos Vendedores';
+                 else if (selectedArray.length === 1) filterText.textContent = selectedArray[0];
+                 else filterText.textContent = `${selectedArray.length} vendedores selecionados`;
+                 return selectedArray;
+            }
+
             const sellersToShow = supervisor ? [...new Set(dataSource.filter(s => s.SUPERV === supervisor).map(s => s.NOME))].sort() : [...new Set(dataSource.map(item => item.NOME).filter(Boolean))].sort();
             selectedArray = selectedArray.filter(seller => sellersToShow.includes(seller));
+
+            if (selectedArray.length === 0 || selectedArray.length === sellersToShow.length) filterText.textContent = 'Todos Vendedores';
+            else if (selectedArray.length === 1) filterText.textContent = selectedArray[0];
+            else filterText.textContent = `${selectedArray.length} vendedores selecionados`;
 
             const htmlParts = [];
             for (let i = 0; i < sellersToShow.length; i++) {
@@ -2549,9 +2596,6 @@
             }
             dropdown.innerHTML = htmlParts.join('');
 
-            if (selectedArray.length === 0 || selectedArray.length === sellersToShow.length) filterText.textContent = 'Todos Vendedores';
-            else if (selectedArray.length === 1) filterText.textContent = selectedArray[0];
-            else filterText.textContent = `${selectedArray.length} vendedores selecionados`;
             return selectedArray;
         }
 
@@ -3065,12 +3109,31 @@
             else showNoDataMessage('mixChart', 'Sem dados para o ranking.');
         }
 
-        function updateSupplierFilter(dropdown, filterText, selectedArray, dataSource, filterType = 'comparison') {
+        function updateSupplierFilter(dropdown, filterText, selectedArray, dataSource, filterType = 'comparison', renderList = true) {
+            if (!renderList) {
+                if (selectedArray.length === 0) {
+                    filterText.textContent = 'Todos Fornecedores';
+                } else if (selectedArray.length === 1) {
+                    filterText.textContent = globalSupplierMap.get(selectedArray[0]) || '1 selecionado';
+                } else {
+                    filterText.textContent = `${selectedArray.length} fornecedores selecionados`;
+                }
+                return selectedArray;
+            }
+
             const suppliers = new Map();
             dataSource.forEach(s => { if(s.CODFOR && s.FORNECEDOR) suppliers.set(s.CODFOR, s.FORNECEDOR); });
             const sortedSuppliers = [...suppliers.entries()].sort((a, b) => a[1].localeCompare(b[1]));
 
             selectedArray = selectedArray.filter(cod => suppliers.has(cod));
+
+            if (selectedArray.length === 0 || selectedArray.length === sortedSuppliers.length) {
+                filterText.textContent = 'Todos Fornecedores';
+            } else if (selectedArray.length === 1) {
+                filterText.textContent = suppliers.get(selectedArray[0]) || '1 selecionado';
+            } else {
+                filterText.textContent = `${selectedArray.length} fornecedores selecionados`;
+            }
 
             const htmlParts = [];
             for (let i = 0; i < sortedSuppliers.length; i++) {
@@ -3080,13 +3143,6 @@
             }
             dropdown.innerHTML = htmlParts.join('');
 
-            if (selectedArray.length === 0 || selectedArray.length === sortedSuppliers.length) {
-                filterText.textContent = 'Todos Fornecedores';
-            } else if (selectedArray.length === 1) {
-                filterText.textContent = suppliers.get(selectedArray[0]) || '1 selecionado';
-            } else {
-                filterText.textContent = `${selectedArray.length} fornecedores selecionados`;
-            }
             return selectedArray;
         }
 
@@ -3245,7 +3301,7 @@
                 const clientProducts = clientProductNetSales.get(sale.CODCLI);
 
                 if (!clientProducts.has(sale.PRODUTO)) {
-                    clientProducts.set(sale.PRODUTO, { netValue: 0, description: sale.DESCRICAO });
+                    clientProducts.set(sale.PRODUTO, { netValue: 0, productCode: sale.PRODUTO });
                 }
                 const productData = clientProducts.get(sale.PRODUTO);
                 productData.netValue += (Number(sale.VLVENDA) || 0);
@@ -3256,14 +3312,22 @@
             for (const [codcli, products] of clientProductNetSales.entries()) {
                 for (const data of products.values()) {
                     if (data.netValue > 1) {
-                        const normalizedDescription = normalize(data.description);
-                        for (const category of normalizedCategories) {
-                            if (normalizedDescription.includes(category)) {
-                                if (!clientPurchasedCategories.has(codcli)) {
-                                    clientPurchasedCategories.set(codcli, new Set());
+                        const productInfo = productDetailsMap.get(data.productCode);
+                        let normalizedDescription = productInfo ? productInfo.descricaoNormalizada : '';
+
+                        if (!normalizedDescription && data.description) {
+                            normalizedDescription = normalize(data.description);
+                        }
+
+                        if (normalizedDescription) {
+                            for (const category of normalizedCategories) {
+                                if (normalizedDescription.includes(category)) {
+                                    if (!clientPurchasedCategories.has(codcli)) {
+                                        clientPurchasedCategories.set(codcli, new Set());
+                                    }
+                                    clientPurchasedCategories.get(codcli).add(category);
+                                    break;
                                 }
-                                clientPurchasedCategories.get(codcli).add(category);
-                                break;
                             }
                         }
                     }
@@ -3321,6 +3385,18 @@
             return kpiValues.reduce((a, b) => a + b, 0) / QUARTERLY_DIVISOR;
         }
 
+        function monthlyKpiAverageOptimized(monthlyData, kpiFn, ...kpiArgs) {
+            const { salesByMonth, monthsToAverage } = monthlyData;
+
+            const kpiValues = monthsToAverage.map(monthKey => {
+                const salesForMonth = salesByMonth[monthKey];
+                return kpiFn(salesForMonth, ...kpiArgs);
+            });
+
+            if (kpiValues.length === 0) return 0;
+            return kpiValues.reduce((a, b) => a + b, 0) / QUARTERLY_DIVISOR;
+        }
+
         function calculateStockMonthlyAverage(historySales) {
             // Function groupSalesByMonth is defined above in the scope
             const salesByMonth = groupSalesByMonth(historySales);
@@ -3349,10 +3425,139 @@
             return kpiValues.reduce((a, b) => a + b, 0) / kpiValues.length;
         }
 
+        const getFilteredDataFromIndices = (indices, dataMap, filters, excludeFilter = null) => {
+            const setsToIntersect = [];
+            let hasFilter = false;
+
+            if (filters.filial && filters.filial !== 'ambas') {
+                hasFilter = true;
+                if (indices.byFilial && indices.byFilial.has(filters.filial)) {
+                    setsToIntersect.push(indices.byFilial.get(filters.filial));
+                } else {
+                    return [];
+                }
+            }
+
+            if (excludeFilter !== 'supervisor' && filters.supervisor) {
+                hasFilter = true;
+                if (indices.bySupervisor && indices.bySupervisor.has(filters.supervisor)) {
+                    setsToIntersect.push(indices.bySupervisor.get(filters.supervisor));
+                } else {
+                    return [];
+                }
+            }
+
+            if (excludeFilter !== 'pasta' && filters.pasta) {
+                hasFilter = true;
+                if (indices.byPasta && indices.byPasta.has(filters.pasta)) {
+                    setsToIntersect.push(indices.byPasta.get(filters.pasta));
+                } else {
+                    return [];
+                }
+            }
+
+            if (excludeFilter !== 'tipoVenda' && filters.tipoVenda && filters.tipoVenda.size > 0) {
+                hasFilter = true;
+                const ids = new Set();
+                let foundAny = false;
+                filters.tipoVenda.forEach(t => {
+                    if (indices.byTipoVenda && indices.byTipoVenda.has(t)) {
+                        indices.byTipoVenda.get(t).forEach(id => ids.add(id));
+                        foundAny = true;
+                    }
+                });
+                if (foundAny) setsToIntersect.push(ids);
+                else return [];
+            }
+
+            if (excludeFilter !== 'seller' && filters.seller && filters.seller.size > 0) {
+                hasFilter = true;
+                const ids = new Set();
+                let foundAny = false;
+                filters.seller.forEach(s => {
+                    if (indices.byRca && indices.byRca.has(s)) {
+                        indices.byRca.get(s).forEach(id => ids.add(id));
+                        foundAny = true;
+                    }
+                });
+                if (foundAny) setsToIntersect.push(ids);
+                else return [];
+            }
+
+            if (excludeFilter !== 'supplier' && filters.supplier && filters.supplier.size > 0) {
+                hasFilter = true;
+                const ids = new Set();
+                let foundAny = false;
+                filters.supplier.forEach(s => {
+                    if (indices.bySupplier && indices.bySupplier.has(s)) {
+                        indices.bySupplier.get(s).forEach(id => ids.add(id));
+                        foundAny = true;
+                    }
+                });
+                if (foundAny) setsToIntersect.push(ids);
+                else return [];
+            }
+
+            if (excludeFilter !== 'product' && filters.product && filters.product.size > 0) {
+                hasFilter = true;
+                const ids = new Set();
+                let foundAny = false;
+                filters.product.forEach(p => {
+                    if (indices.byProduct && indices.byProduct.has(p)) {
+                        indices.byProduct.get(p).forEach(id => ids.add(id));
+                        foundAny = true;
+                    }
+                });
+                if (foundAny) setsToIntersect.push(ids);
+                else return [];
+            }
+
+            if (excludeFilter !== 'city' && filters.city) {
+                hasFilter = true;
+                if (indices.byCity && indices.byCity.has(filters.city)) {
+                    setsToIntersect.push(indices.byCity.get(filters.city));
+                } else {
+                    return [];
+                }
+            }
+
+            if (setsToIntersect.length === 0 && !hasFilter && !filters.clientCodes) {
+                return Array.from(dataMap.values());
+            }
+
+            let resultIds;
+            if (setsToIntersect.length > 0) {
+                setsToIntersect.sort((a, b) => a.size - b.size);
+                resultIds = new Set(setsToIntersect[0]);
+                for (let i = 1; i < setsToIntersect.length; i++) {
+                    const currentSet = setsToIntersect[i];
+                    for (const id of resultIds) {
+                        if (!currentSet.has(id)) {
+                            resultIds.delete(id);
+                        }
+                    }
+                    if (resultIds.size === 0) break;
+                }
+            } else if (filters.clientCodes) {
+                 const allData = Array.from(dataMap.values());
+                 return allData.filter(s => filters.clientCodes.has(s.CODCLI));
+            } else {
+                return Array.from(dataMap.values());
+            }
+
+            const result = [];
+            for (const id of resultIds) {
+                const item = dataMap.get(id);
+                if (!filters.clientCodes || filters.clientCodes.has(item.CODCLI)) {
+                    result.push(item);
+                }
+            }
+            return result;
+        };
+
         function getComparisonFilteredData(options = {}) {
             const { excludeFilter = null } = options;
 
-            // Sets for O(1)
             const sellersSet = new Set(selectedComparisonSellers);
             const suppliersSet = new Set(selectedComparisonSuppliers);
             const productsSet = new Set(selectedComparisonProducts);
@@ -3364,36 +3569,35 @@
             const city = comparisonCityFilter.value.trim().toLowerCase();
             const filial = comparisonFilialFilter.value;
 
-            let clients = allClientsData;
-            if (comparisonRedeGroupFilter === 'com_rede') {
-                clients = clients.filter(c => c.ramo && c.ramo !== 'N/A');
-                 if (redeSet.size > 0) {
-                    clients = clients.filter(c => redeSet.has(c.ramo));
+            let clientCodes = null;
+            if (comparisonRedeGroupFilter) {
+                let clients = allClientsData;
+                if (comparisonRedeGroupFilter === 'com_rede') {
+                    clients = clients.filter(c => c.ramo && c.ramo !== 'N/A');
+                     if (redeSet.size > 0) {
+                        clients = clients.filter(c => redeSet.has(c.ramo));
+                    }
+                } else if (comparisonRedeGroupFilter === 'sem_rede') {
+                    clients = clients.filter(c => !c.ramo || c.ramo === 'N/A');
                 }
-            } else if (comparisonRedeGroupFilter === 'sem_rede') {
-                clients = clients.filter(c => !c.ramo || c.ramo === 'N/A');
+                clientCodes = new Set(clients.map(c => c['Código']));
             }
-            const clientCodes = new Set(clients.map(c => c['Código']));
 
-            const filterFunction = s => {
-                if (filial !== 'ambas' && s.FILIAL !== filial) return false;
-                if (excludeFilter !== 'supervisor' && supervisor && s.SUPERV !== supervisor) return false;
-                if (excludeFilter !== 'pasta' && pasta && s.OBSERVACAOFOR !== pasta) return false;
-                if (excludeFilter !== 'tipoVenda' && tiposVendaSet.size > 0 && !tiposVendaSet.has(s.TIPOVENDA)) return false;
-                if (excludeFilter !== 'seller' && sellersSet.size > 0 && !sellersSet.has(s.NOME)) return false;
-                if (excludeFilter !== 'supplier' && suppliersSet.size > 0 && !suppliersSet.has(s.CODFOR)) return false;
-                if (excludeFilter !== 'product' && productsSet.size > 0 && !productsSet.has(s.PRODUTO)) return false;
-                if (excludeFilter !== 'city' && city && (!s.CIDADE || s.CIDADE.toLowerCase() !== city)) return false;
-
-                if (comparisonRedeGroupFilter) {
-                    return clientCodes.has(s.CODCLI);
-                }
-                return true;
+            const filters = {
+                filial,
+                supervisor,
+                pasta,
+                tipoVenda: tiposVendaSet,
+                seller: sellersSet,
+                supplier: suppliersSet,
+                product: productsSet,
+                city,
+                clientCodes
             };
 
             return {
-                currentSales: allSalesData.filter(filterFunction),
-                historySales: allHistoryData.filter(filterFunction)
+                currentSales: getFilteredDataFromIndices(optimizedData.indices.current, optimizedData.salesById, filters, excludeFilter),
+                historySales: getFilteredDataFromIndices(optimizedData.indices.history, optimizedData.historyById, filters, excludeFilter)
             };
         }
 
@@ -3409,16 +3613,16 @@
 
             const { currentSales: sellerCurrent, historySales: sellerHistory } = getComparisonFilteredData({ excludeFilter: 'seller' });
             const sellerOptionsData = [...sellerCurrent, ...sellerHistory];
-            selectedComparisonSellers = updateSellerFilter(comparisonSupervisorFilter.value, comparisonVendedorFilterDropdown, comparisonVendedorFilterText, selectedComparisonSellers, sellerOptionsData);
+            selectedComparisonSellers = updateSellerFilter(comparisonSupervisorFilter.value, comparisonVendedorFilterDropdown, comparisonVendedorFilterText, selectedComparisonSellers, sellerOptionsData, false);
 
             const { currentSales: supplierCurrent, historySales: supplierHistory } = getComparisonFilteredData({ excludeFilter: 'supplier' });
             const supplierOptionsData = [...supplierCurrent, ...supplierHistory];
-            selectedComparisonSuppliers = updateSupplierFilter(comparisonSupplierFilterDropdown, comparisonSupplierFilterText, selectedComparisonSuppliers, supplierOptionsData, 'comparison');
+            selectedComparisonSuppliers = updateSupplierFilter(comparisonSupplierFilterDropdown, comparisonSupplierFilterText, selectedComparisonSuppliers, supplierOptionsData, 'comparison', false);
 
             const { currentSales: tvCurrent, historySales: tvHistory } = getComparisonFilteredData({ excludeFilter: 'tipoVenda' });
             selectedComparisonTiposVenda = updateTipoVendaFilter(comparisonTipoVendaFilterDropdown, comparisonTipoVendaFilterText, selectedComparisonTiposVenda, [...tvCurrent, ...tvHistory]);
 
-            updateComparisonProductFilter();
+            updateComparisonProductFilter(false);
 
             const { currentSales: cityCurrent, historySales: cityHistory } = getComparisonFilteredData({ excludeFilter: 'city' });
             const cityOptionsData = [...cityCurrent, ...cityHistory];
@@ -3436,17 +3640,38 @@
             multimarcasBtn.classList.toggle('opacity-50', !hasMultimarcas);
         }
 
-        function updateProductFilter(dropdown, filterText, selectedArray, dataSource, filterType = 'comparison') {
+        function updateProductFilter(dropdown, filterText, selectedArray, dataSource, filterType = 'comparison', renderList = true) {
             const searchInput = dropdown.querySelector('input[type="text"]');
             const listContainer = dropdown.querySelector('div[id$="-list"]');
             const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
 
-            const products = [...new Map(dataSource.map(s => [s.PRODUTO, s.DESCRICAO])).entries()].sort((a,b) => a[1].localeCompare(b[1]));
+            if (!renderList) {
+                if (selectedArray.length === 0) {
+                    filterText.textContent = 'Todos os Produtos';
+                } else if (selectedArray.length === 1) {
+                    const details = productDetailsMap.get(selectedArray[0]);
+                    filterText.textContent = details ? details.descricao : '1 selecionado';
+                } else {
+                    filterText.textContent = `${selectedArray.length} produtos selecionados`;
+                }
+                return;
+            }
+
+            const productsMap = new Map(dataSource.map(s => [s.PRODUTO, s.DESCRICAO]));
+            const products = [...productsMap.entries()].sort((a,b) => a[1].localeCompare(b[1]));
+
+            if (selectedArray.length === 0) {
+                filterText.textContent = 'Todos os Produtos';
+            } else if (selectedArray.length === 1) {
+                filterText.textContent = productsMap.get(selectedArray[0]) || '1 selecionado';
+            } else {
+                filterText.textContent = `${selectedArray.length} produtos selecionados`;
+            }
 
             const filteredProducts = searchTerm.length > 0
                 ? products.filter(([code, name]) =>
                     name.toLowerCase().includes(searchTerm) || code.toLowerCase().includes(searchTerm)
-                  )
+                )
                 : products;
 
             const htmlParts = [];
@@ -3460,20 +3685,11 @@
                     </label>`);
             }
             listContainer.innerHTML = htmlParts.join('');
-
-            if (selectedArray.length === 0) {
-                filterText.textContent = 'Todos os Produtos';
-            } else if (selectedArray.length === 1) {
-                const productsInfo = new Map(products);
-                filterText.textContent = productsInfo.get(selectedArray[0]) || '1 selecionado';
-            } else {
-                filterText.textContent = `${selectedArray.length} produtos selecionados`;
-            }
         }
 
-        function updateComparisonProductFilter() {
+        function updateComparisonProductFilter(renderList = true) {
             const { currentSales, historySales } = getComparisonFilteredData({ excludeFilter: 'product' });
-            updateProductFilter(comparisonProductFilterDropdown, comparisonProductFilterText, selectedComparisonProducts, [...currentSales, ...historySales], 'comparison');
+            updateProductFilter(comparisonProductFilterDropdown, comparisonProductFilterText, selectedComparisonProducts, [...currentSales, ...historySales], 'comparison', renderList);
         }
 
         function updateStockProductFilter() {
@@ -3632,11 +3848,29 @@
             const historyAvgFat = historyTotalFat / QUARTERLY_DIVISOR;
             const historyAvgPeso = historyTotalPeso / 1000 / QUARTERLY_DIVISOR;
 
-            const historyClientsAverage = monthlyKpiAverage(historySales, getPositiveClientsWithNewLogic);
+            // Optimize: Group history by month ONCE
+            const salesByMonth = groupSalesByMonth(historySales);
+            let sortedMonths = Object.keys(salesByMonth).sort();
+
+            if (sortedMonths.length > 0) {
+                const firstMonthKey = sortedMonths[0];
+                const firstSaleInFirstMonth = salesByMonth[firstMonthKey].reduce((earliest, sale) => {
+                    const saleDate = parseDate(sale.DTPED);
+                    return (!earliest || (saleDate && saleDate < earliest)) ? saleDate : earliest;
+                }, null);
+
+                if (firstSaleInFirstMonth && firstSaleInFirstMonth.getUTCDate() > 20) {
+                    sortedMonths.shift();
+                }
+            }
+            const monthsToAverage = sortedMonths.slice(-3);
+            const monthlyData = { salesByMonth, monthsToAverage };
+
+            const historyClientsAverage = monthlyKpiAverageOptimized(monthlyData, getPositiveClientsWithNewLogic);
             const historyTicketAverage = historyClientsAverage > 0 ? historyAvgFat / historyClientsAverage : 0;
-            const historyMixPepsico = monthlyKpiAverage(historySales, calculateAverageMixComDevolucao, pepsicoCodfors);
-            const historyPositivacaoSalty = monthlyKpiAverage(historySales, calculatePositivacaoPorCestaComDevolucao, saltyCategories);
-            const historyPositivacaoFoods = monthlyKpiAverage(historySales, calculatePositivacaoPorCestaComDevolucao, foodsCategories);
+            const historyMixPepsico = monthlyKpiAverageOptimized(monthlyData, calculateAverageMixComDevolucao, pepsicoCodfors);
+            const historyPositivacaoSalty = monthlyKpiAverageOptimized(monthlyData, calculatePositivacaoPorCestaComDevolucao, saltyCategories);
+            const historyPositivacaoFoods = monthlyKpiAverageOptimized(monthlyData, calculatePositivacaoPorCestaComDevolucao, foodsCategories);
 
             renderKpiCards([
                 { title: 'Faturamento Total', current: currentTotalFat, history: historyAvgFat, format: 'currency' },
@@ -5613,7 +5847,14 @@
 
             comparisonSupervisorFilter.addEventListener('change', handleComparisonFilterChange);
             comparisonFilialFilter.addEventListener('change', handleComparisonFilterChange);
-            comparisonVendedorFilterBtn.addEventListener('click', () => comparisonVendedorFilterDropdown.classList.toggle('hidden'));
+            comparisonVendedorFilterBtn.addEventListener('click', () => {
+                comparisonVendedorFilterDropdown.classList.toggle('hidden');
+                if (!comparisonVendedorFilterDropdown.classList.contains('hidden')) {
+                    const { currentSales, historySales } = getComparisonFilteredData({ excludeFilter: 'seller' });
+                    const sellerOptionsData = [...currentSales, ...historySales];
+                    selectedComparisonSellers = updateSellerFilter(comparisonSupervisorFilter.value, comparisonVendedorFilterDropdown, comparisonVendedorFilterText, selectedComparisonSellers, sellerOptionsData, true);
+                }
+            });
             comparisonVendedorFilterDropdown.addEventListener('change', (e) => { if (e.target.type === 'checkbox') { const { value, checked } = e.target; if (checked) selectedComparisonSellers.push(value); else selectedComparisonSellers = selectedComparisonSellers.filter(s => s !== value); handleComparisonFilterChange(); } });
             comparisonTipoVendaFilterBtn.addEventListener('click', () => comparisonTipoVendaFilterDropdown.classList.toggle('hidden'));
             comparisonTipoVendaFilterDropdown.addEventListener('change', (e) => {
@@ -5629,7 +5870,14 @@
                 }
             });
             comparisonFornecedorToggleContainer.addEventListener('click', (e) => { if (e.target.tagName === 'BUTTON') { const fornecedor = e.target.dataset.fornecedor; if (currentComparisonFornecedor === fornecedor) { currentComparisonFornecedor = ''; e.target.classList.remove('active'); } else { currentComparisonFornecedor = fornecedor; comparisonFornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(b => b.classList.remove('active')); e.target.classList.add('active'); } handleComparisonFilterChange(); } });
-            comparisonSupplierFilterBtn.addEventListener('click', () => comparisonSupplierFilterDropdown.classList.toggle('hidden'));
+            comparisonSupplierFilterBtn.addEventListener('click', () => {
+                comparisonSupplierFilterDropdown.classList.toggle('hidden');
+                if (!comparisonSupplierFilterDropdown.classList.contains('hidden')) {
+                    const { currentSales, historySales } = getComparisonFilteredData({ excludeFilter: 'supplier' });
+                    const supplierOptionsData = [...currentSales, ...historySales];
+                    selectedComparisonSuppliers = updateSupplierFilter(comparisonSupplierFilterDropdown, comparisonSupplierFilterText, selectedComparisonSuppliers, supplierOptionsData, 'comparison', true);
+                }
+            });
             comparisonSupplierFilterDropdown.addEventListener('change', (e) => { if (e.target.type === 'checkbox' && e.target.dataset.filterType === 'comparison') { const { value, checked } = e.target; if (checked) selectedComparisonSuppliers.push(value); else selectedComparisonSuppliers = selectedComparisonSuppliers.filter(s => s !== value); handleComparisonFilterChange(); } });
 
             comparisonComRedeBtn.addEventListener('click', () => comparisonRedeFilterDropdown.classList.toggle('hidden'));
