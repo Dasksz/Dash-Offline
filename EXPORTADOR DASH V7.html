@@ -1895,7 +1895,7 @@
                 productAllSales.forEach(sale => {
                     const saleDate = parseDate(sale.DTPED);
                     if (saleDate && saleDate >= startDate && saleDate <= endDate) {
-                        totalQtySoldInRange += sale.QTVENDA_EMBALAGEM_MASTER;
+                        totalQtySoldInRange += (sale.QTVENDA_EMBALAGEM_MASTER || 0);
                     }
                 });
 
@@ -1910,12 +1910,17 @@
                     ? ((boxesSoldCurrentMonth - boxesSoldPreviousMonth) / boxesSoldPreviousMonth) * 100
                     : (boxesSoldCurrentMonth > 0 ? Infinity : 0);
 
+                const pdvVariation = clientsWhoGotProductPrevious > 0
+                    ? ((clientsWhoGotProductCurrent - clientsWhoGotProductPrevious) / clientsWhoGotProductPrevious) * 100
+                    : (clientsWhoGotProductCurrent > 0 ? Infinity : 0);
+
                 tableData.push({
                     descricao: `(${productCode}) ${productInfo.descricao}`,
                     stockQty: stockQty,
                     boxesSoldCurrentMonth: boxesSoldCurrentMonth,
                     boxesSoldPreviousMonth: boxesSoldPreviousMonth,
                     boxesVariation: boxesVariation,
+                    pdvVariation: pdvVariation,
                     trendDays: trendDays,
                     clientsPreviousCount: clientsWhoGotProductPrevious,
                     clientsCurrentCount: clientsWhoGotProductCurrent,
@@ -1938,9 +1943,7 @@
             coverageSelectionCoverageCountKpiPrevious.textContent = `${selectionCoveredCountPrevious.toLocaleString('pt-BR')} de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
             
             tableData.sort((a, b) => {
-                const trendA = isFinite(a.trendDays) ? a.trendDays : (a.stockQty > 0 ? 999999999 : -1);
-                const trendB = isFinite(b.trendDays) ? b.trendDays : (b.stockQty > 0 ? 999999999 : -1);
-                return trendB - trendA;
+                return b.stockQty - a.stockQty;
             });
 
             let filteredTableData = tableData.filter(item => item.boxesSoldCurrentMonth > 0);
@@ -1958,28 +1961,24 @@
             coverageTableDataForExport = filteredTableData;
 
             coverageTableBody.innerHTML = filteredTableData.map(item => {
-                let trendText;
-                if (!isFinite(item.trendDays) && item.stockQty > 0) {
-                    trendText = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-500/30 text-gray-300">S/ VENDA</span>`;
-                } else if (isFinite(item.trendDays)) {
-                    const trendDays = Math.floor(item.trendDays);
-                    let trendColor = 'text-slate-400';
-                    if (trendDays < 15) trendColor = 'text-red-400';
-                    else if (trendDays < 30) trendColor = 'text-yellow-400';
-                    else trendColor = 'text-green-400';
-                    trendText = `<span class="font-bold ${trendColor}">${trendDays} dias</span>`;
-                } else {
-                    trendText = '-';
-                }
-
-                let variationContent;
+                let boxesVariationContent;
                 if (isFinite(item.boxesVariation)) {
                     const colorClass = item.boxesVariation >= 0 ? 'text-green-400' : 'text-red-400';
-                    variationContent = `<span class="${colorClass}">${item.boxesVariation.toFixed(1)}%</span>`;
+                    boxesVariationContent = `<span class="${colorClass}">${item.boxesVariation.toFixed(1)}%</span>`;
                 } else if (item.boxesVariation === Infinity) {
-                    variationContent = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-500/30 text-purple-300">Novo</span>`;
+                    boxesVariationContent = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-500/30 text-purple-300">Novo</span>`;
                 } else {
-                    variationContent = `<span>-</span>`;
+                    boxesVariationContent = `<span>-</span>`;
+                }
+
+                let pdvVariationContent;
+                if (isFinite(item.pdvVariation)) {
+                    const colorClass = item.pdvVariation >= 0 ? 'text-green-400' : 'text-red-400';
+                    pdvVariationContent = `<span class="${colorClass}">${item.pdvVariation.toFixed(1)}%</span>`;
+                } else if (item.pdvVariation === Infinity) {
+                    pdvVariationContent = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-500/30 text-purple-300">Novo</span>`;
+                } else {
+                    pdvVariationContent = `<span>-</span>`;
                 }
                 
                 return `
@@ -1988,10 +1987,10 @@
                         <td class="px-2 py-1.5 text-xs text-right">${item.stockQty.toLocaleString('pt-BR')}</td>
                         <td class="px-2 py-1.5 text-xs text-right">${item.boxesSoldPreviousMonth.toLocaleString('pt-BR', {maximumFractionDigits: 2})}</td>
                         <td class="px-2 py-1.5 text-xs text-right">${item.boxesSoldCurrentMonth.toLocaleString('pt-BR', {maximumFractionDigits: 2})}</td>
-                        <td class="px-2 py-1.5 text-xs text-right">${trendText}</td>
+                        <td class="px-2 py-1.5 text-xs text-right">${boxesVariationContent}</td>
                         <td class="px-2 py-1.5 text-xs text-right">${item.clientsPreviousCount.toLocaleString('pt-BR')}</td>
                         <td class="px-2 py-1.5 text-xs text-right">${item.clientsCurrentCount.toLocaleString('pt-BR')}</td>
-                        <td class="px-2 py-1.5 text-xs text-right">${variationContent}</td>
+                        <td class="px-2 py-1.5 text-xs text-right">${pdvVariationContent}</td>
                     </tr>
                 `;
             }).join('');
@@ -3322,6 +3321,34 @@
             return kpiValues.reduce((a, b) => a + b, 0) / QUARTERLY_DIVISOR;
         }
 
+        function calculateStockMonthlyAverage(historySales) {
+            // Function groupSalesByMonth is defined above in the scope
+            const salesByMonth = groupSalesByMonth(historySales);
+            let sortedMonths = Object.keys(salesByMonth).sort();
+
+            if (sortedMonths.length > 0) {
+                const firstMonthKey = sortedMonths[0];
+                const firstSaleInFirstMonth = salesByMonth[firstMonthKey].reduce((earliest, sale) => {
+                    const saleDate = parseDate(sale.DTPED);
+                    return (!earliest || (saleDate && saleDate < earliest)) ? saleDate : earliest;
+                }, null);
+
+                if (firstSaleInFirstMonth && firstSaleInFirstMonth.getUTCDate() > 20) {
+                    sortedMonths.shift();
+                }
+            }
+
+            const monthsToAverage = sortedMonths.slice(-3);
+
+            const kpiValues = monthsToAverage.map(monthKey => {
+                const salesForMonth = salesByMonth[monthKey];
+                return salesForMonth.reduce((sum, s) => sum + (s.QTVENDA_EMBALAGEM_MASTER || 0), 0);
+            });
+
+            if (kpiValues.length === 0) return 0;
+            return kpiValues.reduce((a, b) => a + b, 0) / kpiValues.length;
+        }
+
         function getComparisonFilteredData(options = {}) {
             const { excludeFilter = null } = options;
 
@@ -4008,6 +4035,7 @@
             // Map<ProductCode, Array<Sale>>
             const salesByProduct = new Map();
             const historyByProduct = new Map();
+            const historySalesListByProduct = new Map(); // New Map
             const totalQtyByProduct = new Map(); // combined total
             const currentMonthQtyByProduct = new Map(); // current month total
             const uniqueMonthsByProduct = new Map(); // Set of "YYYY-MM"
@@ -4027,6 +4055,9 @@
                 totalQtyByProduct.set(p, (totalQtyByProduct.get(p) || 0) + qty);
 
                 if (isHistory) {
+                    if (!historySalesListByProduct.has(p)) historySalesListByProduct.set(p, []);
+                    historySalesListByProduct.get(p).push(s);
+
                     if (!historyByProduct.has(p)) historyByProduct.set(p, 0); // Just flag existence/count
                     historyByProduct.set(p, historyByProduct.get(p) + 1); // Simple counter or bool check
                 } else {
@@ -4124,8 +4155,8 @@
                 const isNew = productMaxLifeInWorkingDays <= passedWorkingDaysCurrentMonth;
                 const trendDays = dailyAvgSale > 0 ? (stock / dailyAvgSale) : (stock > 0 ? Infinity : 0);
 
-                const uniqueMonthsCount = uniqueMonthsByProduct.has(productCode) ? uniqueMonthsByProduct.get(productCode).size : 0;
-                const monthlyAvgSale = uniqueMonthsCount > 0 ? totalQtySold / uniqueMonthsCount : 0;
+                const productHistorySales = historySalesListByProduct.get(productCode) || [];
+                const monthlyAvgSale = calculateStockMonthlyAverage(productHistorySales);
 
                 productAnalysis.set(productCode, {
                     code: productCode,
@@ -4143,6 +4174,7 @@
 
 
             let sortedAnalysis = [...productAnalysis.values()].sort((a, b) => {
+                 // Reverted sorting to Trend Days as requested (Trend Descending)
                  const trendA = isFinite(a.trendDays) ? a.trendDays : -1;
                  const trendB = isFinite(b.trendDays) ? b.trendDays : -1;
                 return trendB - trendA;
@@ -5023,22 +5055,30 @@
             if (chartCanvas && charts['innovations-month-chart'] && chartLabels.length > 0) {
                 try {
                     const chartInstance = charts['innovations-month-chart'];
-                    const originalColor = chartInstance.options.plugins.datalabels.color;
+                    const originalDatalabelsColor = chartInstance.options.plugins.datalabels.color;
                     const originalXColor = chartInstance.options.scales.x.ticks.color;
                     const originalYColor = chartInstance.options.scales.y.ticks.color;
+                    const originalLegendColor = chartInstance.options.plugins.legend?.labels?.color;
 
                     chartInstance.options.plugins.datalabels.color = '#000000';
                     chartInstance.options.scales.x.ticks.color = '#000000';
                     chartInstance.options.scales.y.ticks.color = '#000000';
-                    chartInstance.update();
+                    if (chartInstance.options.plugins.legend && chartInstance.options.plugins.legend.labels) {
+                        chartInstance.options.plugins.legend.labels.color = '#000000';
+                    }
+
+                    chartInstance.update('none');
 
                     const chartImage = chartCanvas.toDataURL('image/png', 1.0);
                     doc.addImage(chartImage, 'PNG', 14, 50, 270, 100);
 
-                    chartInstance.options.plugins.datalabels.color = originalColor;
+                    chartInstance.options.plugins.datalabels.color = originalDatalabelsColor;
                     chartInstance.options.scales.x.ticks.color = originalXColor;
                     chartInstance.options.scales.y.ticks.color = originalYColor;
-                    chartInstance.update();
+                    if (chartInstance.options.plugins.legend && chartInstance.options.plugins.legend.labels) {
+                        chartInstance.options.plugins.legend.labels.color = originalLegendColor;
+                    }
+                    chartInstance.update('none');
                 } catch (e) {
                     console.error("Erro ao converter o gráfico para imagem:", e);
                     doc.text("Erro ao gerar a imagem do gráfico.", 14, 50);
@@ -5184,47 +5224,55 @@
             if (chartCanvas && charts['coverageCityChart']) {
                 try {
                     const chartInstance = charts['coverageCityChart'];
-                    const originalColor = chartInstance.options.plugins.datalabels.color;
+                    const originalDatalabelsColor = chartInstance.options.plugins.datalabels.color;
                     const originalXColor = chartInstance.options.scales.x.ticks.color;
                     const originalYColor = chartInstance.options.scales.y.ticks.color;
+                    const originalLegendColor = chartInstance.options.plugins.legend?.labels?.color;
 
                     chartInstance.options.plugins.datalabels.color = '#000000';
                     chartInstance.options.scales.x.ticks.color = '#000000';
                     chartInstance.options.scales.y.ticks.color = '#000000';
-                    chartInstance.update();
+                    if (chartInstance.options.plugins.legend && chartInstance.options.plugins.legend.labels) {
+                        chartInstance.options.plugins.legend.labels.color = '#000000';
+                    }
+
+                    chartInstance.update('none');
 
                     const chartImage = chartCanvas.toDataURL('image/png', 1.0);
                     doc.addImage(chartImage, 'PNG', 14, 50, 270, 80);
 
-                    chartInstance.options.plugins.datalabels.color = originalColor;
+                    chartInstance.options.plugins.datalabels.color = originalDatalabelsColor;
                     chartInstance.options.scales.x.ticks.color = originalXColor;
                     chartInstance.options.scales.y.ticks.color = originalYColor;
-                    chartInstance.update();
+                    if (chartInstance.options.plugins.legend && chartInstance.options.plugins.legend.labels) {
+                        chartInstance.options.plugins.legend.labels.color = originalLegendColor;
+                    }
+                    chartInstance.update('none');
                 } catch (e) {
                     console.error("Erro ao converter o gráfico para imagem:", e);
                 }
             }
 
-            const head = [['Produto', 'Estoque (Cx)', 'Cx. Mês Ant.', 'Cx. Mês Atual', 'Cob. Estoque', 'PDVs Ant.', 'PDVs Atual', 'Var. Caixas']];
+            const head = [['Produto', 'Estoque (Cx)', 'Cx. Mês Ant.', 'Cx. Mês Atual', 'Caixas (%)', 'PDVs Ant.', 'PDVs Atual', 'Cobertura (%)']];
             const body = [];
 
             coverageTableDataForExport.forEach(item => {
-                let trendText;
-                if (!isFinite(item.trendDays) && item.stockQty > 0) {
-                    trendText = 'S/ VENDA';
-                } else if (isFinite(item.trendDays)) {
-                    trendText = Math.floor(item.trendDays) + ' dias';
+                let boxesVariationContent;
+                if (isFinite(item.boxesVariation)) {
+                    boxesVariationContent = `${item.boxesVariation.toFixed(1)}%`;
+                } else if (item.boxesVariation === Infinity) {
+                    boxesVariationContent = 'Novo';
                 } else {
-                    trendText = '-';
+                    boxesVariationContent = '-';
                 }
 
-                let variationContent;
-                if (isFinite(item.boxesVariation)) {
-                    variationContent = `${item.boxesVariation.toFixed(1)}%`;
-                } else if (item.boxesVariation === Infinity) {
-                    variationContent = 'Novo';
+                let pdvVariationContent;
+                if (isFinite(item.pdvVariation)) {
+                    pdvVariationContent = `${item.pdvVariation.toFixed(1)}%`;
+                } else if (item.pdvVariation === Infinity) {
+                    pdvVariationContent = 'Novo';
                 } else {
-                    variationContent = '-';
+                    pdvVariationContent = '-';
                 }
 
                 const row = [
@@ -5232,10 +5280,10 @@
                     item.stockQty.toLocaleString('pt-BR'),
                     item.boxesSoldPreviousMonth.toLocaleString('pt-BR', {maximumFractionDigits: 2}),
                     item.boxesSoldCurrentMonth.toLocaleString('pt-BR', {maximumFractionDigits: 2}),
-                    trendText,
+                    boxesVariationContent,
                     item.clientsPreviousCount.toLocaleString('pt-BR'),
                     item.clientsCurrentCount.toLocaleString('pt-BR'),
-                    variationContent
+                    pdvVariationContent
                 ];
                 body.push(row);
             });
@@ -6192,40 +6240,6 @@
                 coverageUnitPriceInput.addEventListener('blur', handleCoverageFilterChange);
             }
 
-            const coverageWorkingDaysInput = document.getElementById('coverage-working-days-input');
-            if (coverageWorkingDaysInput) {
-                coverageWorkingDaysInput.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter') {
-                        e.preventDefault();
-                        const value = parseInt(e.target.value);
-                        if (!isNaN(value) && value > 0 && value <= maxWorkingDaysStock) {
-                            customWorkingDaysCoverage = value;
-                        } else {
-                             e.target.value = customWorkingDaysCoverage || maxWorkingDaysStock;
-                        }
-                        handleCoverageFilterChange();
-                        e.target.blur();
-                    }
-                });
-                coverageWorkingDaysInput.addEventListener('blur', (e) => {
-                    const value = parseInt(e.target.value);
-                     if (isNaN(value) || value <= 0 || value > maxWorkingDaysStock) {
-                         e.target.value = customWorkingDaysCoverage || maxWorkingDaysStock;
-                    } else if (value !== customWorkingDaysCoverage) {
-                        customWorkingDaysCoverage = value;
-                        handleCoverageFilterChange();
-                    }
-                });
-            }
-
-            document.querySelectorAll('.coverage-trend-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    coverageTrendFilter = btn.dataset.trend;
-                    document.querySelectorAll('.coverage-trend-btn').forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    updateCoverageView();
-                });
-            });
 
             document.addEventListener('click', (e) => {
                 if (!innovationsVendedorFilterBtn.contains(e.target) && !innovationsVendedorFilterDropdown.contains(e.target)) innovationsVendedorFilterDropdown.classList.add('hidden');
@@ -7145,25 +7159,11 @@
                             <div id="coverage-table-container" class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
                                 <div class="flex justify-between items-center mb-4">
                                     <h2 class="text-lg font-semibold text-white">Resultados da Análise</h2>
-                                    <div class="flex items-end gap-4">
-                                        <div>
-                                            <label for="coverage-working-days-input" class="block text-xs font-medium text-slate-400 mb-1 text-center">Dias Úteis</label>
-                                            <div class="flex items-center justify-center gap-1">
-                                                <input type="number" id="coverage-working-days-input" value="0" min="1" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg block w-20 p-1.5 text-center focus:outline-none focus:ring-2 focus:ring-teal-500">
-                                            </div>
-                                        </div>
-                                        <div id="coverage-trend-filter-container" class="flex items-center gap-2">
-                                            <button data-trend="all" class="coverage-trend-btn active p-1 rounded-full transition-transform duration-200"><div class="w-5 h-5 rounded-full bg-gray-400"></div></button>
-                                            <button data-trend="low" class="coverage-trend-btn p-1 rounded-full transition-transform duration-200"><div class="w-5 h-5 rounded-full bg-red-500"></div></button>
-                                            <button data-trend="medium" class="coverage-trend-btn p-1 rounded-full transition-transform duration-200"><div class="w-5 h-5 rounded-full bg-yellow-500"></div></button>
-                                            <button data-trend="good" class="coverage-trend-btn p-1 rounded-full transition-transform duration-200"><div class="w-5 h-5 rounded-full bg-green-500"></div></button>
-                                        </div>
-                                    </div>
                                 </div>
                                 <div id="coverage-results" class="overflow-auto custom-scrollbar" style="max-height: 60vh;">
                                     <table class="min-w-full text-sm text-left text-slate-300">
                                         <thead class="text-xs text-slate-400 uppercase sticky-header">
-                                            <tr><th class="px-2 py-2">PRODUTO</th><th class="px-2 py-2 text-right">ESTOQUE (Cx)</th><th class="px-2 py-2 text-right">QTD. CAIXAS (MÊS ANT.)</th><th class="px-2 py-2 text-right">QTD. CAIXAS (MÊS)</th><th class="px-2 py-2 text-right">COB. ESTOQUE (Dias)</th><th class="px-2 py-2 text-right">PDVs MÊS ANT.</th><th class="px-2 py-2 text-right">PDVs MÊS ATUAL</th><th class="px-2 py-2 text-right">CAIXAS (%)</th></tr>
+                                            <tr><th class="px-2 py-2">PRODUTO</th><th class="px-2 py-2 text-right">ESTOQUE (Cx)</th><th class="px-2 py-2 text-right">QTD. CAIXAS (MÊS ANT.)</th><th class="px-2 py-2 text-right">QTD. CAIXAS (MÊS)</th><th class="px-2 py-2 text-right">CAIXAS (%)</th><th class="px-2 py-2 text-right">PDVs MÊS ANT.</th><th class="px-2 py-2 text-right">PDVs MÊS ATUAL</th><th class="px-2 py-2 text-right">COBERTURA (%)</th></tr>
                                         </thead>
                                         <tbody id="coverage-table-body" class="divide-y divide-slate-700"></tbody>
                                     </table>
