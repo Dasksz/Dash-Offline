@@ -1636,25 +1636,17 @@
                 else coverageSupervisorFilter.value = '';
             }
 
-            if (skipFilter !== 'seller') {
-                const { sales: salesSeller, history: historySeller } = getCoverageFilteredData({ excludeFilter: 'seller' });
-                selectedCoverageSellers = updateSellerFilter(coverageSupervisorFilter.value, coverageVendedorFilterDropdown, coverageVendedorFilterText, selectedCoverageSellers, [...salesSeller, ...historySeller]);
-            }
+            const { sales: salesSeller, history: historySeller } = getCoverageFilteredData({ excludeFilter: 'seller' });
+            selectedCoverageSellers = updateSellerFilter(coverageSupervisorFilter.value, coverageVendedorFilterDropdown, coverageVendedorFilterText, selectedCoverageSellers, [...salesSeller, ...historySeller], skipFilter !== 'seller');
 
-            if (skipFilter !== 'supplier') {
-                const { sales: salesSupplier, history: historySupplier } = getCoverageFilteredData({ excludeFilter: 'supplier' });
-                selectedCoverageSuppliers = updateSupplierFilter(coverageSupplierFilterDropdown, coverageSupplierFilterText, selectedCoverageSuppliers, [...salesSupplier, ...historySupplier], 'coverage');
-            }
+            const { sales: salesSupplier, history: historySupplier } = getCoverageFilteredData({ excludeFilter: 'supplier' });
+            selectedCoverageSuppliers = updateSupplierFilter(coverageSupplierFilterDropdown, coverageSupplierFilterText, selectedCoverageSuppliers, [...salesSupplier, ...historySupplier], 'coverage', skipFilter !== 'supplier');
 
-            if (skipFilter !== 'product') {
-                const { sales: salesProd, history: historyProd } = getCoverageFilteredData({ excludeFilter: 'product' });
-                updateProductFilter(coverageProductFilterDropdown, coverageProductFilterText, selectedCoverageProducts, [...salesProd, ...historyProd], 'coverage');
-            }
+            const { sales: salesProd, history: historyProd } = getCoverageFilteredData({ excludeFilter: 'product' });
+            updateProductFilter(coverageProductFilterDropdown, coverageProductFilterText, selectedCoverageProducts, [...salesProd, ...historyProd], 'coverage', skipFilter !== 'product');
 
-            if (skipFilter !== 'tipoVenda') {
-                const { sales: salesTV, history: historyTV } = getCoverageFilteredData({ excludeFilter: 'tipoVenda' });
-                selectedCoverageTiposVenda = updateTipoVendaFilter(coverageTipoVendaFilterDropdown, coverageTipoVendaFilterText, selectedCoverageTiposVenda, [...salesTV, ...historyTV]);
-            }
+            const { sales: salesTV, history: historyTV } = getCoverageFilteredData({ excludeFilter: 'tipoVenda' });
+            selectedCoverageTiposVenda = updateTipoVendaFilter(coverageTipoVendaFilterDropdown, coverageTipoVendaFilterText, selectedCoverageTiposVenda, [...salesTV, ...historyTV], skipFilter !== 'tipoVenda');
         }
 
         function handleCoverageFilterChange(options = {}) {
@@ -2537,17 +2529,19 @@
             filterEl.innerHTML = options.join('');
         }
 
-        function updateSellerFilter(supervisor, dropdown, filterText, selectedArray, dataSource) {
+        function updateSellerFilter(supervisor, dropdown, filterText, selectedArray, dataSource, rebuildDropdown = true) {
             const sellersToShow = supervisor ? [...new Set(dataSource.filter(s => s.SUPERV === supervisor).map(s => s.NOME))].sort() : [...new Set(dataSource.map(item => item.NOME).filter(Boolean))].sort();
             selectedArray = selectedArray.filter(seller => sellersToShow.includes(seller));
 
-            const htmlParts = [];
-            for (let i = 0; i < sellersToShow.length; i++) {
-                const s = sellersToShow[i];
-                const isChecked = selectedArray.includes(s);
-                htmlParts.push(`<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${s}" ${isChecked ? 'checked' : ''}><span class="ml-2">${s}</span></label>`);
+            if (rebuildDropdown) {
+                const htmlParts = [];
+                for (let i = 0; i < sellersToShow.length; i++) {
+                    const s = sellersToShow[i];
+                    const isChecked = selectedArray.includes(s);
+                    htmlParts.push(`<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${s}" ${isChecked ? 'checked' : ''}><span class="ml-2">${s}</span></label>`);
+                }
+                dropdown.innerHTML = htmlParts.join('');
             }
-            dropdown.innerHTML = htmlParts.join('');
 
             if (selectedArray.length === 0 || selectedArray.length === sellersToShow.length) filterText.textContent = 'Todos Vendedores';
             else if (selectedArray.length === 1) filterText.textContent = selectedArray[0];
@@ -2555,17 +2549,19 @@
             return selectedArray;
         }
 
-        function updateTipoVendaFilter(dropdown, filterText, selectedArray, dataSource) {
+        function updateTipoVendaFilter(dropdown, filterText, selectedArray, dataSource, rebuildDropdown = true) {
             const tiposVendaToShow = [...new Set(dataSource.map(item => item.TIPOVENDA).filter(Boolean))].sort();
             selectedArray = selectedArray.filter(tipo => tiposVendaToShow.includes(tipo));
 
-            const htmlParts = [];
-            for (let i = 0; i < tiposVendaToShow.length; i++) {
-                const s = tiposVendaToShow[i];
-                const isChecked = selectedArray.includes(s);
-                htmlParts.push(`<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${s}" ${isChecked ? 'checked' : ''}><span class="ml-2">${s}</span></label>`);
+            if (rebuildDropdown) {
+                const htmlParts = [];
+                for (let i = 0; i < tiposVendaToShow.length; i++) {
+                    const s = tiposVendaToShow[i];
+                    const isChecked = selectedArray.includes(s);
+                    htmlParts.push(`<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${s}" ${isChecked ? 'checked' : ''}><span class="ml-2">${s}</span></label>`);
+                }
+                dropdown.innerHTML = htmlParts.join('');
             }
-            dropdown.innerHTML = htmlParts.join('');
 
             if (selectedArray.length === 0 || selectedArray.length === tiposVendaToShow.length) filterText.textContent = 'Todos os Tipos';
             else if (selectedArray.length === 1) filterText.textContent = selectedArray[0];
@@ -2573,17 +2569,19 @@
             return selectedArray;
         }
 
-        function updateRedeFilter(dropdown, buttonTextElement, selectedArray, dataSource, baseText = 'Com Rede') {
+        function updateRedeFilter(dropdown, buttonTextElement, selectedArray, dataSource, baseText = 'Com Rede', rebuildDropdown = true) {
             const redesToShow = [...new Set(dataSource.map(item => item.ramo).filter(r => r && r !== 'N/A'))].sort();
             const validSelected = selectedArray.filter(rede => redesToShow.includes(rede));
 
-            const htmlParts = [];
-            for (let i = 0; i < redesToShow.length; i++) {
-                const r = redesToShow[i];
-                const isChecked = validSelected.includes(r);
-                htmlParts.push(`<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${r}" ${isChecked ? 'checked' : ''}><span class="ml-2 text-sm">${r}</span></label>`);
+            if (rebuildDropdown) {
+                const htmlParts = [];
+                for (let i = 0; i < redesToShow.length; i++) {
+                    const r = redesToShow[i];
+                    const isChecked = validSelected.includes(r);
+                    htmlParts.push(`<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${r}" ${isChecked ? 'checked' : ''}><span class="ml-2 text-sm">${r}</span></label>`);
+                }
+                dropdown.innerHTML = htmlParts.join('');
             }
-            dropdown.innerHTML = htmlParts.join('');
 
             if (validSelected.length === 0) {
                 buttonTextElement.textContent = baseText;
@@ -3065,20 +3063,22 @@
             else showNoDataMessage('mixChart', 'Sem dados para o ranking.');
         }
 
-        function updateSupplierFilter(dropdown, filterText, selectedArray, dataSource, filterType = 'comparison') {
+        function updateSupplierFilter(dropdown, filterText, selectedArray, dataSource, filterType = 'comparison', rebuildDropdown = true) {
             const suppliers = new Map();
             dataSource.forEach(s => { if(s.CODFOR && s.FORNECEDOR) suppliers.set(s.CODFOR, s.FORNECEDOR); });
             const sortedSuppliers = [...suppliers.entries()].sort((a, b) => a[1].localeCompare(b[1]));
 
             selectedArray = selectedArray.filter(cod => suppliers.has(cod));
 
-            const htmlParts = [];
-            for (let i = 0; i < sortedSuppliers.length; i++) {
-                const [cod, name] = sortedSuppliers[i];
-                const isChecked = selectedArray.includes(cod);
-                htmlParts.push(`<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" data-filter-type="${filterType}" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${cod}" ${isChecked ? 'checked' : ''}><span class="ml-2 text-xs">${cod} - ${name}</span></label>`);
+            if (rebuildDropdown) {
+                const htmlParts = [];
+                for (let i = 0; i < sortedSuppliers.length; i++) {
+                    const [cod, name] = sortedSuppliers[i];
+                    const isChecked = selectedArray.includes(cod);
+                    htmlParts.push(`<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" data-filter-type="${filterType}" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${cod}" ${isChecked ? 'checked' : ''}><span class="ml-2 text-xs">${cod} - ${name}</span></label>`);
+                }
+                dropdown.innerHTML = htmlParts.join('');
             }
-            dropdown.innerHTML = htmlParts.join('');
 
             if (selectedArray.length === 0 || selectedArray.length === sortedSuppliers.length) {
                 filterText.textContent = 'Todos Fornecedores';
@@ -3436,7 +3436,7 @@
             multimarcasBtn.classList.toggle('opacity-50', !hasMultimarcas);
         }
 
-        function updateProductFilter(dropdown, filterText, selectedArray, dataSource, filterType = 'comparison') {
+        function updateProductFilter(dropdown, filterText, selectedArray, dataSource, filterType = 'comparison', rebuildDropdown = true) {
             const searchInput = dropdown.querySelector('input[type="text"]');
             const listContainer = dropdown.querySelector('div[id$="-list"]');
             const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
@@ -3449,17 +3449,19 @@
                   )
                 : products;
 
-            const htmlParts = [];
-            for (let i = 0; i < filteredProducts.length; i++) {
-                const [code, name] = filteredProducts[i];
-                const isChecked = selectedArray.includes(code);
-                htmlParts.push(`
-                    <label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer">
-                        <input type="checkbox" data-filter-type="${filterType}" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${code}" ${isChecked ? 'checked' : ''}>
-                        <span class="ml-2 text-xs">(${code}) ${name}</span>
-                    </label>`);
+            if (rebuildDropdown) {
+                const htmlParts = [];
+                for (let i = 0; i < filteredProducts.length; i++) {
+                    const [code, name] = filteredProducts[i];
+                    const isChecked = selectedArray.includes(code);
+                    htmlParts.push(`
+                        <label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer">
+                            <input type="checkbox" data-filter-type="${filterType}" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${code}" ${isChecked ? 'checked' : ''}>
+                            <span class="ml-2 text-xs">(${code}) ${name}</span>
+                        </label>`);
+                }
+                listContainer.innerHTML = htmlParts.join('');
             }
-            listContainer.innerHTML = htmlParts.join('');
 
             if (selectedArray.length === 0) {
                 filterText.textContent = 'Todos os Produtos';
@@ -3476,19 +3478,19 @@
             updateProductFilter(comparisonProductFilterDropdown, comparisonProductFilterText, selectedComparisonProducts, [...currentSales, ...historySales], 'comparison');
         }
 
-        function updateStockProductFilter() {
+        function updateStockProductFilter(rebuild = true) {
             const data = getStockFilteredData({excludeFilter: 'product'});
-            updateProductFilter(stockProductFilterDropdown, stockProductFilterText, selectedStockProducts, [...data.sales, ...data.history], 'stock');
+            updateProductFilter(stockProductFilterDropdown, stockProductFilterText, selectedStockProducts, [...data.sales, ...data.history], 'stock', rebuild);
         }
 
-        function updateStockSupplierFilter() {
+        function updateStockSupplierFilter(rebuild = true) {
             const data = getStockFilteredData({excludeFilter: 'supplier'});
-            selectedStockSuppliers = updateSupplierFilter(stockSupplierFilterDropdown, stockSupplierFilterText, selectedStockSuppliers, [...data.sales, ...data.history], 'stock');
+            selectedStockSuppliers = updateSupplierFilter(stockSupplierFilterDropdown, stockSupplierFilterText, selectedStockSuppliers, [...data.sales, ...data.history], 'stock', rebuild);
         }
 
-        function updateStockSellerFilter() {
+        function updateStockSellerFilter(rebuild = true) {
             const data = getStockFilteredData({excludeFilter: 'seller'});
-            selectedStockSellers = updateSellerFilter(stockSupervisorFilter.value, stockVendedorFilterDropdown, stockVendedorFilterText, selectedStockSellers, [...data.sales, ...data.history]);
+            selectedStockSellers = updateSellerFilter(stockSupervisorFilter.value, stockVendedorFilterDropdown, stockVendedorFilterText, selectedStockSellers, [...data.sales, ...data.history], rebuild);
         }
 
         function updateStockCitySuggestions(dataSource) {
@@ -3578,14 +3580,12 @@
                     populateSupervisors('stock-supervisor-filter', supervisorOptionsData);
                 }
 
-                if (skipFilter !== 'seller') updateStockSellerFilter();
-                if (skipFilter !== 'supplier') updateStockSupplierFilter();
-                if (skipFilter !== 'product') updateStockProductFilter();
+                updateStockSellerFilter(skipFilter !== 'seller');
+                updateStockSupplierFilter(skipFilter !== 'supplier');
+                updateStockProductFilter(skipFilter !== 'product');
 
-                if (skipFilter !== 'tipoVenda') {
-                    const tvData = getStockFilteredData({ excludeFilter: 'tipoVenda' });
-                    selectedStockTiposVenda = updateTipoVendaFilter(stockTipoVendaFilterDropdown, stockTipoVendaFilterText, selectedStockTiposVenda, [...tvData.sales, ...tvData.history]);
-                }
+                const tvData = getStockFilteredData({ excludeFilter: 'tipoVenda' });
+                selectedStockTiposVenda = updateTipoVendaFilter(stockTipoVendaFilterDropdown, stockTipoVendaFilterText, selectedStockTiposVenda, [...tvData.sales, ...tvData.history], skipFilter !== 'tipoVenda');
 
                 if (skipFilter !== 'city') {
                     const cityData = getStockFilteredData({ excludeFilter: 'city' });
@@ -5977,7 +5977,7 @@
                     } else {
                         selectedInnovationsSellers = selectedInnovationsSellers.filter(s => s !== value);
                     }
-                    updateSellerFilter(innovationsSupervisorFilter.value, innovationsVendedorFilterDropdown, innovationsVendedorFilterText, selectedInnovationsSellers, allSalesData);
+                    updateSellerFilter(innovationsSupervisorFilter.value, innovationsVendedorFilterDropdown, innovationsVendedorFilterText, selectedInnovationsSellers, allSalesData, false);
                     debouncedUpdateInnovations();
                 }
             });
@@ -5991,7 +5991,7 @@
                     } else {
                         selectedInnovationsSuppliers = selectedInnovationsSuppliers.filter(s => s !== value);
                     }
-                    updateSupplierFilter(innovationsSupplierFilterDropdown, innovationsSupplierFilterText, selectedInnovationsSuppliers, allSalesData, 'innovations');
+                    updateSupplierFilter(innovationsSupplierFilterDropdown, innovationsSupplierFilterText, selectedInnovationsSuppliers, allSalesData, 'innovations', false);
 
                     const supplierProducts = new Set();
                     selectedInnovationsSuppliers.forEach(codfor => {
@@ -6018,6 +6018,7 @@
 
             innovationsProductFilterDropdown.addEventListener('change', (e) => {
                 if (e.target.dataset.filterType === 'innovations' && handleProductFilterChange(e, selectedInnovationsProducts)) {
+                    innovationsProductFilterText.textContent = selectedInnovationsProducts.length > 0 ? `${selectedInnovationsProducts.length} produtos selecionados` : 'Selecione um ou mais produtos';
                     debouncedUpdateInnovations();
                 }
             });
@@ -6031,7 +6032,7 @@
                     } else {
                         selectedInnovationsTiposVenda = selectedInnovationsTiposVenda.filter(s => s !== value);
                     }
-                    selectedInnovationsTiposVenda = updateTipoVendaFilter(innovationsTipoVendaFilterDropdown, innovationsTipoVendaFilterText, selectedInnovationsTiposVenda, allSalesData);
+                    selectedInnovationsTiposVenda = updateTipoVendaFilter(innovationsTipoVendaFilterDropdown, innovationsTipoVendaFilterText, selectedInnovationsTiposVenda, allSalesData, false);
                     debouncedUpdateInnovations();
                 }
             });
@@ -6053,7 +6054,7 @@
                     } else {
                         selectedInnovationsMonthSellers = selectedInnovationsMonthSellers.filter(s => s !== value);
                     }
-                    updateSellerFilter(innovationsMonthSupervisorFilter.value, innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, selectedInnovationsMonthSellers, allSalesData);
+                    updateSellerFilter(innovationsMonthSupervisorFilter.value, innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, selectedInnovationsMonthSellers, allSalesData, false);
                     debouncedUpdateInnovationsMonth();
                 }
             });
@@ -6098,7 +6099,7 @@
                     } else {
                         selectedInnovationsMonthTiposVenda = selectedInnovationsMonthTiposVenda.filter(s => s !== value);
                     }
-                    selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
+                    selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData, false);
                     debouncedUpdateInnovationsMonth();
                 }
             });
