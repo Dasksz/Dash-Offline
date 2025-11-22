@@ -851,7 +851,10 @@
                     byClient: new Map(),
                     byPosition: new Map(),
                     byRede: new Map(),
-                    byTipoVenda: new Map()
+                    byTipoVenda: new Map(),
+                    byProduct: new Map(),
+                    byCity: new Map(),
+                    byFilial: new Map()
                 },
                 history: {
                     bySupervisor: new Map(),
@@ -859,7 +862,10 @@
                     byPasta: new Map(),
                     bySupplier: new Map(),
                     byClient: new Map(),
-                    byTipoVenda: new Map()
+                    byTipoVenda: new Map(),
+                    byProduct: new Map(),
+                    byCity: new Map(),
+                    byFilial: new Map()
                 }
             },
             searchIndices: {
@@ -1033,7 +1039,7 @@
             });
 
             const buildIndex = (data, indexSet, dataMap) => {
-                const { bySupervisor, byRca, byPasta, bySupplier, byClient, byPosition, byRede, byTipoVenda } = indexSet;
+                const { bySupervisor, byRca, byPasta, bySupplier, byClient, byPosition, byRede, byTipoVenda, byProduct, byCity, byFilial } = indexSet;
                 
                 data.forEach((sale, index) => {
                     const id = dataMap.size;
@@ -1047,6 +1053,9 @@
                     const position = sale.POSICAO || 'N/A';
                     const rede = clientRamoMap.get(client) || 'N/A';
                     const tipoVenda = sale.TIPOVENDA;
+                    const product = sale.PRODUTO;
+                    const city = (sale.CIDADE || 'N/A').toLowerCase();
+                    const filial = sale.FILIAL;
 
                     if (!bySupervisor.has(supervisor)) bySupervisor.set(supervisor, new Set());
                     bySupervisor.get(supervisor).add(id);
@@ -1076,6 +1085,21 @@
                     if (byRede) {
                          if (!byRede.has(rede)) byRede.set(rede, new Set());
                          byRede.get(rede).add(id);
+                    }
+
+                    if (byProduct) {
+                        if (!byProduct.has(product)) byProduct.set(product, new Set());
+                        byProduct.get(product).add(id);
+                    }
+
+                    if (byCity) {
+                        if (!byCity.has(city)) byCity.set(city, new Set());
+                        byCity.get(city).add(id);
+                    }
+
+                    if (byFilial && filial) {
+                        if (!byFilial.has(filial)) byFilial.set(filial, new Set());
+                        byFilial.get(filial).add(id);
                     }
                 });
             };
@@ -3349,10 +3373,139 @@
             return kpiValues.reduce((a, b) => a + b, 0) / kpiValues.length;
         }
 
+        const getFilteredDataFromIndices = (indices, dataMap, filters, excludeFilter = null) => {
+            const setsToIntersect = [];
+            let hasFilter = false;
+
+            if (filters.filial && filters.filial !== 'ambas') {
+                hasFilter = true;
+                if (indices.byFilial && indices.byFilial.has(filters.filial)) {
+                    setsToIntersect.push(indices.byFilial.get(filters.filial));
+                } else {
+                    return [];
+                }
+            }
+
+            if (excludeFilter !== 'supervisor' && filters.supervisor) {
+                hasFilter = true;
+                if (indices.bySupervisor && indices.bySupervisor.has(filters.supervisor)) {
+                    setsToIntersect.push(indices.bySupervisor.get(filters.supervisor));
+                } else {
+                    return [];
+                }
+            }
+
+            if (excludeFilter !== 'pasta' && filters.pasta) {
+                hasFilter = true;
+                if (indices.byPasta && indices.byPasta.has(filters.pasta)) {
+                    setsToIntersect.push(indices.byPasta.get(filters.pasta));
+                } else {
+                    return [];
+                }
+            }
+
+            if (excludeFilter !== 'tipoVenda' && filters.tipoVenda && filters.tipoVenda.size > 0) {
+                hasFilter = true;
+                const ids = new Set();
+                let foundAny = false;
+                filters.tipoVenda.forEach(t => {
+                    if (indices.byTipoVenda && indices.byTipoVenda.has(t)) {
+                        indices.byTipoVenda.get(t).forEach(id => ids.add(id));
+                        foundAny = true;
+                    }
+                });
+                if (foundAny) setsToIntersect.push(ids);
+                else return [];
+            }
+
+            if (excludeFilter !== 'seller' && filters.seller && filters.seller.size > 0) {
+                hasFilter = true;
+                const ids = new Set();
+                let foundAny = false;
+                filters.seller.forEach(s => {
+                    if (indices.byRca && indices.byRca.has(s)) {
+                        indices.byRca.get(s).forEach(id => ids.add(id));
+                        foundAny = true;
+                    }
+                });
+                if (foundAny) setsToIntersect.push(ids);
+                else return [];
+            }
+
+            if (excludeFilter !== 'supplier' && filters.supplier && filters.supplier.size > 0) {
+                hasFilter = true;
+                const ids = new Set();
+                let foundAny = false;
+                filters.supplier.forEach(s => {
+                    if (indices.bySupplier && indices.bySupplier.has(s)) {
+                        indices.bySupplier.get(s).forEach(id => ids.add(id));
+                        foundAny = true;
+                    }
+                });
+                if (foundAny) setsToIntersect.push(ids);
+                else return [];
+            }
+
+            if (excludeFilter !== 'product' && filters.product && filters.product.size > 0) {
+                hasFilter = true;
+                const ids = new Set();
+                let foundAny = false;
+                filters.product.forEach(p => {
+                    if (indices.byProduct && indices.byProduct.has(p)) {
+                        indices.byProduct.get(p).forEach(id => ids.add(id));
+                        foundAny = true;
+                    }
+                });
+                if (foundAny) setsToIntersect.push(ids);
+                else return [];
+            }
+
+            if (excludeFilter !== 'city' && filters.city) {
+                hasFilter = true;
+                if (indices.byCity && indices.byCity.has(filters.city)) {
+                    setsToIntersect.push(indices.byCity.get(filters.city));
+                } else {
+                    return [];
+                }
+            }
+
+            if (setsToIntersect.length === 0 && !hasFilter && !filters.clientCodes) {
+                return Array.from(dataMap.values());
+            }
+
+            let resultIds;
+            if (setsToIntersect.length > 0) {
+                setsToIntersect.sort((a, b) => a.size - b.size);
+                resultIds = new Set(setsToIntersect[0]);
+                for (let i = 1; i < setsToIntersect.length; i++) {
+                    const currentSet = setsToIntersect[i];
+                    for (const id of resultIds) {
+                        if (!currentSet.has(id)) {
+                            resultIds.delete(id);
+                        }
+                    }
+                    if (resultIds.size === 0) break;
+                }
+            } else if (filters.clientCodes) {
+                 const allData = Array.from(dataMap.values());
+                 return allData.filter(s => filters.clientCodes.has(s.CODCLI));
+            } else {
+                return Array.from(dataMap.values());
+            }
+
+            const result = [];
+            for (const id of resultIds) {
+                const item = dataMap.get(id);
+                if (!filters.clientCodes || filters.clientCodes.has(item.CODCLI)) {
+                    result.push(item);
+                }
+            }
+            return result;
+        };
+
         function getComparisonFilteredData(options = {}) {
             const { excludeFilter = null } = options;
 
-            // Sets for O(1)
             const sellersSet = new Set(selectedComparisonSellers);
             const suppliersSet = new Set(selectedComparisonSuppliers);
             const productsSet = new Set(selectedComparisonProducts);
@@ -3364,36 +3517,35 @@
             const city = comparisonCityFilter.value.trim().toLowerCase();
             const filial = comparisonFilialFilter.value;
 
-            let clients = allClientsData;
-            if (comparisonRedeGroupFilter === 'com_rede') {
-                clients = clients.filter(c => c.ramo && c.ramo !== 'N/A');
-                 if (redeSet.size > 0) {
-                    clients = clients.filter(c => redeSet.has(c.ramo));
+            let clientCodes = null;
+            if (comparisonRedeGroupFilter) {
+                let clients = allClientsData;
+                if (comparisonRedeGroupFilter === 'com_rede') {
+                    clients = clients.filter(c => c.ramo && c.ramo !== 'N/A');
+                     if (redeSet.size > 0) {
+                        clients = clients.filter(c => redeSet.has(c.ramo));
+                    }
+                } else if (comparisonRedeGroupFilter === 'sem_rede') {
+                    clients = clients.filter(c => !c.ramo || c.ramo === 'N/A');
                 }
-            } else if (comparisonRedeGroupFilter === 'sem_rede') {
-                clients = clients.filter(c => !c.ramo || c.ramo === 'N/A');
+                clientCodes = new Set(clients.map(c => c['Código']));
             }
-            const clientCodes = new Set(clients.map(c => c['Código']));
 
-            const filterFunction = s => {
-                if (filial !== 'ambas' && s.FILIAL !== filial) return false;
-                if (excludeFilter !== 'supervisor' && supervisor && s.SUPERV !== supervisor) return false;
-                if (excludeFilter !== 'pasta' && pasta && s.OBSERVACAOFOR !== pasta) return false;
-                if (excludeFilter !== 'tipoVenda' && tiposVendaSet.size > 0 && !tiposVendaSet.has(s.TIPOVENDA)) return false;
-                if (excludeFilter !== 'seller' && sellersSet.size > 0 && !sellersSet.has(s.NOME)) return false;
-                if (excludeFilter !== 'supplier' && suppliersSet.size > 0 && !suppliersSet.has(s.CODFOR)) return false;
-                if (excludeFilter !== 'product' && productsSet.size > 0 && !productsSet.has(s.PRODUTO)) return false;
-                if (excludeFilter !== 'city' && city && (!s.CIDADE || s.CIDADE.toLowerCase() !== city)) return false;
-
-                if (comparisonRedeGroupFilter) {
-                    return clientCodes.has(s.CODCLI);
-                }
-                return true;
+            const filters = {
+                filial,
+                supervisor,
+                pasta,
+                tipoVenda: tiposVendaSet,
+                seller: sellersSet,
+                supplier: suppliersSet,
+                product: productsSet,
+                city,
+                clientCodes
             };
 
             return {
-                currentSales: allSalesData.filter(filterFunction),
-                historySales: allHistoryData.filter(filterFunction)
+                currentSales: getFilteredDataFromIndices(optimizedData.indices.current, optimizedData.salesById, filters, excludeFilter),
+                historySales: getFilteredDataFromIndices(optimizedData.indices.history, optimizedData.historyById, filters, excludeFilter)
             };
         }
 
