@@ -3322,6 +3322,33 @@
             return kpiValues.reduce((a, b) => a + b, 0) / QUARTERLY_DIVISOR;
         }
 
+        function calculateStockMonthlyAverage(historySales) {
+            const salesByMonth = groupSalesByMonth(historySales);
+            let sortedMonths = Object.keys(salesByMonth).sort();
+
+            if (sortedMonths.length > 0) {
+                const firstMonthKey = sortedMonths[0];
+                const firstSaleInFirstMonth = salesByMonth[firstMonthKey].reduce((earliest, sale) => {
+                    const saleDate = parseDate(sale.DTPED);
+                    return (!earliest || (saleDate && saleDate < earliest)) ? saleDate : earliest;
+                }, null);
+
+                if (firstSaleInFirstMonth && firstSaleInFirstMonth.getUTCDate() > 20) {
+                    sortedMonths.shift();
+                }
+            }
+
+            const monthsToAverage = sortedMonths.slice(-3);
+
+            const kpiValues = monthsToAverage.map(monthKey => {
+                const salesForMonth = salesByMonth[monthKey];
+                return salesForMonth.reduce((sum, s) => sum + (s.QTVENDA_EMBALAGEM_MASTER || 0), 0);
+            });
+
+            if (kpiValues.length === 0) return 0;
+            return kpiValues.reduce((a, b) => a + b, 0) / kpiValues.length;
+        }
+
         function getComparisonFilteredData(options = {}) {
             const { excludeFilter = null } = options;
 
@@ -4008,6 +4035,7 @@
             // Map<ProductCode, Array<Sale>>
             const salesByProduct = new Map();
             const historyByProduct = new Map();
+            const historySalesListByProduct = new Map(); // New Map
             const totalQtyByProduct = new Map(); // combined total
             const currentMonthQtyByProduct = new Map(); // current month total
             const uniqueMonthsByProduct = new Map(); // Set of "YYYY-MM"
@@ -4027,6 +4055,9 @@
                 totalQtyByProduct.set(p, (totalQtyByProduct.get(p) || 0) + qty);
 
                 if (isHistory) {
+                    if (!historySalesListByProduct.has(p)) historySalesListByProduct.set(p, []);
+                    historySalesListByProduct.get(p).push(s);
+
                     if (!historyByProduct.has(p)) historyByProduct.set(p, 0); // Just flag existence/count
                     historyByProduct.set(p, historyByProduct.get(p) + 1); // Simple counter or bool check
                 } else {
@@ -4124,8 +4155,8 @@
                 const isNew = productMaxLifeInWorkingDays <= passedWorkingDaysCurrentMonth;
                 const trendDays = dailyAvgSale > 0 ? (stock / dailyAvgSale) : (stock > 0 ? Infinity : 0);
 
-                const uniqueMonthsCount = uniqueMonthsByProduct.has(productCode) ? uniqueMonthsByProduct.get(productCode).size : 0;
-                const monthlyAvgSale = uniqueMonthsCount > 0 ? totalQtySold / uniqueMonthsCount : 0;
+                const productHistorySales = historySalesListByProduct.get(productCode) || [];
+                const monthlyAvgSale = calculateStockMonthlyAverage(productHistorySales);
 
                 productAnalysis.set(productCode, {
                     code: productCode,
