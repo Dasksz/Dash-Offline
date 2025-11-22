@@ -178,9 +178,13 @@
             // Handle "DD/MM/YYYY" format specifically.
             if (dateOnlyString.length === 10 && dateOnlyString.charAt(2) === '/' && dateOnlyString.charAt(5) === '/') {
                 const [day, month, year] = dateOnlyString.split('/');
-                if (year && year.length === 4) {
+                if (year && month && day && year.length === 4) {
                     // Use UTC to avoid timezone issues when only date is provided.
-                    return new Date(`${year}-${month}-${day}T00:00:00`);
+                    // Using Date.UTC ensures the date is created at 00:00:00 UTC directly.
+                    const utcDate = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day)));
+                    if (!isNaN(utcDate.getTime())) {
+                        return utcDate;
+                    }
                 }
             }
             
@@ -420,7 +424,7 @@
                 const dtSaida = rawRow['DTSAIDA'];
                 const parsedDtPed = parseDate(dtPed);
                 const parsedDtSaida = parseDate(dtSaida);
-                if (parsedDtPed && parsedDtSaida && (parsedDtPed.getFullYear() < parsedDtSaida.getFullYear() || (parsedDtPed.getFullYear() === parsedDtSaida.getFullYear() && parsedDtPed.getMonth() < parsedDtSaida.getMonth()))) {
+                if (parsedDtPed && parsedDtSaida && (parsedDtPed.getUTCFullYear() < parsedDtSaida.getUTCFullYear() || (parsedDtPed.getUTCFullYear() === parsedDtSaida.getUTCFullYear() && parsedDtPed.getUTCMonth() < parsedDtSaida.getUTCMonth()))) {
                     dtPed = dtSaida;
                 }
                 const productCode = String(rawRow['PRODUTO'] || '').trim();
@@ -477,13 +481,16 @@
 
         function getPassedWorkingDaysInSpecificMonth(year, month, today) {
             let count = 0;
-            const date = new Date(year, month, 1);
-            while (date <= today && date.getMonth() === month) {
-                const dayOfWeek = date.getDay();
+            const date = new Date(Date.UTC(year, month, 1));
+            // Ensure comparison is done in UTC terms
+            const todayUTC = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+
+            while (date <= todayUTC && date.getUTCMonth() === month) {
+                const dayOfWeek = date.getUTCDay();
                 if (dayOfWeek >= 1 && dayOfWeek <= 5) {
                     count++;
                 }
-                date.setDate(date.getDate() + 1);
+                date.setUTCDate(date.getUTCDate() + 1);
             }
             return count > 0 ? count : 1;
         }
@@ -738,10 +745,10 @@
                 const lastSaleDate = finalSalesData.length > 0
                     ? new Date(Math.max.apply(null, finalSalesData.map(s => parseDate(s.DTPED)).filter(d => d && !isNaN(d))))
                     : new Date();
-                lastSaleDate.setHours(0,0,0,0);
+                lastSaleDate.setUTCHours(0,0,0,0);
                 const passedWorkingDaysCurrentMonth = getPassedWorkingDaysInSpecificMonth(
-                    lastSaleDate.getFullYear(),
-                    lastSaleDate.getMonth(),
+                    lastSaleDate.getUTCFullYear(),
+                    lastSaleDate.getUTCMonth(),
                     lastSaleDate
                 );
 
@@ -773,40 +780,53 @@
     <script id="report-logic-script" type="text/template">
         function parseDate(dateString) {
             if (!dateString) return null;
+
+            // Se já for um objeto Date, retorna diretamente
             if (dateString instanceof Date) {
                 return !isNaN(dateString.getTime()) ? dateString : null;
             }
+
+            // Se for um número (formato Excel)
             if (typeof dateString === 'number') {
                 return new Date(Math.round((dateString - 25569) * 86400 * 1000));
             }
+
             if (typeof dateString !== 'string') return null;
 
-            // NEW: Handle datetime strings by taking only the date part first.
-            const dateOnlyString = dateString.split(' ')[0];
-
-            // Handle "DD/MM/YYYY" format specifically.
-            if (dateOnlyString.length === 10 && dateOnlyString.charAt(2) === '/' && dateOnlyString.charAt(5) === '/') {
-                const [day, month, year] = dateOnlyString.split('/');
-                if (year && year.length === 4) {
-                    // Use UTC to avoid timezone issues when only date is provided.
-                    return new Date(`${year}-${month}-${day}T00:00:00`);
+            // Tentativa de parse para 'YYYY-MM-DDTHH:mm:ss.sssZ' ou 'YYYY-MM-DD'
+            // O construtor do Date já lida bem com isso, mas vamos garantir o UTC.
+            if (dateString.includes('T') || dateString.includes('-')) {
+                 // Adiciona 'Z' se não tiver informação de fuso horário para forçar UTC
+                const isoString = dateString.endsWith('Z') ? dateString : dateString + 'Z';
+                const isoDate = new Date(isoString);
+                if (!isNaN(isoDate.getTime())) {
+                    return isoDate;
                 }
             }
-            
-            // Fallback for ISO 8601 or other formats that new Date() can parse.
-            // Try parsing the original string first, in case it's a valid ISO datetime.
-            const isoDate = new Date(dateString);
-            if (!isNaN(isoDate.getTime())) {
-                return isoDate;
+
+            // Tentativa de parse para 'DD/MM/YYYY'
+            if (dateString.length === 10 && dateString.charAt(2) === '/' && dateString.charAt(5) === '/') {
+                const [day, month, year] = dateString.split('/');
+                if (year && month && day && year.length === 4) {
+                    // Cria a data em UTC para evitar problemas de fuso horário
+                    const utcDate = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day)));
+                    if (!isNaN(utcDate.getTime())) {
+                        return utcDate;
+                    }
+                }
             }
 
-            // If that fails, try parsing just the date part.
-            const isoDateFromDateOnly = new Date(dateOnlyString);
-            return !isNaN(isoDateFromDateOnly.getTime()) ? isoDateFromDateOnly : null;
+            // Fallback para outros formatos que o `new Date()` consegue interpretar
+            const genericDate = new Date(dateString);
+            if (!isNaN(genericDate.getTime())) {
+                return genericDate;
+            }
+
+            return null; // Retorna nulo se nenhum formato corresponder
         }
         
-        const allSalesData = embeddedData.detailed;
-        const allHistoryData = embeddedData.history;
+        let allSalesData = embeddedData.detailed;
+        let allHistoryData = embeddedData.history;
         const aggregatedOrders = embeddedData.byOrder;
         const allClientsData = embeddedData.clients;
         const stockData05 = new Map(Object.entries(embeddedData.stockMap05 || {}));
@@ -850,13 +870,62 @@
         let clientLastBranch = new Map();
         let clientRamoMap = new Map();
 
+        const QUARTERLY_DIVISOR = 3;
+
         const lastSaleDate = allSalesData.length > 0 ? new Date(Math.max.apply(null, allSalesData.map(s => parseDate(s.DTPED)).filter(d => d && !isNaN(d)))) : new Date();
-        lastSaleDate.setHours(0,0,0,0);
+        lastSaleDate.setUTCHours(0,0,0,0);
         let maxWorkingDaysStock = 0;
         let sortedWorkingDays = [];
         let customWorkingDaysStock = 0;
 
         function initializeOptimizedDataStructures() {
+            // --- INÍCIO DA LÓGICA DE REMAPEAMENTO (Melhoria Solicitada) ---
+            const sellerDetailsMap = new Map();
+            const populateSellerDetails = (data) => {
+                data.forEach(s => {
+                    if (s.CODUSUR && (!sellerDetailsMap.has(s.CODUSUR) || s.NOME)) {
+                        sellerDetailsMap.set(s.CODUSUR, { name: s.NOME, supervisor: s.SUPERV });
+                    }
+                });
+            };
+            populateSellerDetails([...allSalesData, ...allHistoryData]);
+
+            const clientToCurrentSellerMap = new Map();
+            let americanasCodCli = null;
+            allClientsData.forEach(c => {
+                if (c['Código'] && c.rca1) {
+                    clientToCurrentSellerMap.set(String(c['Código']), String(c.rca1));
+                }
+                if (c.razaoSocial && c.razaoSocial.toUpperCase().includes('AMERICANAS')) {
+                    americanasCodCli = String(c['Código']);
+                }
+            });
+
+            const remapSales = (salesList) => {
+                return salesList.map(sale => {
+                    const clientCode = String(sale.CODCLI);
+                    if (clientCode === americanasCodCli) return sale;
+
+                    const currentSellerCode = clientToCurrentSellerMap.get(clientCode);
+                    if (currentSellerCode) {
+                        const sellerDetails = sellerDetailsMap.get(currentSellerCode);
+                        if (sellerDetails) {
+                            return {
+                                ...sale,
+                                CODUSUR: currentSellerCode,
+                                NOME: sellerDetails.name,
+                                SUPERV: sellerDetails.supervisor
+                            };
+                        }
+                    }
+                    return sale;
+                });
+            };
+
+            allSalesData = remapSales(allSalesData);
+            allHistoryData = remapSales(allHistoryData);
+            // --- FIM DA LÓGICA DE REMAPEAMENTO ---
+
             // 1. Pre-process Clients: Lowercase search fields
             optimizedData.clientsByRca = new Map();
             optimizedData.searchIndices.clients = new Array(allClientsData.length);
@@ -1029,15 +1098,15 @@
                 }
             });
 
-            const currentMonth = lastSaleDate.getMonth();
-            const currentYear = lastSaleDate.getFullYear();
+            const currentMonth = lastSaleDate.getUTCMonth();
+            const currentYear = lastSaleDate.getUTCFullYear();
             const previousMonth = (currentMonth === 0) ? 11 : currentMonth - 1;
             const previousMonthYear = (currentMonth === 0) ? currentYear - 1 : currentYear;
 
             optimizedData.salesByClientAndRca_PreviousMonth = new Map();
             allHistoryData.forEach(s => {
                 const saleDate = parseDate(s.DTPED);
-                if (s.VLVENDA > 0 && s.CODCLI && s.PRODUTO && s.CODUSUR && saleDate?.getMonth() === previousMonth && saleDate?.getFullYear() === previousMonthYear) {
+                if (s.VLVENDA > 0 && s.CODCLI && s.PRODUTO && s.CODUSUR && saleDate?.getUTCMonth() === previousMonth && saleDate?.getUTCFullYear() === previousMonthYear) {
                      if (!optimizedData.salesByClientAndRca_PreviousMonth.has(s.CODCLI)) {
                         optimizedData.salesByClientAndRca_PreviousMonth.set(s.CODCLI, new Map());
                     }
@@ -1066,7 +1135,7 @@
             optimizedData.bonificationsByClientAndRca_PreviousMonth = new Map();
             allHistoryData.forEach(s => {
                 const saleDate = parseDate(s.DTPED);
-                if (s.VLBONIFIC > 0 && s.CODCLI && s.PRODUTO && s.CODUSUR && saleDate?.getMonth() === previousMonth && saleDate?.getFullYear() === previousMonthYear) {
+                if (s.VLBONIFIC > 0 && s.CODCLI && s.PRODUTO && s.CODUSUR && saleDate?.getUTCMonth() === previousMonth && saleDate?.getUTCFullYear() === previousMonthYear) {
                      if (!optimizedData.bonificationsByClientAndRca_PreviousMonth.has(s.CODCLI)) {
                         optimizedData.bonificationsByClientAndRca_PreviousMonth.set(s.CODCLI, new Map());
                     }
@@ -1083,7 +1152,7 @@
             allSalesForDays.forEach(sale => {
                 const date = parseDate(sale.DTPED);
                 if (date) {
-                    const dayOfWeek = date.getDay();
+                    const dayOfWeek = date.getUTCDay();
                     if (dayOfWeek >= 1 && dayOfWeek <= 5) {
                         workingDaysSet.add(date.toISOString().split('T')[0]);
                     }
@@ -1436,7 +1505,7 @@
         let categoryLegendForExport = [];
         let chartLabels = [];
 
-        let calendarState = { year: lastSaleDate.getFullYear(), month: lastSaleDate.getMonth() };
+        let calendarState = { year: lastSaleDate.getUTCFullYear(), month: lastSaleDate.getUTCMonth() };
 
         let selectedCoverageSellers = [];
         let selectedCoverageSuppliers = [];
@@ -1637,10 +1706,6 @@
                 const codcli = c['Código'];
                 const rca1 = String(c.rca1 || '').trim();
                 
-                if (rca1 === '306' || rca1 === '300') {
-                    return false;
-                }
-
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 return (isAmericanas || rca1 !== '53');
             });
@@ -1667,8 +1732,8 @@
             let topCoverageItem = { name: '-', coverage: 0, clients: 0 };
             const activeStockMap = getActiveStockMap(coverageFilialFilter.value);
 
-            const currentMonth = lastSaleDate.getMonth();
-            const currentYear = lastSaleDate.getFullYear();
+            const currentMonth = lastSaleDate.getUTCMonth();
+            const currentYear = lastSaleDate.getUTCFullYear();
             const prevMonthIdx = (currentMonth === 0) ? 11 : currentMonth - 1;
             const prevMonthYear = (currentMonth === 0) ? currentYear - 1 : currentYear;
 
@@ -1703,7 +1768,7 @@
             // Process History Sales (O(N))
             history.forEach(s => {
                 const d = parseDate(s.DTPED);
-                const isPrevMonth = d && d.getMonth() === prevMonthIdx && d.getFullYear() === prevMonthYear;
+                const isPrevMonth = d && d.getUTCMonth() === prevMonthIdx && d.getUTCFullYear() === prevMonthYear;
 
                 // Coverage Map (only if prev month)
                 if (isPrevMonth) {
@@ -1799,9 +1864,30 @@
                     if (productFirstWorkingDayIndex === -1) productFirstWorkingDayIndex = sortedWorkingDays.length;
                 }
                 const productMaxLifeInWorkingDays = sortedWorkingDays.length - productFirstWorkingDayIndex;
-                const effectiveDaysToCalculate = Math.min(customWorkingDaysCoverage, productMaxLifeInWorkingDays) || 1;
                 
-                const targetIndex = Math.max(0, sortedWorkingDays.length - effectiveDaysToCalculate);
+                const hasHistory = productAllSales.some(s => {
+                    const d = parseDate(s.DTPED);
+                    return d && (d.getUTCFullYear() < currentYear || (d.getUTCFullYear() === currentYear && d.getUTCMonth() < currentMonth));
+                });
+                const soldThisMonth = (boxesSoldCurrentMap.get(productCode) || 0) > 0;
+                const isFactuallyNewOrReactivated = (!hasHistory && soldThisMonth);
+
+                const daysFromBox = customWorkingDaysCoverage;
+                let effectiveDaysToCalculate;
+
+                if (isFactuallyNewOrReactivated) {
+                    const daysToConsider = (daysFromBox > 0) ? daysFromBox : passedWorkingDaysCurrentMonth;
+                    effectiveDaysToCalculate = Math.min(passedWorkingDaysCurrentMonth, daysToConsider);
+                } else {
+                    if (daysFromBox > 0) {
+                        effectiveDaysToCalculate = Math.min(daysFromBox, productMaxLifeInWorkingDays);
+                    } else {
+                        effectiveDaysToCalculate = productMaxLifeInWorkingDays;
+                    }
+                }
+
+                const daysDivisor = effectiveDaysToCalculate > 0 ? effectiveDaysToCalculate : 1;
+                const targetIndex = Math.max(0, sortedWorkingDays.length - daysDivisor);
                 const startDate = parseDate(sortedWorkingDays[targetIndex]);
                 
                 let totalQtySoldInRange = 0;
@@ -1813,7 +1899,7 @@
                     }
                 });
 
-                const dailyAvgSale = totalQtySoldInRange / effectiveDaysToCalculate;
+                const dailyAvgSale = totalQtySoldInRange / daysDivisor;
                 const trendDays = dailyAvgSale > 0 ? (stockQty / dailyAvgSale) : (stockQty > 0 ? Infinity : 0);
                 
                 // Box Quantities (Pre-calculated)
@@ -1960,7 +2046,7 @@
             data.forEach(sale => {
                 const saleDate = parseDate(sale.DTPED);
                 if (saleDate) {
-                    const monthKey = `${saleDate.getFullYear()}-${saleDate.getMonth()}`;
+                    const monthKey = `${saleDate.getUTCFullYear()}-${saleDate.getUTCMonth()}`;
                     months.add(monthKey);
                 }
             });
@@ -2181,40 +2267,43 @@
 
         function getWorkingDaysInMonth(year, month, holidays) {
             let count = 0;
-            const date = new Date(year, month, 1);
-            while (date.getMonth() === month) {
-                const dayOfWeek = date.getDay();
+            const date = new Date(Date.UTC(year, month, 1));
+            while (date.getUTCMonth() === month) {
+                const dayOfWeek = date.getUTCDay();
                 if (dayOfWeek >= 1 && dayOfWeek <= 5 && !isHoliday(date, holidays)) {
                     count++;
                 }
-                date.setDate(date.getDate() + 1);
+                date.setUTCDate(date.getUTCDate() + 1);
             }
             return count;
         }
 
         function getPassedWorkingDaysInMonth(year, month, holidays, today) {
             let count = 0;
-            const date = new Date(year, month, 1);
-            while (date <= today && date.getMonth() === month) {
-                const dayOfWeek = date.getDay();
+            const date = new Date(Date.UTC(year, month, 1));
+            // Ensure today is treated as UTC for comparison
+            const todayUTC = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+
+            while (date <= todayUTC && date.getUTCMonth() === month) {
+                const dayOfWeek = date.getUTCDay();
                 if (dayOfWeek >= 1 && dayOfWeek <= 5 && !isHoliday(date, holidays)) {
                     count++;
                 }
-                date.setDate(date.getDate() + 1);
+                date.setUTCDate(date.getUTCDate() + 1);
             }
             return count > 0 ? count : 1;
         }
 
 
         function updateTrendChart(currentSales, historicalSales) {
-            const currentYear = lastSaleDate.getFullYear();
-            const currentMonth = lastSaleDate.getMonth();
+            const currentYear = lastSaleDate.getUTCFullYear();
+            const currentMonth = lastSaleDate.getUTCMonth();
             const totalWorkingDays = getWorkingDaysInMonth(currentYear, currentMonth, selectedHolidays);
             const passedWorkingDays = getPassedWorkingDaysInMonth(currentYear, currentMonth, selectedHolidays, lastSaleDate);
 
             const monthCount = getUniqueMonthCount(historicalSales);
             const pastQuarterRevenue = historicalSales.reduce((sum, sale) => sum + sale.VLVENDA, 0);
-            const averageMonthlyRevenue = monthCount > 0 ? pastQuarterRevenue / monthCount : 0;
+            const averageMonthlyRevenue = pastQuarterRevenue / QUARTERLY_DIVISOR;
             const currentMonthRevenue = currentSales.reduce((sum, sale) => sum + sale.VLVENDA, 0);
             const trend = passedWorkingDays > 0 && totalWorkingDays > 0 ? (currentMonthRevenue / passedWorkingDays) * totalWorkingDays : 0;
             const lineChartDataset = [{ label: 'Valor', data: [averageMonthlyRevenue, trend], fill: true, borderColor: '#14b8a6', backgroundColor: 'rgba(20, 184, 166, 0.1)', tension: 0.2, pointRadius: 6, pointBackgroundColor: '#14b8a6', pointBorderColor: '#FFF', pointBorderWidth: 2, pointHoverRadius: 8 }];
@@ -2246,17 +2335,10 @@
             let clientBaseForCoverage = allClientsData.filter(c => {
                 const rca1 = String(c.rca1 || '').trim();
 
-                // --- INÍCIO DA MODIFICAÇÃO (PÁGINA PRINCIPAL) ---
-                // REGRA DE EXCLUSÃO: Ignora clientes destes RCAs
-                if (rca1 === '306' || rca1 === '300') {
-                    return false;
-                }
-                
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 
                 // Regra de inclusão (Americanas ou RCA 1 diferente de 53)
                 return (isAmericanas || rca1 !== '53');
-                // --- FIM DA MODIFICAÇÃO ---
             });
 
             if (mainRedeGroupFilter === 'com_rede') {
@@ -2671,8 +2753,8 @@
             if (cidadeFiltroInput && allAvailableCities.includes(cidadeFiltroInput)) cidadeFiltro = cidadeFiltroInput;
 
             const referenceDate = lastSaleDate;
-            const currentMonth = referenceDate.getMonth();
-            const currentYear = referenceDate.getFullYear();
+            const currentMonth = referenceDate.getUTCMonth();
+            const currentYear = referenceDate.getUTCFullYear();
 
             // Filter Sales (O(N)) - use simple loop with flags
             let salesForAnalysis = [];
@@ -2715,7 +2797,7 @@
                 if (selectedTiposVendaSet.size > 0 && !selectedTiposVendaSet.has(s.TIPOVENDA)) continue;
 
                 const d = parseDate(s.DTPED);
-                if (d && d.getFullYear() === currentYear && d.getMonth() === currentMonth) {
+                if (d && d.getUTCFullYear() === currentYear && d.getUTCMonth() === currentMonth) {
                     clientTotalsThisMonth.set(s.CODCLI, (clientTotalsThisMonth.get(s.CODCLI) || 0) + s.VLVENDA);
                 }
             }
@@ -2737,7 +2819,7 @@
 
             salesForAnalysis.forEach(s => {
                 const d = parseDate(s.DTPED);
-                if (d && d.getFullYear() === currentYear && d.getMonth() === currentMonth) {
+                if (d && d.getUTCFullYear() === currentYear && d.getUTCMonth() === currentMonth) {
                     if (!detailedDataByClient.has(s.CODCLI)) {
                         detailedDataByClient.set(s.CODCLI, { total: 0, pepsico: 0, multimarcas: 0 });
                     }
@@ -2756,7 +2838,7 @@
                 if (codcli === '6720' || client.bloqueio === 'S') return;
 
                 const registrationDate = parseDate(client.dataCadastro);
-                client.isNew = registrationDate && registrationDate.getMonth() === currentMonth && registrationDate.getFullYear() === currentYear;
+                client.isNew = registrationDate && registrationDate.getUTCMonth() === currentMonth && registrationDate.getUTCFullYear() === currentYear;
 
                 const totalFaturamentoMes = clientTotalsThisMonth.get(codcli) || 0;
 
@@ -2860,20 +2942,17 @@
 
         function getWeekOfMonth(date) {
             const d = new Date(date);
-            const startOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
-            const dayOfMonth = d.getDate();
-            const dayOfWeek = startOfMonth.getDay();
-            const adjustedDayOfWeek = (dayOfWeek === 0) ? 6 : dayOfWeek - 1;
-            return Math.ceil((dayOfMonth + adjustedDayOfWeek) / 7);
+            const day = d.getUTCDate();
+            return Math.ceil(day / 7);
         }
 
         function calculateHistoricalBests() {
             const salesBySupervisorByDay = {};
             const mostRecentSaleDate = allSalesData.map(s => parseDate(s.DTPED)).filter(Boolean).reduce((a, b) => a > b ? a : b, new Date(0));
-            const previousMonthDate = new Date(mostRecentSaleDate.getFullYear(), mostRecentSaleDate.getMonth() - 1, 1);
-            const previousMonth = previousMonthDate.getMonth();
-            const previousMonthYear = previousMonthDate.getFullYear();
-            const historyLastMonthData = allHistoryData.filter(sale => { const saleDate = parseDate(sale.DTPED); return saleDate && saleDate.getMonth() === previousMonth && saleDate.getFullYear() === previousMonthYear; });
+            const previousMonthDate = new Date(Date.UTC(mostRecentSaleDate.getUTCFullYear(), mostRecentSaleDate.getUTCMonth() - 1, 1));
+            const previousMonth = previousMonthDate.getUTCMonth();
+            const previousMonthYear = previousMonthDate.getUTCFullYear();
+            const historyLastMonthData = allHistoryData.filter(sale => { const saleDate = parseDate(sale.DTPED); return saleDate && saleDate.getUTCMonth() === previousMonth && saleDate.getUTCFullYear() === previousMonthYear; });
             historyLastMonthData.forEach(sale => {
                 if (!sale.SUPERV || sale.SUPERV === 'BALCAO' || !sale.DTPED) return;
                 const saleDate = parseDate(sale.DTPED); if (!saleDate) return;
@@ -2887,8 +2966,8 @@
                 const salesByDay = salesBySupervisorByDay[supervisor];
                 const bests = {};
                 for (const dateString in salesByDay) {
-                    const date = new Date(dateString + 'T00:00:00');
-                    const dayOfWeek = date.getDay();
+                    const date = new Date(dateString + 'T00:00:00Z');
+                    const dayOfWeek = date.getUTCDay();
                     const total = salesByDay[dateString];
                     if (dayOfWeek >= 1 && dayOfWeek <= 5) { if (!bests[dayOfWeek] || total > bests[dayOfWeek]) bests[dayOfWeek] = total; }
                 }
@@ -2908,12 +2987,12 @@
             let dataForGeneralCharts = allSalesData;
             if (currentWeeklyFornecedor) dataForGeneralCharts = dataForGeneralCharts.filter(row => String(row.OBSERVACAOFOR).trim() === currentWeeklyFornecedor);
             if (selectedSupervisors.length > 0) dataForGeneralCharts = dataForGeneralCharts.filter(d => selectedSupervisors.includes(d.SUPERV));
-            const currentMonth = lastSaleDate.getMonth(); const currentYear = lastSaleDate.getFullYear();
-            const monthSales = dataForGeneralCharts.filter(d => { if (!d.DTPED) return false; const saleDate = parseDate(d.DTPED); return saleDate && saleDate.getMonth() === currentMonth && saleDate.getFullYear() === currentYear; });
+            const currentMonth = lastSaleDate.getUTCMonth(); const currentYear = lastSaleDate.getUTCFullYear();
+            const monthSales = dataForGeneralCharts.filter(d => { if (!d.DTPED) return false; const saleDate = parseDate(d.DTPED); return saleDate && saleDate.getUTCMonth() === currentMonth && saleDate.getUTCFullYear() === currentYear; });
             const totalMes = monthSales.reduce((sum, item) => sum + item.VLVENDA, 0);
             totalMesSemanalEl.textContent = totalMes.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
             const salesByWeekAndDay = {}; const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-            monthSales.forEach(sale => { const saleDate = parseDate(sale.DTPED); if (!saleDate) return; const weekNum = getWeekOfMonth(saleDate); const dayName = dayNames[saleDate.getDay()]; if (!salesByWeekAndDay[weekNum]) salesByWeekAndDay[weekNum] = {}; if (!salesByWeekAndDay[weekNum][dayName]) salesByWeekAndDay[weekNum][dayName] = 0; salesByWeekAndDay[weekNum][dayName] += sale.VLVENDA; });
+            monthSales.forEach(sale => { const saleDate = parseDate(sale.DTPED); if (!saleDate) return; const weekNum = getWeekOfMonth(saleDate); const dayName = dayNames[saleDate.getUTCDay()]; if (!salesByWeekAndDay[weekNum]) salesByWeekAndDay[weekNum] = {}; if (!salesByWeekAndDay[weekNum][dayName]) salesByWeekAndDay[weekNum][dayName] = 0; salesByWeekAndDay[weekNum][dayName] += sale.VLVENDA; });
             const weekLabels = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'];
             const weekNumbers = Object.keys(salesByWeekAndDay).sort((a,b) => a - b);
             const professionalPalette = ['#14b8a6', '#6366f1', '#ec4899', '#f97316', '#8b5cf6'];
@@ -3024,21 +3103,29 @@
             }
         }
 
-        function getSundayBasedWeeks(year, month) {
+        function getMonthWeeks(year, month) {
             const weeks = [];
-            const firstDayOfMonth = new Date(year, month, 1);
-            const lastDayOfMonth = new Date(year, month + 1, 0);
+            // Find the first day of the month
+            const firstOfMonth = new Date(Date.UTC(year, month, 1));
 
-            let startDate = new Date(firstDayOfMonth);
-            startDate.setHours(0, 0, 0, 0);
-            startDate.setDate(startDate.getDate() - startDate.getDay());
+            // Find the Sunday on or before the 1st
+            const dayOfWeek = firstOfMonth.getUTCDay(); // 0 (Sun) to 6 (Sat)
+            let currentStart = new Date(firstOfMonth);
+            currentStart.setUTCDate(firstOfMonth.getUTCDate() - dayOfWeek);
 
-            while (startDate <= lastDayOfMonth) {
-                let endDate = new Date(startDate);
-                endDate.setDate(endDate.getDate() + 6);
-                endDate.setHours(23, 59, 59, 999);
-                weeks.push({ start: new Date(startDate), end: new Date(endDate) });
-                startDate.setDate(startDate.getDate() + 7);
+            // Find the last day of the month
+            const lastOfMonth = new Date(Date.UTC(year, month + 1, 0));
+
+            // Iterate weeks until we cover the last day of the month
+            while (currentStart <= lastOfMonth) {
+                const currentEnd = new Date(currentStart);
+                currentEnd.setUTCDate(currentStart.getUTCDate() + 6);
+                currentEnd.setUTCHours(23, 59, 59, 999);
+
+                weeks.push({ start: new Date(currentStart), end: currentEnd });
+
+                // Move to next Sunday
+                currentStart.setUTCDate(currentStart.getUTCDate() + 7);
             }
             return weeks;
         }
@@ -3201,7 +3288,7 @@
             salesData.forEach(sale => {
                 const date = parseDate(sale.DTPED);
                 if (!date || isNaN(date.getTime())) return;
-                const monthKey = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0');
+                const monthKey = date.getUTCFullYear() + '-' + String(date.getUTCMonth() + 1).padStart(2, '0');
                 if (!salesByMonth[monthKey]) salesByMonth[monthKey] = [];
                 salesByMonth[monthKey].push(sale);
             });
@@ -3210,9 +3297,29 @@
 
         function monthlyKpiAverage(historySales, kpiFn, ...kpiArgs) {
             const salesByMonth = groupSalesByMonth(historySales);
-            const kpiValues = Object.values(salesByMonth).map(sales => kpiFn(sales, ...kpiArgs));
+            let sortedMonths = Object.keys(salesByMonth).sort();
+
+            if (sortedMonths.length > 0) {
+                const firstMonthKey = sortedMonths[0];
+                const firstSaleInFirstMonth = salesByMonth[firstMonthKey].reduce((earliest, sale) => {
+                    const saleDate = parseDate(sale.DTPED);
+                    return (!earliest || (saleDate && saleDate < earliest)) ? saleDate : earliest;
+                }, null);
+
+                if (firstSaleInFirstMonth && firstSaleInFirstMonth.getUTCDate() > 20) {
+                    sortedMonths.shift();
+                }
+            }
+
+            const monthsToAverage = sortedMonths.slice(-3);
+
+            const kpiValues = monthsToAverage.map(monthKey => {
+                const salesForMonth = salesByMonth[monthKey];
+                return kpiFn(salesForMonth, ...kpiArgs);
+            });
+
             if (kpiValues.length === 0) return 0;
-            return kpiValues.reduce((a, b) => a + b, 0) / kpiValues.length;
+            return kpiValues.reduce((a, b) => a + b, 0) / QUARTERLY_DIVISOR;
         }
 
         function getComparisonFilteredData(options = {}) {
@@ -3492,8 +3599,8 @@
             const historyTotalFat = historySales.reduce((sum, item) => sum + item.VLVENDA, 0);
             const historyTotalPeso = historySales.reduce((sum, item) => sum + item.TOTPESOLIQ, 0);
 
-            const historyAvgFat = historyMonthsCount > 0 ? historyTotalFat / historyMonthsCount : 0;
-            const historyAvgPeso = historyMonthsCount > 0 ? historyTotalPeso / 1000 / historyMonthsCount : 0;
+            const historyAvgFat = historyTotalFat / QUARTERLY_DIVISOR;
+            const historyAvgPeso = historyTotalPeso / 1000 / QUARTERLY_DIVISOR;
 
             const historyClientsAverage = monthlyKpiAverage(historySales, getPositiveClientsWithNewLogic);
             const historyTicketAverage = historyClientsAverage > 0 ? historyAvgFat / historyClientsAverage : 0;
@@ -3511,47 +3618,25 @@
                 { title: 'Mix Foods', current: currentPositivacaoFoods, history: historyPositivacaoFoods, format: 'integer' }
             ]);
 
-            const currentYear = lastSaleDate.getFullYear();
-            const currentMonth = lastSaleDate.getMonth();
-            let currentMonthWeeks = getSundayBasedWeeks(currentYear, currentMonth);
+            const currentYear = lastSaleDate.getUTCFullYear();
+            const currentMonth = lastSaleDate.getUTCMonth();
+            const currentMonthWeeks = getMonthWeeks(currentYear, currentMonth);
 
-            let excludeLastWeek = false;
-            if (currentMonthWeeks.length > 0) {
-                const lastWeek = currentMonthWeeks[currentMonthWeeks.length - 1];
-                const lastWeekStartDate = lastWeek.start;
-                const startDay = lastWeekStartDate.getDay();
-
-                let daysInCurrentMonth = 0;
-                let tempDate = new Date(lastWeek.start);
-                while (tempDate <= lastWeek.end) {
-                    if (tempDate.getMonth() === currentMonth) {
-                        daysInCurrentMonth++;
-                    }
-                    tempDate.setDate(tempDate.getDate() + 1);
-                }
-
-                if ((startDay === 0 || startDay === 6) && daysInCurrentMonth <= 2) {
-                    excludeLastWeek = true;
-                }
-            }
-
-            if (excludeLastWeek) {
-                currentMonthWeeks.pop();
-            }
-
+            // Combine current sales with historical sales that fall within the first week's range (overlap)
+            const firstWeekStart = currentMonthWeeks.length > 0 ? currentMonthWeeks[0].start : null;
             let salesForWeeklyCharts = [...currentSales];
-            if (currentMonthWeeks.length > 0) {
-                const firstWeekStartDate = currentMonthWeeks[0].start;
-                if (firstWeekStartDate.getMonth() < currentMonth || firstWeekStartDate.getFullYear() < currentYear) {
-                    const endOfPreviousMonth = new Date(currentYear, currentMonth, 0);
-                    const relevantHistory = historySales.filter(s => {
-                        const d = parseDate(s.DTPED);
-                        return d >= firstWeekStartDate && d <= endOfPreviousMonth;
-                    });
-                    salesForWeeklyCharts.push(...relevantHistory);
-                }
-            }
 
+            if (firstWeekStart) {
+                const relevantHistory = historySales.filter(s => {
+                    const d = parseDate(s.DTPED);
+                    // Only include history if it's equal or after the start of the first calendar week
+                    // AND strictly before the 1st of the current month (to avoid double counting if history overlaps for some reason, though unlikely with standard file separation)
+                    // Actually, standard logic: just check if it falls in the first week range.
+                    // Since currentSales only has data from 1st onwards, we safely add history for the pre-1st period.
+                    return d && d >= firstWeekStart && d < new Date(Date.UTC(currentYear, currentMonth, 1));
+                });
+                salesForWeeklyCharts = [...salesForWeeklyCharts, ...relevantHistory];
+            }
 
             let currentSalesByWeek = new Array(currentMonthWeeks.length).fill(0);
             salesForWeeklyCharts.forEach(sale => {
@@ -3563,31 +3648,65 @@
                 }
             });
 
+            // Nova Lógica de Média: Média de Vendas na Semana Equivalente dos Meses Anteriores
+            // Em vez de usar a média diária, somamos as vendas da "Semana 1", "Semana 2", etc., de cada mês do histórico
+            // e dividimos por 3 (QUARTERLY_DIVISOR). Isso preserva a sazonalidade dentro do mês.
+
             const historySalesByWeekIndex = {};
+            // Estrutura: { 0: totalWeek0, 1: totalWeek1, ... }
+
+            // Identificar quais meses existem no histórico
+            const historyMonths = new Set();
+            historySales.forEach(s => {
+                const d = parseDate(s.DTPED);
+                if (d) historyMonths.add(`${d.getUTCFullYear()}-${d.getUTCMonth()}`);
+            });
+
+            // Para cada mês do histórico, geramos as semanas corretas (usando a mesma lógica de "Domingo on/before 1st")
+            // E somamos as vendas em seus respectivos índices de semana.
+            // Como iterar vendas é O(N), e gerar semanas é O(M), podemos otimizar:
+            // Iteramos as vendas. Para cada venda, geramos as semanas do MÊS DA VENDA.
+            // Descobrimos em qual índice ela cai.
+
+            // Otimização: Cache das semanas por mês para não recalcular a cada venda
+            const monthWeeksCache = new Map();
+
             historySales.forEach(sale => {
-                const saleDate = parseDate(sale.DTPED);
-                if (!saleDate) return;
-                const saleYear = saleDate.getFullYear();
-                const saleMonth = saleDate.getMonth();
-                const monthKey = `${saleYear}-${saleMonth}`;
-                const monthWeeks = getSundayBasedWeeks(saleYear, saleMonth);
-                const weekIndex = monthWeeks.findIndex(week => saleDate >= week.start && saleDate <= week.end);
+                const d = parseDate(sale.DTPED);
+                if (!d) return;
+
+                const year = d.getUTCFullYear();
+                const month = d.getUTCMonth();
+                const monthKey = `${year}-${month}`;
+
+                if (!monthWeeksCache.has(monthKey)) {
+                    monthWeeksCache.set(monthKey, getMonthWeeks(year, month));
+                }
+
+                const weeks = monthWeeksCache.get(monthKey);
+                // Encontrar em qual semana do mês essa venda caiu
+                const weekIndex = weeks.findIndex(w => d >= w.start && d <= w.end);
+
                 if (weekIndex !== -1) {
-                    if (!historySalesByWeekIndex[weekIndex]) historySalesByWeekIndex[weekIndex] = {};
-                    if (!historySalesByWeekIndex[weekIndex][monthKey]) historySalesByWeekIndex[weekIndex][monthKey] = 0;
-                    historySalesByWeekIndex[weekIndex][monthKey] += sale.VLVENDA;
+                    if (!historySalesByWeekIndex[weekIndex]) historySalesByWeekIndex[weekIndex] = 0;
+                    historySalesByWeekIndex[weekIndex] += sale.VLVENDA;
+                } else {
+                    // Caso especial: Venda caiu num "buraco" ou na semana do mês anterior/seguinte
+                    // devido à lógica de semanas completas.
+                    // Se a semana começar no mês anterior, getMonthWeeks(MesAtual) inclui dias do mês anterior.
+                    // Se a venda é do dia 30/09 e estamos olhando semanas de Outubro, 30/09 pode estar na Semana 0 de Outubro.
+                    // Mas aqui estamos iterando vendas HISTÓRICAS.
+                    // Se a venda tem data de 30/09, ela pertence ao mês 09.
+                    // As semanas do mês 09 cobrem o dia 30/09.
+                    // Portanto, weekIndex deve ser encontrado sempre, a menos que a data esteja fora do range gerado.
                 }
             });
 
             const historyAvgSalesByWeek = new Array(currentMonthWeeks.length).fill(0);
             for (let i = 0; i < currentMonthWeeks.length; i++) {
-                const weekDataByMonth = historySalesByWeekIndex[i] || {};
-                const weeklyTotals = Object.values(weekDataByMonth);
-                if (weeklyTotals.length > 0) {
-                    const totalSum = weeklyTotals.reduce((a, b) => a + b, 0);
-                    const divisor = Math.max(historyMonthsCount, 1);
-                    historyAvgSalesByWeek[i] = totalSum / divisor;
-                }
+                const totalForWeekIndex = historySalesByWeekIndex[i] || 0;
+                // Dividimos por 3 fixo conforme solicitado (QUARTERLY_DIVISOR)
+                historyAvgSalesByWeek[i] = totalForWeekIndex / QUARTERLY_DIVISOR;
             }
 
             if (useTendencyComparison) {
@@ -3607,8 +3726,8 @@
 
                         let workingDaysPassed = 0;
                         let totalWorkingDays = 0;
-                        for (let d = new Date(currentWeek.start); d <= currentWeek.end; d.setDate(d.getDate() + 1)) {
-                            const dayOfWeek = d.getDay();
+                        for (let d = new Date(currentWeek.start); d <= currentWeek.end; d.setUTCDate(d.getUTCDate() + 1)) {
+                            const dayOfWeek = d.getUTCDay();
                             if (dayOfWeek >= 1 && dayOfWeek <= 5 && !isHoliday(d, selectedHolidays)) {
                                 totalWorkingDays++;
                                 if (d <= today) {
@@ -3676,7 +3795,8 @@
                 const sortedMonths = Object.keys(salesByMonth).sort();
                 const monthLabels = sortedMonths.map(monthKey => {
                     const [year, month] = monthKey.split('-');
-                    return new Date(parseInt(year), parseInt(month) - 1, 1).toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
+                    // Use UTC for display formatting to avoid shifting
+                    return new Date(Date.UTC(parseInt(year), parseInt(month) - 1, 1)).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit', timeZone: 'UTC' });
                 });
                 const monthValues = sortedMonths.map(monthKey => salesByMonth[monthKey]);
 
@@ -3694,32 +3814,32 @@
                     monthValues.push(monthlyCurrentTotalFat);
                 }
 
-                createChart('monthlyComparisonChart', 'bar', monthLabels, [{
-                    label: 'Faturamento Mensal',
-                    data: monthValues,
-                    backgroundColor: (context) => {
-                        const chart = context.chart;
-                        const {ctx, chartArea} = chart;
-                        if (!chartArea) { return null; }
-                        const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
-                        gradient.addColorStop(0, 'rgba(20, 184, 166, 0.7)');
-                        gradient.addColorStop(1, 'rgba(139, 92, 246, 0.7)');
-                        return gradient;
+                // Adiciona linha de média trimestral ao gráfico mensal
+                createChart('monthlyComparisonChart', 'bar', monthLabels, [
+                    {
+                        label: 'Faturamento Mensal',
+                        data: monthValues,
+                        backgroundColor: '#14b8a6', // Teal para consistência com o gráfico semanal
+                        borderColor: '#14b8a6',
+                        borderWidth: 1,
+                        order: 2
                     },
-                    borderColor: (context) => {
-                        const chart = context.chart;
-                        const {ctx, chartArea} = chart;
-                        if (!chartArea) { return null; }
-                        const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
-                        gradient.addColorStop(0, '#14b8a6');
-                        gradient.addColorStop(1, '#8b5cf6');
-                        return gradient;
-                    },
-                    borderWidth: 2
-                }], {
+                    {
+                        label: 'Média Trimestral',
+                        data: new Array(monthValues.length).fill(historyAvgFat),
+                        type: 'line',
+                        borderColor: '#f97316', // Orange para destacar a média
+                        backgroundColor: 'transparent',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        borderDash: [5, 5],
+                        order: 1,
+                        datalabels: { display: false }
+                    }
+                ], {
                     layout: { padding: { top: 20 } },
                     plugins: {
-                        legend: { display: false },
+                        legend: { display: true, position: 'top', align: 'end' },
                         datalabels: {
                             color: '#ffffff',
                             anchor: 'end',
@@ -3745,7 +3865,7 @@
                 if (!saleDate) return;
                 const weekIndex = currentMonthWeeks.findIndex(week => saleDate >= week.start && saleDate <= week.end);
                 if (weekIndex !== -1) {
-                    const dayOfWeek = saleDate.getDay();
+                    const dayOfWeek = saleDate.getUTCDay();
                     salesByWeekAndDay[weekIndex + 1][dayOfWeek] += sale.VLVENDA;
                 }
             });
@@ -3760,13 +3880,13 @@
                 historySales.forEach(sale => {
                     const d = parseDate(sale.DTPED);
                     if (!d) return;
-                    const monthKey = `${d.getFullYear()}-${d.getMonth()}`;
-                    const monthWeeks = getSundayBasedWeeks(d.getFullYear(), d.getMonth());
+                    const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
+                    const monthWeeks = getMonthWeeks(d.getUTCFullYear(), d.getUTCMonth());
                     const weekIndex = monthWeeks.findIndex(w => d >= w.start && d <= w.end);
                     if (weekIndex !== -1) {
                         if (!salesByWeekDayMonth[monthKey]) salesByWeekDayMonth[monthKey] = {};
                         if (!salesByWeekDayMonth[monthKey][weekIndex]) salesByWeekDayMonth[monthKey][weekIndex] = new Array(7).fill(0);
-                        salesByWeekDayMonth[monthKey][weekIndex][d.getDay()] += sale.VLVENDA;
+                        salesByWeekDayMonth[monthKey][weekIndex][d.getUTCDay()] += sale.VLVENDA;
                     }
                 });
 
@@ -3806,9 +3926,9 @@
 
                     let futureDayWeights = [];
                     let totalFutureWeight = 0;
-                    for (let d = new Date(week.start); d <= week.end; d.setDate(d.getDate() + 1)) {
+                    for (let d = new Date(week.start); d <= week.end; d.setUTCDate(d.getUTCDate() + 1)) {
                         if (d > today) {
-                            const dayIndex = d.getDay();
+                            const dayIndex = d.getUTCDay();
                             const weight = historicalDayWeights[currentWeekIndex][dayIndex];
                             futureDayWeights.push({ day: dayIndex, weight: weight });
                             totalFutureWeight += weight;
@@ -3835,8 +3955,8 @@
             });
 
             const weekLabelsForDailyChart = currentMonthWeeks.map((week, index) => {
-                const startDateStr = week.start.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-                const endDateStr = week.end.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+                const startDateStr = week.start.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' });
+                const endDateStr = week.end.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' });
                 return `S${index + 1} (${startDateStr} à ${endDateStr})`;
             });
 
@@ -3864,7 +3984,7 @@
             activeSupervisors.forEach(sup => supervisorComparison[sup] = { current: 0, history: 0 });
             currentSales.forEach(s => { if(s.SUPERV && supervisorComparison[s.SUPERV]) supervisorComparison[s.SUPERV].current += s.VLVENDA; });
             historySales.forEach(s => { if(s.SUPERV && supervisorComparison[s.SUPERV]) supervisorComparison[s.SUPERV].history += s.VLVENDA; });
-            Object.keys(supervisorComparison).forEach(sup => supervisorComparison[sup].history /= historyMonthsCount);
+            Object.keys(supervisorComparison).forEach(sup => supervisorComparison[sup].history /= QUARTERLY_DIVISOR);
             const supervisorTableBody = document.getElementById('supervisorComparisonTableBody');
             supervisorTableBody.innerHTML = Object.entries(supervisorComparison).map(([sup, data]) => { const variation = data.history > 0 ? ((data.current - data.history) / data.history) * 100 : (data.current > 0 ? 100 : 0); const colorClass = variation > 0 ? 'text-green-400' : variation < 0 ? 'text-red-400' : 'text-slate-400'; return `<tr class="hover:bg-slate-700"><td class="px-4 py-2">${sup}</td><td class="px-4 py-2 text-right">${data.history.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td class="px-4 py-2 text-right">${data.current.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td class="px-4 py-2 text-right ${colorClass}">${variation.toFixed(2)}%</td></tr>`; }).join('');
         }
@@ -3902,7 +4022,7 @@
 
                 if (!uniqueMonthsByProduct.has(p)) uniqueMonthsByProduct.set(p, new Set());
                 const d = parseDate(s.DTPED);
-                if (d) uniqueMonthsByProduct.get(p).add(`${d.getFullYear()}-${d.getMonth()}`);
+                if (d) uniqueMonthsByProduct.get(p).add(`${d.getUTCFullYear()}-${d.getUTCMonth()}`);
 
                 const qty = s.QTVENDA_EMBALAGEM_MASTER;
                 totalQtyByProduct.set(p, (totalQtyByProduct.get(p) || 0) + qty);
@@ -3960,50 +4080,50 @@
                 // Use pre-aggregated list
                 const productAllSales = salesByProduct.get(productCode) || [];
 
-                const productCadastroDate = parseDate(details.dtCadastro);
-                let productFirstWorkingDayIndex = 0;
-                
-                if (productCadastroDate) {
-                    const cadastroDateString = productCadastroDate.toISOString().split('T')[0];
-                    productFirstWorkingDayIndex = sortedWorkingDays.findIndex(d => d >= cadastroDateString);
-                    if (productFirstWorkingDayIndex === -1) {
-                        productFirstWorkingDayIndex = sortedWorkingDays.length; 
-                    }
-                }
-                
-                const productMaxLifeInWorkingDays = sortedWorkingDays.length - productFirstWorkingDayIndex;
-                const daysFromBox = customWorkingDaysStock;
-                let effectiveDaysToCalculate;
-                
-                const isFactuallyNewOrReactivated = (!hasHistory && soldThisMonth);
+                const productCadastroDate = parseDate(details.dtCadastro);
+                let productFirstWorkingDayIndex = 0;
 
-                if (isFactuallyNewOrReactivated) {
-                    const daysToConsider = (daysFromBox > 0) ? daysFromBox : passedWorkingDaysCurrentMonth;
-                    effectiveDaysToCalculate = Math.min(passedWorkingDaysCurrentMonth, daysToConsider);
-                } else {
-                    if (daysFromBox > 0) {
-                        effectiveDaysToCalculate = Math.min(daysFromBox, productMaxLifeInWorkingDays);
-                } else {
-                        effectiveDaysToCalculate = productMaxLifeInWorkingDays; 
-                    }
-                }
-                
-                const daysDivisor = effectiveDaysToCalculate > 0 ? effectiveDaysToCalculate : 1;
-                const targetIndex = Math.max(0, sortedWorkingDays.length - daysDivisor); 
-                const startDate = parseDate(sortedWorkingDays[targetIndex]);
-                
-                let totalQtySoldInRange = 0;
+                if (productCadastroDate) {
+                    const cadastroDateString = productCadastroDate.toISOString().split('T')[0];
+                    productFirstWorkingDayIndex = sortedWorkingDays.findIndex(d => d >= cadastroDateString);
+                    if (productFirstWorkingDayIndex === -1) {
+                        productFirstWorkingDayIndex = sortedWorkingDays.length;
+                    }
+                }
+
+                const productMaxLifeInWorkingDays = sortedWorkingDays.length - productFirstWorkingDayIndex;
+                const daysFromBox = customWorkingDaysStock;
+                let effectiveDaysToCalculate;
+
+                const isFactuallyNewOrReactivated = (!hasHistory && soldThisMonth);
+
+                if (isFactuallyNewOrReactivated) {
+                    const daysToConsider = (daysFromBox > 0) ? daysFromBox : passedWorkingDaysCurrentMonth;
+                    effectiveDaysToCalculate = Math.min(passedWorkingDaysCurrentMonth, daysToConsider);
+                } else {
+                    if (daysFromBox > 0) {
+                        effectiveDaysToCalculate = Math.min(daysFromBox, productMaxLifeInWorkingDays);
+                    } else {
+                        effectiveDaysToCalculate = productMaxLifeInWorkingDays;
+                    }
+                }
+
+                const daysDivisor = effectiveDaysToCalculate > 0 ? effectiveDaysToCalculate : 1;
+                const targetIndex = Math.max(0, sortedWorkingDays.length - daysDivisor);
+                const startDate = parseDate(sortedWorkingDays[targetIndex]);
+
+                let totalQtySoldInRange = 0;
                 // Optimized loop: only iterating relevant sales for this product
-                productAllSales.forEach(sale => {
-                    const saleDate = parseDate(sale.DTPED);
-                    if (saleDate && saleDate >= startDate && saleDate <= endDate) {
-                        totalQtySoldInRange += sale.QTVENDA_EMBALAGEM_MASTER;
-                    }
-                });
+                productAllSales.forEach(sale => {
+                    const saleDate = parseDate(sale.DTPED);
+                    if (saleDate && saleDate >= startDate && saleDate <= endDate) {
+                        totalQtySoldInRange += sale.QTVENDA_EMBALAGEM_MASTER;
+                    }
+                });
 
-                let dailyAvgSale = totalQtySoldInRange / daysDivisor;
-                const isNew = productMaxLifeInWorkingDays <= passedWorkingDaysCurrentMonth;
-                const trendDays = dailyAvgSale > 0 ? (stock / dailyAvgSale) : Infinity;
+                let dailyAvgSale = totalQtySoldInRange / daysDivisor;
+                const isNew = productMaxLifeInWorkingDays <= passedWorkingDaysCurrentMonth;
+                const trendDays = dailyAvgSale > 0 ? (stock / dailyAvgSale) : (stock > 0 ? Infinity : 0);
 
                 const uniqueMonthsCount = uniqueMonthsByProduct.has(productCode) ? uniqueMonthsByProduct.get(productCode).size : 0;
                 const monthlyAvgSale = uniqueMonthsCount > 0 ? totalQtySold / uniqueMonthsCount : 0;
@@ -5221,15 +5341,15 @@
                 </div>
                 <div id="calendar-grid" class="grid grid-cols-7 gap-1">
             `;
-            const firstDay = new Date(year, month, 1).getDay();
-            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const firstDay = new Date(Date.UTC(year, month, 1)).getUTCDay();
+            const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
 
             for (let i = 0; i < firstDay; i++) {
                 calendarHTML += `<div></div>`;
             }
 
             for (let day = 1; day <= daysInMonth; day++) {
-                const date = new Date(year, month, day);
+                const date = new Date(Date.UTC(year, month, day));
                 const dateString = date.toISOString().split('T')[0];
                 const isSelected = selectedHolidays.includes(dateString);
                 const isToday = date.getTime() === lastSaleDate.getTime();
