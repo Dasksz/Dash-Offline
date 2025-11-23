@@ -1356,42 +1356,6 @@
         const newProductsTableBody = document.getElementById('new-products-table-body');
         const lostProductsTableBody = document.getElementById('lost-products-table-body');
 
-        const innovationsView = document.getElementById('innovations-view');
-        const viewInnovationsBtn = document.getElementById('viewInnovationsBtn');
-        const backToMainFromInnovationsBtn = document.getElementById('back-to-main-from-innovations-btn');
-        const innovationsSupervisorFilter = document.getElementById('innovations-supervisor-filter');
-        const innovationsVendedorFilterBtn = document.getElementById('innovations-vendedor-filter-btn');
-        const innovationsVendedorFilterText = document.getElementById('innovations-vendedor-filter-text');
-        const innovationsVendedorFilterDropdown = document.getElementById('innovations-vendedor-filter-dropdown');
-        const innovationsSupplierFilterBtn = document.getElementById('innovations-supplier-filter-btn');
-        const innovationsSupplierFilterText = document.getElementById('innovations-supplier-filter-text');
-        const innovationsSupplierFilterDropdown = document.getElementById('innovations-supplier-filter-dropdown');
-        const innovationsCityFilter = document.getElementById('innovations-city-filter');
-        const innovationsCitySuggestions = document.getElementById('innovations-city-suggestions');
-        const innovationsProductFilterBtn = document.getElementById('innovations-product-filter-btn');
-        const innovationsProductFilterText = document.getElementById('innovations-product-filter-text');
-        const innovationsProductFilterDropdown = document.getElementById('innovations-product-filter-dropdown');
-        const clearInnovationsFiltersBtn = document.getElementById('clear-innovations-filters-btn');
-        const innovationsTableBody = document.getElementById('innovations-table-body');
-        const innovationsPlaceholder = document.getElementById('innovations-placeholder');
-        const innovationsResults = document.getElementById('innovations-results');
-        const innovationsActiveClientsKpi = document.getElementById('innovations-active-clients-kpi');
-        const innovationsTopCoverageProductKpi = document.getElementById('innovations-top-coverage-product-kpi');
-        const innovationsTopCoverageValueKpi = document.getElementById('innovations-top-coverage-value-kpi');
-        const innovationsTopCoverageCountKpi = document.getElementById('innovations-top-coverage-count-kpi');
-        const innovationsSelectionCoverageValueKpi = document.getElementById('innovations-selection-coverage-value-kpi');
-        const innovationsSelectionCoverageCountKpi = document.getElementById('innovations-selection-coverage-count-kpi');
-        const innovationsSelectionCoverageValueKpiPrevious = document.getElementById('innovations-selection-coverage-value-kpi-previous');
-        const innovationsSelectionCoverageCountKpiPrevious = document.getElementById('innovations-selection-coverage-count-kpi-previous');
-        const innovationsBonusCoverageValueKpi = document.getElementById('innovations-bonus-coverage-value-kpi');
-        const innovationsBonusCoverageCountKpi = document.getElementById('innovations-bonus-coverage-count-kpi');
-        const innovationsBonusCoverageValueKpiPrevious = document.getElementById('innovations-bonus-coverage-value-kpi-previous');
-        const innovationsBonusCoverageCountKpiPrevious = document.getElementById('innovations-bonus-coverage-count-kpi-previous');
-        const innovationsMonthBtn = document.getElementById('innovations-month-btn');
-        const innovationsFilialFilter = document.getElementById('innovations-filial-filter');
-        const innovationsTipoVendaFilterBtn = document.getElementById('innovations-tipo-venda-filter-btn');
-        const innovationsTipoVendaFilterText = document.getElementById('innovations-tipo-venda-filter-text');
-        const innovationsTipoVendaFilterDropdown = document.getElementById('innovations-tipo-venda-filter-dropdown');
 
         const innovationsMonthView = document.getElementById('innovations-month-view');
         const backToInnovationsFromMonthBtn = document.getElementById('back-to-innovations-from-month-btn');
@@ -1513,14 +1477,9 @@
         let comparisonRedeGroupFilter = '';
         let stockRedeGroupFilter = '';
 
-        let selectedInnovationsSellers = [];
-        let selectedInnovationsSuppliers = [];
-        let selectedInnovationsProducts = [];
-        let selectedInnovationsTiposVenda = [];
         let selectedInnovationsMonthSellers = [];
         let selectedInnovationsMonthTiposVenda = [];
 
-        let globalInnovationsKPI = { activeClients: 0, topProduct: { product: '-', coverage: 0, clients: 0 } };
         // let innovationsIncludeBonus = true; // REMOVED
         // let innovationsMonthIncludeBonus = true; // REMOVED
 
@@ -4443,278 +4402,6 @@
             renderProductTable(lostProductsTableBody, lostProducts, false);
         }
 
-        function getInnovationsFilteredData(options = {}) {
-            const { excludeFilter = null } = options;
-
-            const supervisor = innovationsSupervisorFilter.value;
-            const sellers = selectedInnovationsSellers;
-            const city = innovationsCityFilter.value.trim().toLowerCase();
-            const filial = innovationsFilialFilter.value;
-
-            let clients = allClientsData;
-            if (filial !== 'ambas') {
-                clients = clients.filter(c => clientLastBranch.get(c['Código']) === filial);
-            }
-
-            if (excludeFilter !== 'supervisor' && supervisor) {
-                const rcasOfSupervisor = new Set(optimizedData.rcasBySupervisor.get(supervisor) || []);
-                clients = clients.filter(c => c.rcas.some(rca => rcasOfSupervisor.has(rca)));
-            }
-            if (excludeFilter !== 'seller' && sellers.length > 0) {
-                const rcasOfSellers = new Set();
-                sellers.forEach(sellerName => {
-                    const rcaCode = optimizedData.rcaCodeByName.get(sellerName);
-                    if (rcaCode) rcasOfSellers.add(rcaCode);
-                });
-                clients = clients.filter(c => c.rcas.some(rca => rcasOfSellers.has(rca)));
-            }
-            if (excludeFilter !== 'city' && city) {
-                clients = clients.filter(c => c.cidade && c.cidade.toLowerCase() === city);
-            }
-
-            let sales = allSalesData;
-            let history = allHistoryData;
-            if (filial !== 'ambas') {
-                 sales = sales.filter(s => s.FILIAL === filial);
-                 history = history.filter(s => s.FILIAL === filial);
-            }
-
-            return { sales, history, clients };
-        }
-
-        function updateInnovationsFilters() {
-            const { sales, history } = getInnovationsFilteredData();
-            let productSource = [...sales, ...history];
-
-            if (selectedInnovationsSuppliers.length > 0) {
-                 productSource = productSource.filter(s => selectedInnovationsSuppliers.includes(String(s.CODFOR)));
-            }
-
-            updateProductFilter(innovationsProductFilterDropdown, innovationsProductFilterText, selectedInnovationsProducts, productSource, 'innovations');
-            innovationsProductFilterText.textContent = selectedInnovationsProducts.length > 0 ? `${selectedInnovationsProducts.length} produtos selecionados` : 'Selecione um ou mais produtos';
-        }
-
-        function resetInnovationsFilters() {
-            innovationsSupervisorFilter.value = '';
-            innovationsCityFilter.value = '';
-            innovationsFilialFilter.value = 'ambas';
-            selectedInnovationsSellers = [];
-            selectedInnovationsSuppliers = [];
-            selectedInnovationsProducts = [];
-            selectedInnovationsTiposVenda = [];
-            updateSellerFilter('', innovationsVendedorFilterDropdown, innovationsVendedorFilterText, [], allSalesData);
-            updateSupplierFilter(innovationsSupplierFilterDropdown, innovationsSupplierFilterText, [], allSalesData, 'innovations');
-            selectedInnovationsTiposVenda = updateTipoVendaFilter(innovationsTipoVendaFilterDropdown, innovationsTipoVendaFilterText, selectedInnovationsTiposVenda, allSalesData);
-            updateInnovationsFilters();
-            updateInnovationsView();
-        }
-
-        function updateInnovationsView() {
-            const productsToAnalyze = selectedInnovationsProducts;
-            const { clients, sales, history } = getInnovationsFilteredData();
-
-            const supervisor = innovationsSupervisorFilter.value;
-            const sellers = selectedInnovationsSellers;
-            const sellerRcaCodes = new Set();
-            if (sellers.length > 0) {
-                sellers.forEach(sellerName => {
-                    const rcaCode = optimizedData.rcaCodeByName.get(sellerName);
-                    if (rcaCode) sellerRcaCodes.add(rcaCode);
-                });
-            } else if (supervisor) {
-                (optimizedData.rcasBySupervisor.get(supervisor) || []).forEach(rca => sellerRcaCodes.add(rca));
-            }
-
-            const activeClientsForCoverage = clients.filter(c => {
-                const codcli = c['Código'];
-                const rca1 = String(c.rca1 || '').trim();
-                if (rca1 === '306' || rca1 === '300') return false;
-                const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                return (isAmericanas || rca1 !== '53');
-            });
-
-            const activeClientsCount = activeClientsForCoverage.length;
-            const activeClientCodes = new Set(activeClientsForCoverage.map(c => c['Código']));
-
-            innovationsActiveClientsKpi.textContent = activeClientsCount.toLocaleString('pt-BR');
-
-            if (productsToAnalyze.length === 0) {
-                innovationsPlaceholder.classList.remove('hidden');
-                innovationsResults.classList.add('hidden');
-                innovationsSelectionCoverageValueKpi.textContent = '0%';
-                innovationsSelectionCoverageCountKpi.textContent = `0 de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
-                innovationsSelectionCoverageValueKpiPrevious.textContent = '0%';
-                innovationsSelectionCoverageCountKpiPrevious.textContent = `0 de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
-                innovationsBonusCoverageValueKpi.textContent = '0%';
-                innovationsBonusCoverageCountKpi.textContent = `0 de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
-                innovationsBonusCoverageValueKpiPrevious.textContent = '0%';
-                innovationsBonusCoverageCountKpiPrevious.textContent = `0 de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
-                innovationsTopCoverageValueKpi.textContent = '0%';
-                innovationsTopCoverageProductKpi.textContent = '-';
-                innovationsTopCoverageCountKpi.textContent = '0 PDVs';
-                return;
-            }
-
-            innovationsPlaceholder.classList.add('hidden');
-            innovationsResults.classList.remove('hidden');
-
-            // Determine types to use
-            const availableTypes = new Set([...allSalesData.map(s => s.TIPOVENDA), ...allHistoryData.map(s => s.TIPOVENDA)]);
-            let currentSelection = selectedInnovationsTiposVenda.length > 0 ? selectedInnovationsTiposVenda : Array.from(availableTypes);
-
-            // Main Coverage: Selection EXCLUDING 5 and 11
-            const mainTypes = currentSelection.filter(t => t !== '5' && t !== '11');
-
-            // Bonus Coverage: Selection INTERSECTING 5 and 11
-            const bonusTypes = currentSelection.filter(t => t === '5' || t === '11');
-
-            // Build maps
-            // Use empty Map if the filter array is empty (meaning we shouldn't match anything for that category)
-            const clientSalesCurrentMap = mainTypes.length > 0 ? buildClientSalesMap(allSalesData, mainTypes) : new Map();
-            const clientSalesPreviousMap = mainTypes.length > 0 ? buildClientSalesMap(allHistoryData, mainTypes) : new Map();
-
-            const clientBonusCurrentMap = bonusTypes.length > 0 ? buildClientSalesMap(allSalesData, bonusTypes) : new Map();
-            const clientBonusPreviousMap = bonusTypes.length > 0 ? buildClientSalesMap(allHistoryData, bonusTypes) : new Map();
-
-            const tableData = [];
-            const clientsWhoGotSelectionCurrent = new Set();
-            const clientsWhoGotSelectionPrevious = new Set();
-            const clientsWhoGotBonusSelectionCurrent = new Set();
-            const clientsWhoGotBonusSelectionPrevious = new Set();
-            let topCoverageItem = { name: '-', coverage: 0, clients: 0 };
-
-            productsToAnalyze.forEach(productCode => {
-                const productInfo = productDetailsMap.get(productCode) || { DESCRICAO: `Produto ${productCode}`};
-
-                let clientsWhoGotProductCurrent = 0;
-                let clientsWhoGotProductPrevious = 0;
-
-                activeClientCodes.forEach(codcli => {
-                    // Main Coverage Calculation (Current)
-                    const clientSalesCurrent = clientSalesCurrentMap.get(codcli);
-                    let boughtCurrent = false;
-                    if (clientSalesCurrent && clientSalesCurrent.has(productCode)) {
-                        const rcasWhoSold = clientSalesCurrent.get(productCode);
-                        if (sellerRcaCodes.size === 0 || [...rcasWhoSold].some(rca => sellerRcaCodes.has(rca))) {
-                            boughtCurrent = true;
-                        }
-                    }
-                    if (boughtCurrent) {
-                        clientsWhoGotProductCurrent++;
-                        clientsWhoGotSelectionCurrent.add(codcli);
-                    }
-
-                    // Main Coverage Calculation (Previous)
-                    const clientSalesPrevious = clientSalesPreviousMap.get(codcli);
-                    let boughtPrevious = false;
-                    if (clientSalesPrevious && clientSalesPrevious.has(productCode)) {
-                        const rcasWhoSold = clientSalesPrevious.get(productCode);
-                        if (sellerRcaCodes.size === 0 || [...rcasWhoSold].some(rca => sellerRcaCodes.has(rca))) {
-                            boughtPrevious = true;
-                        }
-                    }
-                    if (boughtPrevious) {
-                        clientsWhoGotProductPrevious++;
-                        clientsWhoGotSelectionPrevious.add(codcli);
-                    }
-
-                    // Bonus Coverage Calculation (Current)
-                    const clientBonusCurrent = clientBonusCurrentMap.get(codcli);
-                    if (clientBonusCurrent && clientBonusCurrent.has(productCode)) {
-                        const rcasWhoBonused = clientBonusCurrent.get(productCode);
-                        if (sellerRcaCodes.size === 0 || [...rcasWhoBonused].some(rca => sellerRcaCodes.has(rca))) {
-                            clientsWhoGotBonusSelectionCurrent.add(codcli);
-                        }
-                    }
-
-                    // Bonus Coverage Calculation (Previous)
-                    const clientBonusPrevious = clientBonusPreviousMap.get(codcli);
-                    if (clientBonusPrevious && clientBonusPrevious.has(productCode)) {
-                        const rcasWhoBonused = clientBonusPrevious.get(productCode);
-                        if (sellerRcaCodes.size === 0 || [...rcasWhoBonused].some(rca => sellerRcaCodes.has(rca))) {
-                            clientsWhoGotBonusSelectionPrevious.add(codcli);
-                        }
-                    }
-                });
-
-                const coverageCurrent = activeClientsCount > 0 ? (clientsWhoGotProductCurrent / activeClientsCount) * 100 : 0;
-                const coveragePrevious = activeClientsCount > 0 ? (clientsWhoGotProductPrevious / activeClientsCount) * 100 : 0;
-
-                if (coverageCurrent > topCoverageItem.coverage) {
-                    topCoverageItem = {
-                        name: `(${productCode}) ${productInfo.descricao}`,
-                        coverage: coverageCurrent,
-                        clients: clientsWhoGotProductCurrent
-                    };
-                }
-
-                const variation = coveragePrevious > 0 ? ((coverageCurrent - coveragePrevious) / coveragePrevious) * 100 : (coverageCurrent > 0 ? Infinity : 0);
-                const stockQty = getActiveStockMap(innovationsFilialFilter.value).get(productCode) || 0;
-
-                tableData.push({
-                    descricao: `(${productCode}) ${productInfo.descricao}`,
-                    stockQty: stockQty,
-                    coveragePrevious: coveragePrevious,
-                    coverageCurrent: coverageCurrent,
-                    variation: variation,
-                    clientsPreviousCount: clientsWhoGotProductPrevious,
-                    clientsCurrentCount: clientsWhoGotProductCurrent
-                });
-            });
-
-            innovationsTopCoverageValueKpi.textContent = `${topCoverageItem.coverage.toFixed(2)}%`;
-            innovationsTopCoverageProductKpi.textContent = topCoverageItem.name;
-            innovationsTopCoverageProductKpi.title = topCoverageItem.name;
-            innovationsTopCoverageCountKpi.textContent = `${topCoverageItem.clients.toLocaleString('pt-BR')} PDVs`;
-
-            const selectionCoveredCountCurrent = clientsWhoGotSelectionCurrent.size;
-            const selectionCoveragePercentCurrent = activeClientsCount > 0 ? (selectionCoveredCountCurrent / activeClientsCount) * 100 : 0;
-            innovationsSelectionCoverageValueKpi.textContent = `${selectionCoveragePercentCurrent.toFixed(2)}%`;
-            innovationsSelectionCoverageCountKpi.textContent = `${selectionCoveredCountCurrent.toLocaleString('pt-BR')} de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
-
-            const selectionCoveredCountPrevious = clientsWhoGotSelectionPrevious.size;
-            const selectionCoveragePercentPrevious = activeClientsCount > 0 ? (selectionCoveredCountPrevious / activeClientsCount) * 100 : 0;
-            innovationsSelectionCoverageValueKpiPrevious.textContent = `${selectionCoveragePercentPrevious.toFixed(2)}%`;
-            innovationsSelectionCoverageCountKpiPrevious.textContent = `${selectionCoveredCountPrevious.toLocaleString('pt-BR')} de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
-
-            const bonusCoveredCountCurrent = clientsWhoGotBonusSelectionCurrent.size;
-            const bonusCoveragePercentCurrent = activeClientsCount > 0 ? (bonusCoveredCountCurrent / activeClientsCount) * 100 : 0;
-            innovationsBonusCoverageValueKpi.textContent = `${bonusCoveragePercentCurrent.toFixed(2)}%`;
-            innovationsBonusCoverageCountKpi.textContent = `${bonusCoveredCountCurrent.toLocaleString('pt-BR')} de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
-
-            const bonusCoveredCountPrevious = clientsWhoGotBonusSelectionPrevious.size;
-            const bonusCoveragePercentPrevious = activeClientsCount > 0 ? (bonusCoveredCountPrevious / activeClientsCount) * 100 : 0;
-            innovationsBonusCoverageValueKpiPrevious.textContent = `${bonusCoveragePercentPrevious.toFixed(2)}%`;
-            innovationsBonusCoverageCountKpiPrevious.textContent = `${bonusCoveredCountPrevious.toLocaleString('pt-BR')} de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
-
-
-            tableData.sort((a, b) => b.coverageCurrent - a.coverageCurrent);
-
-            innovationsTableBody.innerHTML = tableData.map(item => {
-                let variationContent;
-                if (isFinite(item.variation)) {
-                    const colorClass = item.variation >= 0 ? 'text-green-400' : 'text-red-400';
-                    variationContent = `<span class="${colorClass}">${item.variation.toFixed(1)}%</span>`;
-                } else if (item.coverageCurrent > 0) {
-                    variationContent = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-500/30 text-purple-300">Novo</span>`;
-                } else {
-                    variationContent = `<span>-</span>`;
-                }
-                return `
-                    <tr class="hover:bg-slate-700/50">
-                        <td class="px-2 py-1.5 text-xs">${item.descricao}</td>
-                        <td class="px-2 py-1.5 text-xs text-right">${item.stockQty.toLocaleString('pt-BR')}</td>
-                        <td class="px-2 py-1.5 text-xs text-right">
-                            <div class="tooltip">${item.coveragePrevious.toFixed(2)}%<span class="tooltip-text">${item.clientsPreviousCount} PDVs</span></div>
-                        </td>
-                        <td class="px-2 py-1.5 text-xs text-right">
-                            <div class="tooltip">${item.coverageCurrent.toFixed(2)}%<span class="tooltip-text">${item.clientsCurrentCount} PDVs</span></div>
-                        </td>
-                        <td class="px-2 py-1.5 text-xs text-right">${variationContent}</td>
-                    </tr>
-                `;
-            }).join('');
-        }
 
         function getInnovationsMonthFilteredData(options = {}) {
             const { excludeFilter = null } = options;
@@ -5644,7 +5331,7 @@
                     if (maxDaysLabel) maxDaysLabel.textContent = `(Máx: ${maxWorkingDaysStock})`;
                     const daysInput = document.getElementById('stock-working-days-input');
                     if(daysInput && parseInt(daysInput.value) === 0) daysInput.value = customWorkingDaysStock;
-                    handleStockFilterChange();
+                    handleStockFilterChange(); 
                     break;
                 case 'cobertura':
                     coverageView.classList.remove('hidden');
@@ -5659,33 +5346,24 @@
                     resetMainFilters();
                     const cityContent = document.getElementById('city-view-content');
                     const cityLoader = document.getElementById('city-view-loader');
-                    if (cityContent) cityContent.classList.add('hidden');
-                    if (cityLoader) cityLoader.classList.remove('hidden');
-                    setTimeout(() => {
-                        if (cityLoader) cityLoader.classList.add('hidden');
-                        if (cityContent) cityContent.classList.remove('hidden');
+                    if (cityContent) cityContent.classList.add('hidden'); 
+                    if (cityLoader) cityLoader.classList.remove('hidden'); 
+                    setTimeout(() => { 
+                        if (cityLoader) cityLoader.classList.add('hidden'); 
+                        if (cityContent) cityContent.classList.remove('hidden'); 
 
-                        populateSupervisors('city-supervisor-filter', allSalesData);
-                        selectedCitySellers = updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData);
-                        selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData);
-                        updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData);
-                        updateCityView();
+                        populateSupervisors('city-supervisor-filter', allSalesData); 
+                        selectedCitySellers = updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData); 
+                        selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData); 
+                        updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData); 
+                        updateCityView(); 
                     }, 10);
                     break;
                 case 'semanal':
                     weeklyView.classList.remove('hidden');
                     resetMainFilters();
-                    populateWeeklyFilters();
+                    populateWeeklyFilters(); 
                     updateWeeklyView();
-                    break;
-                case 'inovacoes':
-                    innovationsView.classList.remove('hidden');
-                    populateSupervisors('innovations-supervisor-filter', allSalesData);
-                    updateSellerFilter('', innovationsVendedorFilterDropdown, innovationsVendedorFilterText, [], allSalesData);
-                    updateSupplierFilter(innovationsSupplierFilterDropdown, innovationsSupplierFilterText, [], allSalesData, 'innovations');
-                    selectedInnovationsTiposVenda = updateTipoVendaFilter(innovationsTipoVendaFilterDropdown, innovationsTipoVendaFilterText, selectedInnovationsTiposVenda, allSalesData);
-                    updateInnovationsFilters();
-                    updateInnovationsView();
                     break;
                 case 'inovacoes-mes':
                     innovationsMonthView.classList.remove('hidden');
@@ -6149,118 +5827,7 @@
             faturamentoBtn.addEventListener('click', () => { currentProductMetric = 'faturamento'; faturamentoBtn.classList.add('active'); pesoBtn.classList.remove('active'); updateAllVisuals(); });
             pesoBtn.addEventListener('click', () => { currentProductMetric = 'peso'; pesoBtn.classList.add('active'); faturamentoBtn.classList.remove('active'); updateAllVisuals(); });
 
-            const debouncedUpdateInnovations = debounce(() => {
-                updateInnovationsFilters();
-                updateInnovationsView();
-            }, 400);
-
-
             innovationsMonthCategoryFilter.addEventListener('change', updateInnovationsMonthView);
-            innovationsFilialFilter.addEventListener('change', debouncedUpdateInnovations);
-
-            innovationsSupervisorFilter.addEventListener('change', () => {
-                selectedInnovationsSellers = [];
-                updateSellerFilter(innovationsSupervisorFilter.value, innovationsVendedorFilterDropdown, innovationsVendedorFilterText, selectedInnovationsSellers, allSalesData);
-                debouncedUpdateInnovations();
-            });
-
-            innovationsCityFilter.addEventListener('input', (e) => {
-                e.target.value = e.target.value.replace(/[0-9]/g, '');
-                const cityDataSource = getInnovationsFilteredData({ excludeFilter: 'city' }).clients;
-                innovationsCitySuggestions.classList.remove('manual-hide');
-                updateCitySuggestions(innovationsCityFilter, innovationsCitySuggestions, cityDataSource);
-            });
-            innovationsCityFilter.addEventListener('focus', () => {
-                const cityDataSource = getInnovationsFilteredData({ excludeFilter: 'city' }).clients;
-                innovationsCitySuggestions.classList.remove('manual-hide');
-                updateCitySuggestions(innovationsCityFilter, innovationsCitySuggestions, cityDataSource);
-            });
-            innovationsCityFilter.addEventListener('blur', () => setTimeout(() => innovationsCitySuggestions.classList.add('hidden'), 150));
-            innovationsCityFilter.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    innovationsCitySuggestions.classList.add('hidden', 'manual-hide');
-                    debouncedUpdateInnovations();
-                    e.target.blur();
-                }
-            });
-            innovationsCitySuggestions.addEventListener('click', (e) => {
-                if (e.target.tagName === 'DIV') {
-                    innovationsCityFilter.value = e.target.textContent;
-                    innovationsCitySuggestions.classList.add('hidden');
-                    debouncedUpdateInnovations();
-                }
-            });
-
-
-            clearInnovationsFiltersBtn.addEventListener('click', resetInnovationsFilters);
-
-            innovationsVendedorFilterBtn.addEventListener('click', () => innovationsVendedorFilterDropdown.classList.toggle('hidden'));
-            innovationsVendedorFilterDropdown.addEventListener('change', (e) => {
-                if (e.target.type === 'checkbox') {
-                    const { value, checked } = e.target;
-                    if (checked) {
-                        if (!selectedInnovationsSellers.includes(value)) selectedInnovationsSellers.push(value);
-                    } else {
-                        selectedInnovationsSellers = selectedInnovationsSellers.filter(s => s !== value);
-                    }
-                    updateSellerFilter(innovationsSupervisorFilter.value, innovationsVendedorFilterDropdown, innovationsVendedorFilterText, selectedInnovationsSellers, allSalesData);
-                    debouncedUpdateInnovations();
-                }
-            });
-
-            innovationsSupplierFilterBtn.addEventListener('click', () => innovationsSupplierFilterDropdown.classList.toggle('hidden'));
-            innovationsSupplierFilterDropdown.addEventListener('change', (e) => {
-                if (e.target.type === 'checkbox' && e.target.dataset.filterType === 'innovations') {
-                    const { value, checked } = e.target;
-                    if (checked) {
-                        if (!selectedInnovationsSuppliers.includes(value)) selectedInnovationsSuppliers.push(value);
-                    } else {
-                        selectedInnovationsSuppliers = selectedInnovationsSuppliers.filter(s => s !== value);
-                    }
-                    updateSupplierFilter(innovationsSupplierFilterDropdown, innovationsSupplierFilterText, selectedInnovationsSuppliers, allSalesData, 'innovations');
-
-                    const supplierProducts = new Set();
-                    selectedInnovationsSuppliers.forEach(codfor => {
-                        (optimizedData.productsBySupplier.get(codfor) || []).forEach(prod => supplierProducts.add(prod));
-                    });
-                    selectedInnovationsProducts = Array.from(supplierProducts);
-
-                    debouncedUpdateInnovations();
-                }
-            });
-
-            innovationsProductFilterBtn.addEventListener('click', () => {
-                updateInnovationsFilters();
-                innovationsProductFilterDropdown.classList.toggle('hidden');
-            });
-
-            const debouncedInnovationsProductSearch = debounce(updateInnovationsFilters, 250);
-
-            innovationsProductFilterDropdown.addEventListener('input', (e) => {
-                if (e.target.id === 'innovations-product-search-input') {
-                    debouncedInnovationsProductSearch();
-                }
-            });
-
-            innovationsProductFilterDropdown.addEventListener('change', (e) => {
-                if (e.target.dataset.filterType === 'innovations' && handleProductFilterChange(e, selectedInnovationsProducts)) {
-                    debouncedUpdateInnovations();
-                }
-            });
-
-            innovationsTipoVendaFilterBtn.addEventListener('click', () => innovationsTipoVendaFilterDropdown.classList.toggle('hidden'));
-            innovationsTipoVendaFilterDropdown.addEventListener('change', (e) => {
-                if (e.target.type === 'checkbox') {
-                    const { value, checked } = e.target;
-                    if (checked) {
-                        if (!selectedInnovationsTiposVenda.includes(value)) selectedInnovationsTiposVenda.push(value);
-                    } else {
-                        selectedInnovationsTiposVenda = selectedInnovationsTiposVenda.filter(s => s !== value);
-                    }
-                    selectedInnovationsTiposVenda = updateTipoVendaFilter(innovationsTipoVendaFilterDropdown, innovationsTipoVendaFilterText, selectedInnovationsTiposVenda, allSalesData);
-                    debouncedUpdateInnovations();
-                }
-            });
 
             const debouncedUpdateInnovationsMonth = debounce(updateInnovationsMonthView, 400);
 
@@ -6451,10 +6018,6 @@
 
 
             document.addEventListener('click', (e) => {
-                if (!innovationsVendedorFilterBtn.contains(e.target) && !innovationsVendedorFilterDropdown.contains(e.target)) innovationsVendedorFilterDropdown.classList.add('hidden');
-                if (!innovationsSupplierFilterBtn.contains(e.target) && !innovationsSupplierFilterDropdown.contains(e.target)) innovationsSupplierFilterDropdown.classList.add('hidden');
-                if (!innovationsProductFilterBtn.contains(e.target) && !innovationsProductFilterDropdown.contains(e.target)) innovationsProductFilterDropdown.classList.add('hidden');
-                if (!innovationsTipoVendaFilterBtn.contains(e.target) && !innovationsTipoVendaFilterDropdown.contains(e.target)) innovationsTipoVendaFilterDropdown.classList.add('hidden');
                 if (!innovationsMonthVendedorFilterBtn.contains(e.target) && !innovationsMonthVendedorFilterDropdown.contains(e.target)) innovationsMonthVendedorFilterDropdown.classList.add('hidden');
                 if (!innovationsMonthTipoVendaFilterBtn.contains(e.target) && !innovationsMonthTipoVendaFilterDropdown.contains(e.target)) innovationsMonthTipoVendaFilterDropdown.classList.add('hidden');
                 if (!coverageVendedorFilterBtn.contains(e.target) && !coverageVendedorFilterDropdown.contains(e.target)) coverageVendedorFilterDropdown.classList.add('hidden');
@@ -6766,22 +6329,16 @@
                                         </button>
                                     </li>
                                     <li>
-                                        <button data-target="inovacoes" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                        <button data-target="inovacoes-mes" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
                                             <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                                             <span class="ml-3">Inovações</span>
-                                        </button>
-                                    </li>
-                                    <li>
-                                        <button data-target="inovacoes-mes" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
-                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
-                                            <span class="ml-3">Inovações Mês</span>
                                         </button>
                                     </li>
                                 </ul>
                             </div>
                         </aside>
                         <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-40 hidden lg:hidden glass-effect"></div>
-
+                        
                         <div id="content-wrapper" class="lg:ml-64 min-h-screen transition-all duration-300">
                             <div id="main-dashboard">
                                 <div class="container mx-auto p-4 sm:p-6 lg:p-8">
@@ -7222,92 +6779,6 @@
                             </div>
                         </div>
 
-                        <!-- Ecrã Inovações -->
-                        <div id="innovations-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
-                            <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                <div class="flex items-center gap-4">
-                                    <button class="sidebar-toggle lg:hidden text-white focus:outline-none">
-                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-                                    </button>
-                                    <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Análise de Inovações</p></div>
-                                </div>
-                            </header>
-                            <!-- KPIs (Inovações) -->
-                             <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6 mb-6">
-                                <div class="kpi-card">
-                                    <p class="text-slate-400 text-sm font-medium">Clientes Ativos (Filtro)</p>
-                                    <p id="innovations-active-clients-kpi" class="text-3xl font-bold text-teal-400 my-1">0</p>
-                                    <p class="text-xs text-slate-500">Base para os KPIs</p>
-                                </div>
-                                <div class="kpi-card">
-                                    <p class="text-slate-400 text-sm font-medium">Cobertura Mês Anterior</p>
-                                    <p id="innovations-selection-coverage-value-kpi-previous" class="text-3xl font-bold text-orange-400 my-1">0%</p>
-                                    <p id="innovations-selection-coverage-count-kpi-previous" class="text-xs text-slate-500">0 de 0 clientes</p>
-                                </div>
-                                <div class="kpi-card">
-                                    <p class="text-slate-400 text-sm font-medium">Cobertura Mês Atual</p>
-                                    <p id="innovations-selection-coverage-value-kpi" class="text-3xl font-bold text-cyan-400 my-1">0%</p>
-                                    <p id="innovations-selection-coverage-count-kpi" class="text-xs text-slate-500">0 de 0 clientes</p>
-                                </div>
-                                <div class="kpi-card">
-                                    <p class="text-slate-400 text-sm font-medium">Cobertura Bonificação Ant.</p>
-                                    <p id="innovations-bonus-coverage-value-kpi-previous" class="text-3xl font-bold text-orange-400 my-1">0%</p>
-                                    <p id="innovations-bonus-coverage-count-kpi-previous" class="text-xs text-slate-500">0 de 0 clientes</p>
-                                </div>
-                                <div class="kpi-card">
-                                    <p class="text-slate-400 text-sm font-medium">Cobertura Bonificação Atual</p>
-                                    <p id="innovations-bonus-coverage-value-kpi" class="text-3xl font-bold text-cyan-400 my-1">0%</p>
-                                    <p id="innovations-bonus-coverage-count-kpi" class="text-xs text-slate-500">0 de 0 clientes</p>
-                                </div>
-                                <div class="kpi-card">
-                                    <p id="innovations-top-coverage-title" class="text-slate-400 text-sm font-medium">Item com Maior Cobertura</p>
-                                    <p id="innovations-top-coverage-value-kpi" class="text-3xl font-bold text-purple-400 my-1">0%</p>
-                                    <p id="innovations-top-coverage-product-kpi" class="text-xs text-slate-500 truncate" title="Nenhum item analisado">-</p>
-                                    <p id="innovations-top-coverage-count-kpi" class="text-xs text-slate-500">0 PDVs</p>
-                                </div>
-                            </div>
-                            <!-- Filtros (Inovações) -->
-                            <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
-                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
-                                    <div><label for="innovations-supervisor-filter" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label><select id="innovations-supervisor-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="">Todos</option></select></div>
-                                    <div class="relative"><label for="innovations-vendedor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Vendedor</label><button id="innovations-vendedor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="innovations-vendedor-filter-text">Todos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button><div id="innovations-vendedor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
-                                    <div class="relative"><label for="innovations-supplier-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Fornecedor</label><button id="innovations-supplier-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="innovations-supplier-filter-text">Todos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button><div id="innovations-supplier-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
-                                    <div class="relative"><label for="innovations-city-filter" class="block mb-2 text-sm font-medium text-slate-400">Cidade</label><input type="text" id="innovations-city-filter" placeholder="Digite a cidade..." class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5" autocomplete="off"><div id="innovations-city-suggestions" class="absolute z-10 w-full bg-slate-800 border border-slate-600 rounded-lg mt-1 hidden max-h-48 overflow-y-auto custom-scrollbar text-white"></div></div>
-                                    <div><label for="innovations-filial-filter" class="block mb-2 text-sm font-medium text-slate-400">Filial</label><select id="innovations-filial-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="ambas" selected>Ambas</option><option value="05">Filial 05</option><option value="08">Filial 08</option></select></div>
-                                </div>
-                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
-                                    <div class="lg:col-span-2 relative">
-                                        <label for="innovations-product-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Produto (Obrigatório)</label>
-                                        <button id="innovations-product-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="innovations-product-filter-text">Selecione um ou mais produtos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button>
-                                        <div id="innovations-product-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg">
-                                            <div class="p-2 border-b border-slate-700"><input type="text" id="innovations-product-search-input" placeholder="Buscar produto..." class="bg-slate-600 text-xs rounded-lg block w-full p-2 border border-slate-500 placeholder-slate-400 text-white focus:outline-none focus:ring-2 focus:ring-teal-500"></div>
-                                            <div id="innovations-product-list" class="max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                        </div>
-                                    </div>
-                                    <div class="relative">
-                                        <label for="innovations-tipo-venda-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Tipo Venda</label>
-                                        <button id="innovations-tipo-venda-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
-                                            <span id="innovations-tipo-venda-filter-text">Todos os Tipos</span>
-                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                        </button>
-                                        <div id="innovations-tipo-venda-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                    </div>
-                                    <button id="clear-innovations-filters-btn" class="w-full bg-slate-600 hover:bg-slate-500 text-white font-bold py-2.5 px-4 rounded-lg">Limpar Filtros</button>
-                                </div>
-                            </div>
-                            <!-- Tabela (Inovações) -->
-                            <div id="innovations-table-container" class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
-                                <div id="innovations-placeholder" class="text-center py-16"><p class="text-slate-400 text-lg">Aguardando filtro de produtos...</p></div>
-                                <div id="innovations-results" class="hidden overflow-auto custom-scrollbar" style="max-height: 60vh;">
-                                    <table class="min-w-full text-sm text-left text-slate-300">
-                                        <thead class="text-xs text-slate-400 uppercase sticky-header">
-                                            <tr><th class="px-2 py-2">PRODUTO</th><th class="px-2 py-2 text-right">ESTOQUE CAIXAS</th><th class="px-2 py-2 text-right">COBERTURA MÊS ANT.</th><th class="px-2 py-2 text-right">COBERTURA MÊS ATUAL</th><th class="px-2 py-2 text-right">VARIAÇÃO</th></tr>
-                                        </thead>
-                                        <tbody id="innovations-table-body" class="divide-y divide-slate-700"></tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
 
                         <!-- Ecrã Inovações Mês -->
                         <div id="innovations-month-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
