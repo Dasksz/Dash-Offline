@@ -5587,25 +5587,129 @@
             };
         }
 
-        function setupEventListeners() {
-            viewTableBtn.addEventListener('click', () => { chartView.classList.add('hidden'); tableView.classList.remove('hidden'); tablePaginationControls.classList.remove('hidden'); viewTableBtn.classList.add('hidden'); viewChartBtn.classList.remove('hidden'); updateAllVisuals(); });
-            viewChartBtn.addEventListener('click', () => { tableView.classList.add('hidden'); tablePaginationControls.classList.add('hidden'); chartView.classList.remove('hidden'); viewChartBtn.classList.add('hidden'); viewTableBtn.classList.remove('hidden'); updateAllVisuals(); });
-            viewComparisonBtn.addEventListener('click', () => { mainDashboard.classList.add('hidden'); comparisonView.classList.remove('hidden'); updateAllComparisonFilters(); updateComparisonView(); });
-            viewStockBtn.addEventListener('click', () => { 
-                mainDashboard.classList.add('hidden'); 
-                stockView.classList.remove('hidden'); 
-                const maxDaysLabel = document.getElementById('max-working-days-label');
-                if (maxDaysLabel) maxDaysLabel.textContent = `(Máx: ${maxWorkingDaysStock})`;
-                const daysInput = document.getElementById('stock-working-days-input');
-                if(daysInput && parseInt(daysInput.value) === 0) daysInput.value = customWorkingDaysStock;
-                handleStockFilterChange(); 
+        function toggleSidebar() {
+            const sideMenu = document.getElementById('side-menu');
+            const sidebarOverlay = document.getElementById('sidebar-overlay');
+            if (sideMenu) sideMenu.classList.toggle('-translate-x-full');
+            if (sidebarOverlay) sidebarOverlay.classList.toggle('hidden');
+        }
+
+        function navigateTo(view) {
+            const sideMenu = document.getElementById('side-menu');
+            const sidebarOverlay = document.getElementById('sidebar-overlay');
+            if (window.innerWidth < 1024) {
+                if (sideMenu) sideMenu.classList.add('-translate-x-full');
+                if (sidebarOverlay) sidebarOverlay.classList.add('hidden');
+            }
+
+            [mainDashboard, cityView, weeklyView, comparisonView, stockView, innovationsView, innovationsMonthView, coverageView].forEach(el => {
+                if(el) el.classList.add('hidden');
             });
-            showCityBtn.addEventListener('click', () => { resetMainFilters(); mainDashboard.classList.add('hidden'); cityView.classList.remove('hidden'); document.getElementById('city-view-content').classList.add('hidden'); document.getElementById('city-view-loader').classList.remove('hidden'); setTimeout(() => { populateSupervisors('city-supervisor-filter', allSalesData); selectedCitySellers = updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData); selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData); updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData); updateCityView(); document.getElementById('city-view-loader').classList.add('hidden'); document.getElementById('city-view-content').classList.remove('hidden'); }, 10); });
-            backToMainFromCityBtn.addEventListener('click', () => { resetCityFilters(); cityView.classList.add('hidden'); mainDashboard.classList.remove('hidden'); updateAllVisuals(); });
-            showWeeklyBtn.addEventListener('click', () => { resetMainFilters(); mainDashboard.classList.add('hidden'); weeklyView.classList.remove('hidden'); populateWeeklyFilters(); updateWeeklyView(); });
-            backToMainFromWeeklyBtn.addEventListener('click', () => { weeklyView.classList.add('hidden'); mainDashboard.classList.remove('hidden'); currentWeeklyFornecedor = ''; updateAllVisuals(); });
-            backToMainFromComparisonBtn.addEventListener('click', () => { comparisonView.classList.add('hidden'); mainDashboard.classList.remove('hidden'); updateAllVisuals(); });
-            backToMainFromStockBtn.addEventListener('click', () => { stockView.classList.add('hidden'); mainDashboard.classList.remove('hidden'); updateAllVisuals(); });
+
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.remove('bg-slate-700', 'text-white');
+                const icon = link.querySelector('svg');
+                if(icon) icon.classList.remove('text-white');
+            });
+            const activeLink = document.querySelector(`.nav-link[data-target="${view}"]`);
+            if (activeLink) {
+                activeLink.classList.add('bg-slate-700', 'text-white');
+                const icon = activeLink.querySelector('svg');
+                if(icon) icon.classList.add('text-white');
+            }
+
+            switch(view) {
+                case 'dashboard':
+                    mainDashboard.classList.remove('hidden');
+                    if (chartView) chartView.classList.remove('hidden');
+                    if (tableView) tableView.classList.add('hidden');
+                    if (tablePaginationControls) tablePaginationControls.classList.add('hidden');
+                    updateAllVisuals();
+                    break;
+                case 'pedidos':
+                    mainDashboard.classList.remove('hidden');
+                    if (chartView) chartView.classList.add('hidden');
+                    if (tableView) tableView.classList.remove('hidden');
+                    if (tablePaginationControls) tablePaginationControls.classList.remove('hidden');
+                    updateAllVisuals();
+                    break;
+                case 'comparativo':
+                    comparisonView.classList.remove('hidden');
+                    updateAllComparisonFilters();
+                    updateComparisonView();
+                    break;
+                case 'estoque':
+                    stockView.classList.remove('hidden');
+                    const maxDaysLabel = document.getElementById('max-working-days-label');
+                    if (maxDaysLabel) maxDaysLabel.textContent = `(Máx: ${maxWorkingDaysStock})`;
+                    const daysInput = document.getElementById('stock-working-days-input');
+                    if(daysInput && parseInt(daysInput.value) === 0) daysInput.value = customWorkingDaysStock;
+                    handleStockFilterChange();
+                    break;
+                case 'cobertura':
+                    coverageView.classList.remove('hidden');
+                    customWorkingDaysCoverage = maxWorkingDaysStock;
+                    const workingDaysInputCov = document.getElementById('coverage-working-days-input');
+                    if(workingDaysInputCov) workingDaysInputCov.value = customWorkingDaysCoverage;
+                    updateAllCoverageFilters();
+                    updateCoverageView();
+                    break;
+                case 'cidades':
+                    cityView.classList.remove('hidden');
+                    resetMainFilters();
+                    const cityContent = document.getElementById('city-view-content');
+                    const cityLoader = document.getElementById('city-view-loader');
+                    if (cityContent) cityContent.classList.add('hidden');
+                    if (cityLoader) cityLoader.classList.remove('hidden');
+                    setTimeout(() => {
+                        if (cityLoader) cityLoader.classList.add('hidden');
+                        if (cityContent) cityContent.classList.remove('hidden');
+
+                        populateSupervisors('city-supervisor-filter', allSalesData);
+                        selectedCitySellers = updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData);
+                        selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData);
+                        updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData);
+                        updateCityView();
+                    }, 10);
+                    break;
+                case 'semanal':
+                    weeklyView.classList.remove('hidden');
+                    resetMainFilters();
+                    populateWeeklyFilters();
+                    updateWeeklyView();
+                    break;
+                case 'inovacoes':
+                    innovationsView.classList.remove('hidden');
+                    populateSupervisors('innovations-supervisor-filter', allSalesData);
+                    updateSellerFilter('', innovationsVendedorFilterDropdown, innovationsVendedorFilterText, [], allSalesData);
+                    updateSupplierFilter(innovationsSupplierFilterDropdown, innovationsSupplierFilterText, [], allSalesData, 'innovations');
+                    selectedInnovationsTiposVenda = updateTipoVendaFilter(innovationsTipoVendaFilterDropdown, innovationsTipoVendaFilterText, selectedInnovationsTiposVenda, allSalesData);
+                    updateInnovationsFilters();
+                    updateInnovationsView();
+                    break;
+                case 'inovacoes-mes':
+                    innovationsMonthView.classList.remove('hidden');
+                    populateSupervisors('innovations-month-supervisor-filter', allSalesData);
+                    updateSellerFilter('', innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
+                    selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
+                    updateInnovationsMonthView();
+                    break;
+            }
+        }
+
+        function setupEventListeners() {
+            document.querySelectorAll('.sidebar-toggle').forEach(btn => btn.addEventListener('click', toggleSidebar));
+            const closeSidebarBtn = document.getElementById('close-sidebar-btn');
+            if(closeSidebarBtn) closeSidebarBtn.addEventListener('click', toggleSidebar);
+            const sidebarOverlay = document.getElementById('sidebar-overlay');
+            if(sidebarOverlay) sidebarOverlay.addEventListener('click', toggleSidebar);
+
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    const target = e.currentTarget.dataset.target;
+                    navigateTo(target);
+                });
+            });
 
             supervisorFilter.addEventListener('change', () => { selectedSellers = []; updateSellerFilter(supervisorFilter.value, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData); mainTableState.currentPage = 1; updateAllVisuals(); });
             fornecedorFilter.addEventListener('change', () => { mainTableState.currentPage = 1; updateAllVisuals(); });
@@ -6050,36 +6154,6 @@
                 updateInnovationsView();
             }, 400);
 
-            viewInnovationsBtn.addEventListener('click', () => {
-                mainDashboard.classList.add('hidden');
-                innovationsView.classList.remove('hidden');
-                populateSupervisors('innovations-supervisor-filter', allSalesData);
-                updateSellerFilter('', innovationsVendedorFilterDropdown, innovationsVendedorFilterText, [], allSalesData);
-                updateSupplierFilter(innovationsSupplierFilterDropdown, innovationsSupplierFilterText, [], allSalesData, 'innovations');
-                selectedInnovationsTiposVenda = updateTipoVendaFilter(innovationsTipoVendaFilterDropdown, innovationsTipoVendaFilterText, selectedInnovationsTiposVenda, allSalesData);
-                updateInnovationsFilters();
-                updateInnovationsView();
-            });
-
-            backToMainFromInnovationsBtn.addEventListener('click', () => {
-                innovationsView.classList.add('hidden');
-                mainDashboard.classList.remove('hidden');
-                updateAllVisuals();
-            });
-
-            innovationsMonthBtn.addEventListener('click', () => {
-                innovationsView.classList.add('hidden');
-                innovationsMonthView.classList.remove('hidden');
-                populateSupervisors('innovations-month-supervisor-filter', allSalesData);
-                updateSellerFilter('', innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
-                selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
-                updateInnovationsMonthView();
-            });
-
-            backToInnovationsFromMonthBtn.addEventListener('click', () => {
-                innovationsMonthView.classList.add('hidden');
-                innovationsView.classList.remove('hidden');
-            });
 
             innovationsMonthCategoryFilter.addEventListener('change', updateInnovationsMonthView);
             innovationsFilialFilter.addEventListener('change', debouncedUpdateInnovations);
@@ -6255,23 +6329,6 @@
                 }
             });
 
-            viewCoverageBtn.addEventListener('click', () => {
-                mainDashboard.classList.add('hidden');
-                coverageView.classList.remove('hidden');
-
-                customWorkingDaysCoverage = maxWorkingDaysStock;
-                const workingDaysInput = document.getElementById('coverage-working-days-input');
-                if(workingDaysInput) workingDaysInput.value = customWorkingDaysCoverage;
-
-                updateAllCoverageFilters();
-                updateCoverageView();
-            });
-
-            backToMainFromCoverageBtn.addEventListener('click', () => {
-                coverageView.classList.add('hidden');
-                mainDashboard.classList.remove('hidden');
-                updateAllVisuals();
-            });
 
             document.getElementById('export-coverage-pdf-btn').addEventListener('click', exportCoveragePDF);
 
@@ -6469,9 +6526,9 @@
         setupEventListeners();
         
         // Assegura que os dados históricos estão prontos antes da primeira renderização
-        // calculateHistoricalBests(); // <-- REMOVIDA DAQUI
+        calculateHistoricalBests();
         
-        updateAllVisuals();
+        navigateTo('dashboard');
         renderTable(aggregatedOrders);
     </script>
 
@@ -6657,17 +6714,91 @@
                         </style>
                     </head>
                     <body class="bg-[#0d1126] text-slate-300 antialiased">
-                        <div id="main-dashboard">
-                            <div class="container mx-auto p-4 sm:p-6 lg:p-8">
-                                <!-- Cabeçalho com gradiente escuro -->
-                                <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                    <div class="flex flex-col sm:flex-row justify-between items-start gap-4">
-                                        <div class="text-center sm:text-left">
-                                            <h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1>
-                                            <p class="text-slate-300 mt-1">Dados atualizados em: ${generationDate}</p>
+                        <aside id="side-menu" class="fixed top-0 left-0 z-50 w-64 h-screen transition-transform -translate-x-full lg:translate-x-0 bg-[#1d2347] border-r border-slate-700 flex flex-col">
+                            <div class="flex items-center justify-between p-4 border-b border-slate-700">
+                                <span class="text-xl font-bold text-white">Menu</span>
+                                <button id="close-sidebar-btn" class="lg:hidden text-slate-400 hover:text-white">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                </button>
+                            </div>
+                            <div class="flex-1 overflow-y-auto custom-scrollbar py-4 px-3">
+                                <ul class="space-y-2 font-medium">
+                                    <li>
+                                        <button data-target="dashboard" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+                                            <span class="ml-3">Dashboard</span>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button data-target="pedidos" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                                            <span class="ml-3">Pedidos</span>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button data-target="comparativo" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
+                                            <span class="ml-3">Comparativo</span>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button data-target="estoque" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
+                                            <span class="ml-3">Estoque</span>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button data-target="cobertura" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                                            <span class="ml-3">Cobertura</span>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button data-target="cidades" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                                            <span class="ml-3">Cidades</span>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button data-target="semanal" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                            <span class="ml-3">Semanal</span>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button data-target="inovacoes" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                            <span class="ml-3">Inovações</span>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button data-target="inovacoes-mes" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+                                            <span class="ml-3">Inovações Mês</span>
+                                        </button>
+                                    </li>
+                                </ul>
+                            </div>
+                        </aside>
+                        <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-40 hidden lg:hidden glass-effect"></div>
+
+                        <div id="content-wrapper" class="lg:ml-64 min-h-screen transition-all duration-300">
+                            <div id="main-dashboard">
+                                <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+                                    <!-- Cabeçalho com gradiente escuro -->
+                                    <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
+                                        <div class="flex items-center gap-4">
+                                            <button class="sidebar-toggle lg:hidden text-white focus:outline-none">
+                                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                                            </button>
+                                            <div class="flex-1 flex flex-col sm:flex-row justify-between items-start gap-4">
+                                                <div class="text-center sm:text-left">
+                                                    <h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1>
+                                                    <p class="text-slate-300 mt-1">Dados atualizados em: ${generationDate}</p>
+                                                </div>
+                                            </div>
                                         </div>
-                                    </div>
-                                </header>
+                                    </header>
 
                                 <!-- KPIs com bordas e cores atualizadas -->
                                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
@@ -6696,14 +6827,7 @@
                                         <button data-fornecedor="PEPSICO" class="fornecedor-btn bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg flex-1 sm:flex-none">PEPSICO</button>
                                         <button data-fornecedor="MULTIMARCAS" class="fornecedor-btn bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg flex-1 sm:flex-none">MULTIMARCAS</button>
                                     </div>
-                                    <!-- Botões de Navegação -->
-                                    <div class="flex gap-2 w-full sm:w-auto">
-                                        <button id="viewChartBtn" class="w-full bg-teal-500 hover:bg-teal-400 text-white font-bold py-2 px-4 rounded-lg hidden">Gráficos</button>
-                                        <button id="viewTableBtn" class="w-full bg-teal-500 hover:bg-teal-400 text-white font-bold py-2 px-4 rounded-lg">Pedidos</button>
-                                        <button id="viewComparisonBtn" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg">Comparativo</button>
-                                        <button id="viewStockBtn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Estoque</button>
-                                        <button id="viewCoverageBtn" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg">Cobertura</button>
-                                    </div>
+                                    <!-- Botões de Navegação removidos (movidos para sidebar) -->
                                 </div>
                                 
                                 <!-- Container de Filtros -->
@@ -6763,12 +6887,6 @@
                                             </div>
                                             <div id="salesByProductBarChartContainer" class="relative h-80"></div>
                                         </div>
-                                        <!-- Botões de Navegação Secundários -->
-                                        <div class="mt-6 space-y-3">
-                                            <button id="show-weekly-btn" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg">Gráficos Semanais</button>
-                                            <button id="show-city-btn" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-4 rounded-lg">Gráficos por Cidade</button>
-                                            <button id="viewInnovationsBtn" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 px-4 rounded-lg">Inovações</button>
-                                        </div>
                                     </div>
                                     <!-- Visão de Tabela (Pedidos) -->
                                     <div id="tableView" class="hidden">
@@ -6794,7 +6912,12 @@
                         <!-- Ecrã de Cidades -->
                         <div id="city-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                <div class="flex justify-between items-center"><div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Análise de Vendas por Cidade</p></div><button id="back-to-main-from-city-btn" class="bg-white/20 hover:bg-white/30 text-white font-bold py-2 px-4 rounded-lg">Voltar ao Dashboard</button></div>
+                                <div class="flex items-center gap-4">
+                                    <button class="sidebar-toggle lg:hidden text-white focus:outline-none">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                                    </button>
+                                    <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Análise de Vendas por Cidade</p></div>
+                                </div>
                             </header>
                             <div id="city-view-loader" class="text-center p-16"><p class="text-lg text-slate-400">Carregando dados...</p></div>
                             <div id="city-view-content" class="hidden">
@@ -6849,7 +6972,12 @@
                         <!-- Ecrã Semanal -->
                         <div id="weekly-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                <div class="flex justify-between items-center"><div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Acompanhamento Semanal</p></div><button id="back-to-main-from-weekly-btn" class="bg-white/20 hover:bg-white/30 text-white font-bold py-2 px-4 rounded-lg">Voltar ao Dashboard</button></div>
+                                <div class="flex items-center gap-4">
+                                    <button class="sidebar-toggle lg:hidden text-white focus:outline-none">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                                    </button>
+                                    <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Acompanhamento Semanal</p></div>
+                                </div>
                             </header>
                             <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
                                 <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -6870,7 +6998,12 @@
                         <!-- Ecrã Comparativo -->
                         <div id="comparison-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                <div class="flex justify-between items-center"><div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Comparativo entre Meses</p></div><button id="back-to-main-from-comparison-btn" class="bg-white/20 hover:bg-white/30 text-white font-bold py-2 px-4 rounded-lg">Voltar ao Dashboard</button></div>
+                                <div class="flex items-center gap-4">
+                                    <button class="sidebar-toggle lg:hidden text-white focus:outline-none">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                                    </button>
+                                    <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Comparativo entre Meses</p></div>
+                                </div>
                             </header>
                             <!-- Filtros (Comparativo) -->
                             <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
@@ -6960,7 +7093,12 @@
                         <!-- Ecrã Estoque -->
                         <div id="stock-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                <div class="flex justify-between items-center"><div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Análise de Estoque</p></div><button id="back-to-main-from-stock-btn" class="bg-white/20 hover:bg-white/30 text-white font-bold py-2 px-4 rounded-lg">Voltar ao Dashboard</button></div>
+                                <div class="flex items-center gap-4">
+                                    <button class="sidebar-toggle lg:hidden text-white focus:outline-none">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                                    </button>
+                                    <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Análise de Estoque</p></div>
+                                </div>
                             </header>
                             <!-- Filtros (Estoque) -->
                             <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
@@ -7087,12 +7225,11 @@
                         <!-- Ecrã Inovações -->
                         <div id="innovations-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                <div class="flex justify-between items-center">
+                                <div class="flex items-center gap-4">
+                                    <button class="sidebar-toggle lg:hidden text-white focus:outline-none">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                                    </button>
                                     <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Análise de Inovações</p></div>
-                                    <div class="flex gap-4">
-                                        <button id="innovations-month-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg">Inovações Mês</button>
-                                        <button id="back-to-main-from-innovations-btn" class="bg-white/20 hover:bg-white/30 text-white font-bold py-2 px-4 rounded-lg">Voltar ao Dashboard</button>
-                                    </div>
                                 </div>
                             </header>
                             <!-- KPIs (Inovações) -->
@@ -7175,11 +7312,13 @@
                         <!-- Ecrã Inovações Mês -->
                         <div id="innovations-month-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
                              <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                <div class="flex justify-between items-center">
-                                    <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Gráfico de Cobertura por Categoria de Inovação</p></div>
-                                    <div class="flex gap-4">
+                                <div class="flex items-center gap-4">
+                                    <button class="sidebar-toggle lg:hidden text-white focus:outline-none">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                                    </button>
+                                    <div class="flex-1 flex flex-col sm:flex-row justify-between items-center gap-4">
+                                        <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Gráfico de Cobertura por Categoria de Inovação</p></div>
                                         <button id="export-innovations-month-pdf-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Exportar PDF</button>
-                                        <button id="back-to-innovations-from-month-btn" class="bg-white/20 hover:bg-white/30 text-white font-bold py-2 px-4 rounded-lg">Voltar</button>
                                     </div>
                                 </div>
                             </header>
@@ -7239,11 +7378,13 @@
                         <!-- Ecrã Cobertura (Novo) -->
                         <div id="coverage-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                <div class="flex justify-between items-center">
-                                    <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Análise de Cobertura (Estoque x PDVs)</p></div>
-                                    <div class="flex gap-4">
+                                <div class="flex items-center gap-4">
+                                    <button class="sidebar-toggle lg:hidden text-white focus:outline-none">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                                    </button>
+                                    <div class="flex-1 flex flex-col sm:flex-row justify-between items-center gap-4">
+                                        <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Análise de Cobertura (Estoque x PDVs)</p></div>
                                         <button id="export-coverage-pdf-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Exportar PDF</button>
-                                        <button id="back-to-main-from-coverage-btn" class="bg-white/20 hover:bg-white/30 text-white font-bold py-2 px-4 rounded-lg">Voltar ao Dashboard</button>
                                     </div>
                                 </div>
                             </header>
@@ -7361,6 +7502,7 @@
                                 </div>
                             </div>
                         </div>
+                        </div> <!-- End content-wrapper -->
                         
                         <script>
                             const embeddedData = ${jsonDataString};
