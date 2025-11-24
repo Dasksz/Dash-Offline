@@ -1729,7 +1729,7 @@
                 const rca1 = String(c.rca1 || '').trim();
                 
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                return (isAmericanas || rca1 !== '53');
+                return (isAmericanas || rca1 !== '53' || clientsWithSalesThisMonth.has(codcli));
             });
             const activeClientsCount = activeClientsForCoverage.length;
             const activeClientCodes = new Set(activeClientsForCoverage.map(c => c['Código']));
@@ -2359,7 +2359,7 @@
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 
                 // Regra de inclusão (Americanas ou RCA 1 diferente de 53)
-                return (isAmericanas || rca1 !== '53');
+                return (isAmericanas || rca1 !== '53' || clientsWithSalesThisMonth.has(c['Código']));
             });
 
             if (mainRedeGroupFilter === 'com_rede') {
@@ -2890,7 +2890,7 @@
             clientsForAnalysis = clientsForAnalysis.filter(c => {
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                return (isAmericanas || rca1 !== '53');
+                return (isAmericanas || rca1 !== '53' || clientsWithSalesThisMonth.has(c['Código']));
             });
 
             let activeClientsList = [];
@@ -4633,7 +4633,7 @@
                 const rca1 = String(c.rca1 || '').trim();
                 if (rca1 === '306' || rca1 === '300') return false;
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                return (isAmericanas || rca1 !== '53');
+                return (isAmericanas || rca1 !== '53' || clientsWithSalesThisMonth.has(codcli));
             });
             const activeClientsCount = activeClients.length;
             const activeClientCodes = new Set(activeClients.map(c => c['Código']));
