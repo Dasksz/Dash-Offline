@@ -3870,7 +3870,7 @@
                 if (skipFilter !== 'supervisor') {
                     const supervisorData = getStockFilteredData({ excludeFilter: 'supervisor' });
                     const supervisorOptionsData = [...supervisorData.sales, ...supervisorData.history];
-                    populateSupervisors('stock-supervisor-filter', supervisorOptionsData);
+                    selectedStockSupervisors = updateSupervisorFilter(document.getElementById('stock-supervisor-filter-dropdown'), document.getElementById('stock-supervisor-filter-text'), selectedStockSupervisors, supervisorOptionsData);
                 }
 
                 updateStockSellerFilter(skipFilter === 'seller');
@@ -5643,7 +5643,7 @@
                             if (cityLoader) cityLoader.classList.add('hidden'); 
                             if (cityContent) cityContent.classList.remove('hidden'); 
 
-                            populateSupervisors('city-supervisor-filter', allSalesData); 
+                            selectedCitySupervisors = updateSupervisorFilter(document.getElementById('city-supervisor-filter-dropdown'), document.getElementById('city-supervisor-filter-text'), selectedCitySupervisors, allSalesData);
                             selectedCitySellers = updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData); 
                             selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData); 
                             updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData); 
@@ -5667,7 +5667,7 @@
                 case 'inovacoes-mes':
                     innovationsMonthView.classList.remove('hidden');
                     if (viewState.inovacoes.dirty) {
-                        populateSupervisors('innovations-month-supervisor-filter', allSalesData);
+                        selectedInnovationsSupervisors = updateSupervisorFilter(document.getElementById('innovations-month-supervisor-filter-dropdown'), document.getElementById('innovations-month-supervisor-filter-text'), selectedInnovationsSupervisors, allSalesData);
                         updateSellerFilter('', innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
                         selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
                         updateInnovationsMonthView();
@@ -5931,9 +5931,9 @@
                 btn.addEventListener('click', () => { 
                     const fornecedor = btn.dataset.fornecedor; 
                     if (currentFornecedor === fornecedor) { currentFornecedor = ''; btn.classList.remove('active'); } else { currentFornecedor = fornecedor; fornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); } 
-                    populateSupervisors('supervisor-filter', allSalesData); 
+                    selectedMainSupervisors = updateSupervisorFilter(document.getElementById('supervisor-filter-dropdown'), document.getElementById('supervisor-filter-text'), selectedMainSupervisors, allSalesData);
                     selectedSellers = []; 
-                    updateSellerFilter(supervisorFilter.value, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData); 
+                    updateSellerFilter(selectedMainSupervisors, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData); 
                     mainTableState.currentPage = 1; 
                     updateDashboard(); 
                 }); 
