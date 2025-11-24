@@ -1584,6 +1584,11 @@
         function getCoverageFilteredData(options = {}) {
             const { excludeFilter = null } = options;
 
+            const isExcluded = (filterName) => {
+                if (Array.isArray(excludeFilter)) return excludeFilter.includes(filterName);
+                return excludeFilter === filterName;
+            };
+
             const supervisor = coverageSupervisorFilter.value;
             // Use Sets for O(1) lookups
             const sellersSet = new Set(selectedCoverageSellers);
@@ -1602,11 +1607,11 @@
                 clients = clients.filter(c => clientLastBranch.get(c['Código']) === filial);
             }
 
-            if (excludeFilter !== 'supervisor' && supervisor) {
+            if (!isExcluded('supervisor') && supervisor) {
                 const rcasOfSupervisor = new Set(optimizedData.rcasBySupervisor.get(supervisor) || []);
                 clients = clients.filter(c => c.rcas.some(rca => rcasOfSupervisor.has(rca)));
             }
-            if (excludeFilter !== 'seller' && sellersSet.size > 0) {
+            if (!isExcluded('seller') && sellersSet.size > 0) {
                 const rcasOfSellers = new Set();
                  sellersSet.forEach(sellerName => {
                     const rcaCode = optimizedData.rcaCodeByName.get(sellerName);
@@ -1614,7 +1619,7 @@
                 });
                 clients = clients.filter(c => c.rcas.some(rca => rcasOfSellers.has(rca)));
             }
-            if (excludeFilter !== 'city' && city) {
+            if (!isExcluded('city') && city) {
                 clients = clients.filter(c => c.cidade && c.cidade.toLowerCase() === city);
             }
 
@@ -1627,11 +1632,11 @@
             }
             
             const salesFilter = s => 
-                (excludeFilter === 'supervisor' || !supervisor || s.SUPERV === supervisor) &&
-                (excludeFilter === 'seller' || sellersSet.size === 0 || sellersSet.has(s.NOME)) &&
-                (excludeFilter === 'supplier' || suppliersSet.size === 0 || suppliersSet.has(s.CODFOR)) &&
-                (excludeFilter === 'product' || productsSet.size === 0 || productsSet.has(s.PRODUTO)) &&
-                (excludeFilter === 'tipoVenda' || tiposVendaSet.size === 0 || tiposVendaSet.has(s.TIPOVENDA)) &&
+                (isExcluded('supervisor') || !supervisor || s.SUPERV === supervisor) &&
+                (isExcluded('seller') || sellersSet.size === 0 || sellersSet.has(s.NOME)) &&
+                (isExcluded('supplier') || suppliersSet.size === 0 || suppliersSet.has(s.CODFOR)) &&
+                (isExcluded('product') || productsSet.size === 0 || productsSet.has(s.PRODUTO)) &&
+                (isExcluded('tipoVenda') || tiposVendaSet.size === 0 || tiposVendaSet.has(s.TIPOVENDA)) &&
                 (unitPrice === null || (s.QTVENDA > 0 && Math.abs((s.VLVENDA / s.QTVENDA) - unitPrice) < 0.01));
                 
             sales = sales.filter(salesFilter);
@@ -1664,7 +1669,7 @@
             const { sales: salesSeller, history: historySeller } = getCoverageFilteredData({ excludeFilter: 'seller' });
             selectedCoverageSellers = updateSellerFilter(coverageSupervisorFilter.value, coverageVendedorFilterDropdown, coverageVendedorFilterText, selectedCoverageSellers, [...salesSeller, ...historySeller], skipFilter === 'seller');
 
-            const { sales: salesSupplier, history: historySupplier } = getCoverageFilteredData({ excludeFilter: 'supplier' });
+            const { sales: salesSupplier, history: historySupplier } = getCoverageFilteredData({ excludeFilter: ['supplier', 'product'] });
             selectedCoverageSuppliers = updateSupplierFilter(coverageSupplierFilterDropdown, coverageSupplierFilterText, selectedCoverageSuppliers, [...salesSupplier, ...historySupplier], 'coverage', skipFilter === 'supplier');
 
             const { sales: salesProd, history: historyProd } = getCoverageFilteredData({ excludeFilter: 'product' });
