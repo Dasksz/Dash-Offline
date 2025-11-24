@@ -911,12 +911,15 @@
                     // Ensure primitives for Client
                     client['Código'] = String(client['Código']);
                     client.cidade = client.cidade || 'N/A';
+
+                    if ((client.razaoSocial || '').toUpperCase().includes('AMERICANAS')) {
+                        client.rca1 = '1001';
+                        client.rcas = ['1001'];
+                        americanasCodCli = client['Código'];
+                    }
                     
                     if (client.rca1) {
                         clientToCurrentSellerMap.set(client['Código'], String(client.rca1));
-                    }
-                    if (client.razaoSocial && client.razaoSocial.toUpperCase().includes('AMERICANAS')) {
-                        americanasCodCli = client['Código'];
                     }
 
                     clientRamoMap.set(client['Código'], client.ramo || 'N/A');
