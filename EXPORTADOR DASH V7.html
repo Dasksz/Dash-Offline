@@ -1784,10 +1784,18 @@
             const trendSalesMap = new Map();
 
             // Process Current Sales (O(N))
+            // --- OTIMIZAÇÃO: Mapa invertido para performance O(1) no cálculo de cobertura ---
+            const productClientsCurrent = new Map(); // Map<PRODUTO, Set<CODCLI>>
+            const productClientsPrevious = new Map(); // Map<PRODUTO, Set<CODCLI>>
+
             sales.forEach(s => {
-                // Coverage Map
+                // Coverage Map (Standard)
                 if (!currentSalesMap.has(s.CODCLI)) currentSalesMap.set(s.CODCLI, new Set());
                 currentSalesMap.get(s.CODCLI).add(s.PRODUTO);
+
+                // Coverage Map (Inverted for Performance)
+                if (!productClientsCurrent.has(s.PRODUTO)) productClientsCurrent.set(s.PRODUTO, new Set());
+                productClientsCurrent.get(s.PRODUTO).add(s.CODCLI);
 
                 // Box Quantity Map
                 boxesSoldCurrentMap.set(s.PRODUTO, (boxesSoldCurrentMap.get(s.PRODUTO) || 0) + s.QTVENDA_EMBALAGEM_MASTER);
@@ -1807,6 +1815,10 @@
                     if (!previousSalesMap.has(s.CODCLI)) previousSalesMap.set(s.CODCLI, new Set());
                     previousSalesMap.get(s.CODCLI).add(s.PRODUTO);
 
+                    // Coverage Map (Inverted for Performance)
+                    if (!productClientsPrevious.has(s.PRODUTO)) productClientsPrevious.set(s.PRODUTO, new Set());
+                    productClientsPrevious.get(s.PRODUTO).add(s.CODCLI);
+
                     // Box Quantity Map (only if prev month)
                     boxesSoldPreviousMap.set(s.PRODUTO, (boxesSoldPreviousMap.get(s.PRODUTO) || 0) + s.QTVENDA_EMBALAGEM_MASTER);
                 }
@@ -1818,59 +1830,37 @@
 
             // Pre-calculate global dates for Trend
             const endDate = parseDate(sortedWorkingDays[sortedWorkingDays.length - 1]);
-            // We can't pre-calculate start date globally because it depends on product creation date,
-            // but we can optimize the lookups.
 
             productsToAnalyze.forEach(productCode => {
                 const productInfo = productDetailsMap.get(productCode) || { descricao: `Produto ${productCode}`};
 
-                // Coverage Calculation: Loop only over active clients (O(C))
-                // Optimization: Instead of looping clients for every product, can we check the inverse?
-                // No, we need 'clientsWhoGotSelectionCurrent' which is the union.
-                // But for individual product coverage, we can just check size of the Set if we built it reversed.
-                // However, building Map<Product, Set<Client>> is also O(N).
-                // Let's stick to checking clients but optimize the Set lookup (it's already O(1)).
-                // Actually, checking 5000 clients for every product is slow (5000 * 2000 = 10M ops).
-                // BETTER: In the first pass, calculate the counts!
-                // But we need to know if the client is "Active" (in the filtered list).
-                // Since `currentSalesMap` only contains sales from `sales` array (which is filtered),
-                // any client in `currentSalesMap` IS active relative to the filters applied to sales.
-                // BUT `activeClientsForCoverage` applies specific logic (excluding RCA 53, etc.).
-                // So we MUST intersect `currentSalesMap` keys with `activeClientCodes`.
-
                 let clientsWhoGotProductCurrent = 0;
                 let clientsWhoGotProductPrevious = 0;
 
-                // To avoid O(Clients * Products), we iterate active clients ONLY ONCE outside this loop?
-                // No, we need per-product counts.
-                // Optimization: Iterate over `currentSalesMap` entries?
-                // No, that's unstructured.
+                // --- OTIMIZAÇÃO CRÍTICA: Iterar apenas os compradores do produto em vez de todos os clientes ativos ---
+                // Reduz a complexidade de O(Produtos * Clientes) para O(Total Vendas)
 
-                // Let's optimize the loop below by doing it only for products that actually HAVE sales.
-                // If boxesSoldCurrentMap.get(productCode) is undefined/0, coverage is 0.
-
-                const hasCurrentSales = boxesSoldCurrentMap.has(productCode);
-                const hasPreviousSales = boxesSoldPreviousMap.has(productCode);
-
-                if (hasCurrentSales) {
-                    // Only iterate clients if we know there are sales for this product
-                    // Actually, even better: Build Map<Product, Set<ActiveClient>> during the first pass?
-                    // Yes, but we need to know `activeClientCodes` first.
+                // Check Current
+                const buyersCurrent = productClientsCurrent.get(productCode);
+                if (buyersCurrent) {
+                    buyersCurrent.forEach(buyer => {
+                        if (activeClientCodes.has(buyer)) {
+                            clientsWhoGotProductCurrent++;
+                            clientsWhoGotSelectionCurrent.add(buyer);
+                        }
+                    });
                 }
 
-                // Fallback to standard loop but simplified
-                activeClientCodes.forEach(codcli => {
-                    // Check Current
-                    if (currentSalesMap.has(codcli) && currentSalesMap.get(codcli).has(productCode)) {
-                        clientsWhoGotProductCurrent++;
-                        clientsWhoGotSelectionCurrent.add(codcli);
-                    }
-                    // Check Previous
-                    if (previousSalesMap.has(codcli) && previousSalesMap.get(codcli).has(productCode)) {
-                        clientsWhoGotProductPrevious++;
-                        clientsWhoGotSelectionPrevious.add(codcli);
-                    }
-                });
+                // Check Previous
+                const buyersPrevious = productClientsPrevious.get(productCode);
+                if (buyersPrevious) {
+                    buyersPrevious.forEach(buyer => {
+                        if (activeClientCodes.has(buyer)) {
+                            clientsWhoGotProductPrevious++;
+                            clientsWhoGotSelectionPrevious.add(buyer);
+                        }
+                    });
+                }
 
                 const coverageCurrent = activeClientsCount > 0 ? (clientsWhoGotProductCurrent / activeClientsCount) * 100 : 0;
                 
@@ -3880,7 +3870,7 @@
                 if (skipFilter !== 'supervisor') {
                     const supervisorData = getStockFilteredData({ excludeFilter: 'supervisor' });
                     const supervisorOptionsData = [...supervisorData.sales, ...supervisorData.history];
-                    populateSupervisors('stock-supervisor-filter', supervisorOptionsData);
+                    selectedStockSupervisors = updateSupervisorFilter(document.getElementById('stock-supervisor-filter-dropdown'), document.getElementById('stock-supervisor-filter-text'), selectedStockSupervisors, supervisorOptionsData);
                 }
 
                 updateStockSellerFilter(skipFilter === 'seller');
@@ -5653,7 +5643,7 @@
                             if (cityLoader) cityLoader.classList.add('hidden'); 
                             if (cityContent) cityContent.classList.remove('hidden'); 
 
-                            populateSupervisors('city-supervisor-filter', allSalesData); 
+                            selectedCitySupervisors = updateSupervisorFilter(document.getElementById('city-supervisor-filter-dropdown'), document.getElementById('city-supervisor-filter-text'), selectedCitySupervisors, allSalesData);
                             selectedCitySellers = updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData); 
                             selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData); 
                             updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData); 
@@ -5677,7 +5667,7 @@
                 case 'inovacoes-mes':
                     innovationsMonthView.classList.remove('hidden');
                     if (viewState.inovacoes.dirty) {
-                        populateSupervisors('innovations-month-supervisor-filter', allSalesData);
+                        selectedInnovationsSupervisors = updateSupervisorFilter(document.getElementById('innovations-month-supervisor-filter-dropdown'), document.getElementById('innovations-month-supervisor-filter-text'), selectedInnovationsSupervisors, allSalesData);
                         updateSellerFilter('', innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
                         selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
                         updateInnovationsMonthView();
@@ -5912,22 +5902,34 @@
             });
 
             document.addEventListener('click', (e) => {
+                if (!supervisorFilterBtn.contains(e.target) && !supervisorFilterDropdown.contains(e.target)) supervisorFilterDropdown.classList.add('hidden');
+                if (!fornecedorFilterBtn.contains(e.target) && !fornecedorFilterDropdown.contains(e.target)) fornecedorFilterDropdown.classList.add('hidden');
                 if (!vendedorFilterBtn.contains(e.target) && !vendedorFilterDropdown.contains(e.target)) vendedorFilterDropdown.classList.add('hidden');
                 if (!tipoVendaFilterBtn.contains(e.target) && !tipoVendaFilterDropdown.contains(e.target)) tipoVendaFilterDropdown.classList.add('hidden');
+
+                if (!citySupervisorFilterBtn.contains(e.target) && !citySupervisorFilterDropdown.contains(e.target)) citySupervisorFilterDropdown.classList.add('hidden');
                 if (!cityVendedorFilterBtn.contains(e.target) && !cityVendedorFilterDropdown.contains(e.target)) cityVendedorFilterDropdown.classList.add('hidden');
                 if (!cityTipoVendaFilterBtn.contains(e.target) && !cityTipoVendaFilterDropdown.contains(e.target)) cityTipoVendaFilterDropdown.classList.add('hidden');
                 if (!cityComRedeBtn.contains(e.target) && !cityRedeFilterDropdown.contains(e.target)) cityRedeFilterDropdown.classList.add('hidden');
                 if (!mainComRedeBtn.contains(e.target) && !mainRedeFilterDropdown.contains(e.target)) mainRedeFilterDropdown.classList.add('hidden');
+
+                if (!comparisonSupervisorFilterBtn.contains(e.target) && !comparisonSupervisorFilterDropdown.contains(e.target)) comparisonSupervisorFilterDropdown.classList.add('hidden');
                 if (!comparisonComRedeBtn.contains(e.target) && !comparisonRedeFilterDropdown.contains(e.target)) comparisonRedeFilterDropdown.classList.add('hidden');
                 if (!comparisonVendedorFilterBtn.contains(e.target) && !comparisonVendedorFilterDropdown.contains(e.target)) comparisonVendedorFilterDropdown.classList.add('hidden');
                 if (!comparisonTipoVendaFilterBtn.contains(e.target) && !comparisonTipoVendaFilterDropdown.contains(e.target)) comparisonTipoVendaFilterDropdown.classList.add('hidden');
                 if (!comparisonSupplierFilterBtn.contains(e.target) && !comparisonSupplierFilterDropdown.contains(e.target)) comparisonSupplierFilterDropdown.classList.add('hidden');
                 if (!comparisonProductFilterBtn.contains(e.target) && !comparisonProductFilterDropdown.contains(e.target)) comparisonProductFilterDropdown.classList.add('hidden');
+
+                if (!stockSupervisorFilterBtn.contains(e.target) && !stockSupervisorFilterDropdown.contains(e.target)) stockSupervisorFilterDropdown.classList.add('hidden');
                 if (!stockComRedeBtn.contains(e.target) && !stockRedeFilterDropdown.contains(e.target)) stockRedeFilterDropdown.classList.add('hidden');
                 if (!stockVendedorFilterBtn.contains(e.target) && !stockVendedorFilterDropdown.contains(e.target)) stockVendedorFilterDropdown.classList.add('hidden');
                 if (!stockSupplierFilterBtn.contains(e.target) && !stockSupplierFilterDropdown.contains(e.target)) stockSupplierFilterDropdown.classList.add('hidden');
                 if (!stockProductFilterBtn.contains(e.target) && !stockProductFilterDropdown.contains(e.target)) stockProductFilterDropdown.classList.add('hidden');
                 if (!stockTipoVendaFilterBtn.contains(e.target) && !stockTipoVendaFilterDropdown.contains(e.target)) stockTipoVendaFilterDropdown.classList.add('hidden');
+
+                if (!innovationsMonthSupervisorFilterBtn.contains(e.target) && !innovationsMonthSupervisorFilterDropdown.contains(e.target)) innovationsMonthSupervisorFilterDropdown.classList.add('hidden');
+                if (!coverageSupervisorFilterBtn.contains(e.target) && !coverageSupervisorFilterDropdown.contains(e.target)) coverageSupervisorFilterDropdown.classList.add('hidden');
+
                 if (e.target.closest('[data-pedido-id]')) { e.preventDefault(); openModal(e.target.closest('[data-pedido-id]').dataset.pedidoId); }
                 if (e.target.closest('[data-codcli]')) { e.preventDefault(); openClientModal(e.target.closest('[data-codcli]').dataset.codcli); }
                 if (e.target.closest('#city-suggestions > div')) { cityNameFilter.value = e.target.textContent; citySuggestions.classList.add('hidden'); updateCityView(); }
@@ -5941,9 +5943,9 @@
                 btn.addEventListener('click', () => { 
                     const fornecedor = btn.dataset.fornecedor; 
                     if (currentFornecedor === fornecedor) { currentFornecedor = ''; btn.classList.remove('active'); } else { currentFornecedor = fornecedor; fornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); } 
-                    populateSupervisors('supervisor-filter', allSalesData); 
+                    selectedMainSupervisors = updateSupervisorFilter(document.getElementById('supervisor-filter-dropdown'), document.getElementById('supervisor-filter-text'), selectedMainSupervisors, allSalesData);
                     selectedSellers = []; 
-                    updateSellerFilter(supervisorFilter.value, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData); 
+                    updateSellerFilter(selectedMainSupervisors, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData);
                     mainTableState.currentPage = 1; 
                     updateDashboard(); 
                 }); 
