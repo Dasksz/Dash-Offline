@@ -827,7 +827,7 @@
         
         let allSalesData = embeddedData.detailed;
         let allHistoryData = embeddedData.history;
-        const aggregatedOrders = embeddedData.byOrder;
+        let aggregatedOrders = embeddedData.byOrder;
         const allClientsData = embeddedData.clients;
         const stockData05 = new Map(Object.entries(embeddedData.stockMap05 || {}));
         const stockData08 = new Map(Object.entries(embeddedData.stockMap08 || {}));
@@ -886,50 +886,55 @@
 
         function initializeOptimizedDataStructures() {
             // --- INÍCIO DA LÓGICA DE REMAPEAMENTO (Melhoria Solicitada) ---
-            const sellerDetailsMap = new Map();
-            const populateSellerDetails = (data) => {
-                data.forEach(s => {
-                    if (s.CODUSUR && (!sellerDetailsMap.has(s.CODUSUR) || s.NOME)) {
-                        sellerDetailsMap.set(s.CODUSUR, { name: s.NOME, supervisor: s.SUPERV });
-                    }
-                });
-            };
-            populateSellerDetails([...allSalesData, ...allHistoryData]);
-
-            const clientToCurrentSellerMap = new Map();
-            let americanasCodCli = null;
-            allClientsData.forEach(c => {
-                if (c['Código'] && c.rca1) {
-                    clientToCurrentSellerMap.set(String(c['Código']), String(c.rca1));
-                }
-                if (c.razaoSocial && c.razaoSocial.toUpperCase().includes('AMERICANAS')) {
-                    americanasCodCli = String(c['Código']);
-                }
-            });
-
-            const remapSales = (salesList) => {
-                return salesList.map(sale => {
-                    const clientCode = String(sale.CODCLI);
-                    if (clientCode === americanasCodCli) return sale;
-
-                    const currentSellerCode = clientToCurrentSellerMap.get(clientCode);
-                    if (currentSellerCode) {
-                        const sellerDetails = sellerDetailsMap.get(currentSellerCode);
-                        if (sellerDetails) {
-                            return {
-                                ...sale,
-                                CODUSUR: currentSellerCode,
-                                NOME: sellerDetails.name,
-                                SUPERV: sellerDetails.supervisor
-                            };
+            try {
+                const sellerDetailsMap = new Map();
+                const populateSellerDetails = (data) => {
+                    data.forEach(s => {
+                        if (s.CODUSUR && (!sellerDetailsMap.has(s.CODUSUR) || s.NOME)) {
+                            sellerDetailsMap.set(s.CODUSUR, { name: s.NOME, supervisor: s.SUPERV });
                         }
-                    }
-                    return sale;
-                });
-            };
+                    });
+                };
+                populateSellerDetails([...allSalesData, ...allHistoryData]);
 
-            allSalesData = remapSales(allSalesData);
-            allHistoryData = remapSales(allHistoryData);
+                const clientToCurrentSellerMap = new Map();
+                let americanasCodCli = null;
+                allClientsData.forEach(c => {
+                    if (c['Código'] && c.rca1) {
+                        clientToCurrentSellerMap.set(String(c['Código']), String(c.rca1));
+                    }
+                    if (c.razaoSocial && c.razaoSocial.toUpperCase().includes('AMERICANAS')) {
+                        americanasCodCli = String(c['Código']);
+                    }
+                });
+
+                const remapSales = (salesList) => {
+                    return salesList.map(sale => {
+                        const clientCode = String(sale.CODCLI);
+                        if (clientCode === americanasCodCli) return sale;
+
+                        const currentSellerCode = clientToCurrentSellerMap.get(clientCode);
+                        if (currentSellerCode) {
+                            const sellerDetails = sellerDetailsMap.get(currentSellerCode);
+                            if (sellerDetails) {
+                                return {
+                                    ...sale,
+                                    CODUSUR: currentSellerCode,
+                                    NOME: sellerDetails.name,
+                                    SUPERV: sellerDetails.supervisor
+                                };
+                            }
+                        }
+                        return sale;
+                    });
+                };
+
+                allSalesData = remapSales(allSalesData);
+                allHistoryData = remapSales(allHistoryData);
+                aggregatedOrders = remapSales(aggregatedOrders);
+            } catch (e) {
+                console.error("Erro na lógica de remapeamento:", e);
+            }
             // --- FIM DA LÓGICA DE REMAPEAMENTO ---
 
             // 1. Pre-process Clients: Lowercase search fields
