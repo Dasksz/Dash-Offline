@@ -2495,8 +2495,8 @@
 
             totalVendasEl.textContent = summary.totalFaturamento.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
             totalPesoEl.textContent = `${(summary.totalPeso / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}`;
-            kpiSkuPdVEl.textContent = summary.skuPdv.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-            kpiPositivacaoEl.textContent = `${summary.positivacaoPercent.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+            kpiSkuPdVEl.textContent = summary.skuPdv.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            kpiPositivacaoEl.textContent = `${summary.positivacaoPercent.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
             kpiPositivacaoPercentEl.textContent = `${summary.positivacaoCount.toLocaleString('pt-BR')} PDVs`;
 
 
