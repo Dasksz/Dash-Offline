@@ -1673,7 +1673,7 @@
             selectedCoverageSuppliers = updateSupplierFilter(coverageSupplierFilterDropdown, coverageSupplierFilterText, selectedCoverageSuppliers, [...salesSupplier, ...historySupplier], 'coverage', skipFilter === 'supplier');
 
             const { sales: salesProd, history: historyProd } = getCoverageFilteredData({ excludeFilter: 'product' });
-            updateProductFilter(coverageProductFilterDropdown, coverageProductFilterText, selectedCoverageProducts, [...salesProd, ...historyProd], 'coverage', skipFilter === 'product');
+            selectedCoverageProducts = updateProductFilter(coverageProductFilterDropdown, coverageProductFilterText, selectedCoverageProducts, [...salesProd, ...historyProd], 'coverage', skipFilter === 'product');
 
             const { sales: salesTV, history: historyTV } = getCoverageFilteredData({ excludeFilter: 'tipoVenda' });
             selectedCoverageTiposVenda = updateTipoVendaFilter(coverageTipoVendaFilterDropdown, coverageTipoVendaFilterText, selectedCoverageTiposVenda, [...salesTV, ...historyTV], skipFilter === 'tipoVenda');
@@ -2833,7 +2833,7 @@
         }
 
         function updateCityView() {
-            const { clients: clientsForAnalysis, sales: salesForAnalysis } = getCityFilteredData();
+            let { clients: clientsForAnalysis, sales: salesForAnalysis } = getCityFilteredData();
             const cidadeFiltro = cityNameFilter.value.trim();
 
             const referenceDate = lastSaleDate;
@@ -3676,6 +3676,10 @@
             const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
 
             const products = [...new Map(dataSource.map(s => [s.PRODUTO, s.DESCRICAO])).entries()].sort((a,b) => a[1].localeCompare(b[1]));
+            
+            // Filter selectedArray to keep only items present in the current dataSource
+            const availableProductCodes = new Set(products.map(p => p[0]));
+            selectedArray = selectedArray.filter(code => availableProductCodes.has(code));
 
             const filteredProducts = searchTerm.length > 0
                 ? products.filter(([code, name]) =>
@@ -3705,16 +3709,17 @@
             } else {
                 filterText.textContent = `${selectedArray.length} produtos selecionados`;
             }
+            return selectedArray;
         }
 
         function updateComparisonProductFilter() {
             const { currentSales, historySales } = getComparisonFilteredData({ excludeFilter: 'product' });
-            updateProductFilter(comparisonProductFilterDropdown, comparisonProductFilterText, selectedComparisonProducts, [...currentSales, ...historySales], 'comparison');
+            selectedComparisonProducts = updateProductFilter(comparisonProductFilterDropdown, comparisonProductFilterText, selectedComparisonProducts, [...currentSales, ...historySales], 'comparison');
         }
 
         function updateStockProductFilter(skipRender = false) {
             const data = getStockFilteredData({excludeFilter: 'product'});
-            updateProductFilter(stockProductFilterDropdown, stockProductFilterText, selectedStockProducts, [...data.sales, ...data.history], 'stock', skipRender);
+            selectedStockProducts = updateProductFilter(stockProductFilterDropdown, stockProductFilterText, selectedStockProducts, [...data.sales, ...data.history], 'stock', skipRender);
         }
 
         function updateStockSupplierFilter(skipRender = false) {
@@ -6316,13 +6321,13 @@
 
             coverageProductFilterBtn.addEventListener('click', () => {
                 const { sales, history } = getCoverageFilteredData({ excludeFilter: 'product' });
-                updateProductFilter(coverageProductFilterDropdown, coverageProductFilterText, selectedCoverageProducts, [...sales, ...history], 'coverage');
+                selectedCoverageProducts = updateProductFilter(coverageProductFilterDropdown, coverageProductFilterText, selectedCoverageProducts, [...sales, ...history], 'coverage');
                 coverageProductFilterDropdown.classList.toggle('hidden');
             });
 
             const debouncedCoverageProductUpdate = debounce(() => {
                  const { sales, history } = getCoverageFilteredData({ excludeFilter: 'product' });
-                 updateProductFilter(coverageProductFilterDropdown, coverageProductFilterText, selectedCoverageProducts, [...sales, ...history], 'coverage');
+                 selectedCoverageProducts = updateProductFilter(coverageProductFilterDropdown, coverageProductFilterText, selectedCoverageProducts, [...sales, ...history], 'coverage');
             }, 250);
 
             coverageProductFilterDropdown.addEventListener('input', (e) => {
