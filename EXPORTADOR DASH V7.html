@@ -1289,6 +1289,7 @@
         const citySuggestions = document.getElementById('city-suggestions');
         const clearCityFiltersBtn = document.getElementById('clear-city-filters-btn');
         const totalFaturamentoCidadeEl = document.getElementById('total-faturamento-cidade');
+        const totalClientesCidadeEl = document.getElementById('total-clientes-cidade');
         const cityActiveDetailTableBody = document.getElementById('city-active-detail-table-body');
         const cityInactiveDetailTableBody = document.getElementById('city-inactive-detail-table-body');
 
@@ -1583,6 +1584,11 @@
         function getCoverageFilteredData(options = {}) {
             const { excludeFilter = null } = options;
 
+            const isExcluded = (filterName) => {
+                if (Array.isArray(excludeFilter)) return excludeFilter.includes(filterName);
+                return excludeFilter === filterName;
+            };
+
             const supervisor = coverageSupervisorFilter.value;
             // Use Sets for O(1) lookups
             const sellersSet = new Set(selectedCoverageSellers);
@@ -1601,11 +1607,11 @@
                 clients = clients.filter(c => clientLastBranch.get(c['Código']) === filial);
             }
 
-            if (excludeFilter !== 'supervisor' && supervisor) {
+            if (!isExcluded('supervisor') && supervisor) {
                 const rcasOfSupervisor = new Set(optimizedData.rcasBySupervisor.get(supervisor) || []);
                 clients = clients.filter(c => c.rcas.some(rca => rcasOfSupervisor.has(rca)));
             }
-            if (excludeFilter !== 'seller' && sellersSet.size > 0) {
+            if (!isExcluded('seller') && sellersSet.size > 0) {
                 const rcasOfSellers = new Set();
                  sellersSet.forEach(sellerName => {
                     const rcaCode = optimizedData.rcaCodeByName.get(sellerName);
@@ -1613,7 +1619,7 @@
                 });
                 clients = clients.filter(c => c.rcas.some(rca => rcasOfSellers.has(rca)));
             }
-            if (excludeFilter !== 'city' && city) {
+            if (!isExcluded('city') && city) {
                 clients = clients.filter(c => c.cidade && c.cidade.toLowerCase() === city);
             }
 
@@ -1626,11 +1632,11 @@
             }
             
             const salesFilter = s => 
-                (excludeFilter === 'supervisor' || !supervisor || s.SUPERV === supervisor) &&
-                (excludeFilter === 'seller' || sellersSet.size === 0 || sellersSet.has(s.NOME)) &&
-                (excludeFilter === 'supplier' || suppliersSet.size === 0 || suppliersSet.has(s.CODFOR)) &&
-                (excludeFilter === 'product' || productsSet.size === 0 || productsSet.has(s.PRODUTO)) &&
-                (excludeFilter === 'tipoVenda' || tiposVendaSet.size === 0 || tiposVendaSet.has(s.TIPOVENDA)) &&
+                (isExcluded('supervisor') || !supervisor || s.SUPERV === supervisor) &&
+                (isExcluded('seller') || sellersSet.size === 0 || sellersSet.has(s.NOME)) &&
+                (isExcluded('supplier') || suppliersSet.size === 0 || suppliersSet.has(s.CODFOR)) &&
+                (isExcluded('product') || productsSet.size === 0 || productsSet.has(s.PRODUTO)) &&
+                (isExcluded('tipoVenda') || tiposVendaSet.size === 0 || tiposVendaSet.has(s.TIPOVENDA)) &&
                 (unitPrice === null || (s.QTVENDA > 0 && Math.abs((s.VLVENDA / s.QTVENDA) - unitPrice) < 0.01));
                 
             sales = sales.filter(salesFilter);
@@ -1660,25 +1666,17 @@
                 else coverageSupervisorFilter.value = '';
             }
 
-            if (skipFilter !== 'seller') {
-                const { sales: salesSeller, history: historySeller } = getCoverageFilteredData({ excludeFilter: 'seller' });
-                selectedCoverageSellers = updateSellerFilter(coverageSupervisorFilter.value, coverageVendedorFilterDropdown, coverageVendedorFilterText, selectedCoverageSellers, [...salesSeller, ...historySeller]);
-            }
+            const { sales: salesSeller, history: historySeller } = getCoverageFilteredData({ excludeFilter: 'seller' });
+            selectedCoverageSellers = updateSellerFilter(coverageSupervisorFilter.value, coverageVendedorFilterDropdown, coverageVendedorFilterText, selectedCoverageSellers, [...salesSeller, ...historySeller], skipFilter === 'seller');
 
-            if (skipFilter !== 'supplier') {
-                const { sales: salesSupplier, history: historySupplier } = getCoverageFilteredData({ excludeFilter: 'supplier' });
-                selectedCoverageSuppliers = updateSupplierFilter(coverageSupplierFilterDropdown, coverageSupplierFilterText, selectedCoverageSuppliers, [...salesSupplier, ...historySupplier], 'coverage');
-            }
+            const { sales: salesSupplier, history: historySupplier } = getCoverageFilteredData({ excludeFilter: ['supplier', 'product'] });
+            selectedCoverageSuppliers = updateSupplierFilter(coverageSupplierFilterDropdown, coverageSupplierFilterText, selectedCoverageSuppliers, [...salesSupplier, ...historySupplier], 'coverage', skipFilter === 'supplier');
 
-            if (skipFilter !== 'product') {
-                const { sales: salesProd, history: historyProd } = getCoverageFilteredData({ excludeFilter: 'product' });
-                updateProductFilter(coverageProductFilterDropdown, coverageProductFilterText, selectedCoverageProducts, [...salesProd, ...historyProd], 'coverage');
-            }
+            const { sales: salesProd, history: historyProd } = getCoverageFilteredData({ excludeFilter: 'product' });
+            selectedCoverageProducts = updateProductFilter(coverageProductFilterDropdown, coverageProductFilterText, selectedCoverageProducts, [...salesProd, ...historyProd], 'coverage', skipFilter === 'product');
 
-            if (skipFilter !== 'tipoVenda') {
-                const { sales: salesTV, history: historyTV } = getCoverageFilteredData({ excludeFilter: 'tipoVenda' });
-                selectedCoverageTiposVenda = updateTipoVendaFilter(coverageTipoVendaFilterDropdown, coverageTipoVendaFilterText, selectedCoverageTiposVenda, [...salesTV, ...historyTV]);
-            }
+            const { sales: salesTV, history: historyTV } = getCoverageFilteredData({ excludeFilter: 'tipoVenda' });
+            selectedCoverageTiposVenda = updateTipoVendaFilter(coverageTipoVendaFilterDropdown, coverageTipoVendaFilterText, selectedCoverageTiposVenda, [...salesTV, ...historyTV], skipFilter === 'tipoVenda');
         }
 
         function handleCoverageFilterChange(options = {}) {
@@ -2561,17 +2559,19 @@
             filterEl.innerHTML = options.join('');
         }
 
-        function updateSellerFilter(supervisor, dropdown, filterText, selectedArray, dataSource) {
+        function updateSellerFilter(supervisor, dropdown, filterText, selectedArray, dataSource, skipRender = false) {
             const sellersToShow = supervisor ? [...new Set(dataSource.filter(s => s.SUPERV === supervisor).map(s => s.NOME))].sort() : [...new Set(dataSource.map(item => item.NOME).filter(Boolean))].sort();
             selectedArray = selectedArray.filter(seller => sellersToShow.includes(seller));
 
-            const htmlParts = [];
-            for (let i = 0; i < sellersToShow.length; i++) {
-                const s = sellersToShow[i];
-                const isChecked = selectedArray.includes(s);
-                htmlParts.push(`<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${s}" ${isChecked ? 'checked' : ''}><span class="ml-2">${s}</span></label>`);
+            if (!skipRender) {
+                const htmlParts = [];
+                for (let i = 0; i < sellersToShow.length; i++) {
+                    const s = sellersToShow[i];
+                    const isChecked = selectedArray.includes(s);
+                    htmlParts.push(`<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${s}" ${isChecked ? 'checked' : ''}><span class="ml-2">${s}</span></label>`);
+                }
+                dropdown.innerHTML = htmlParts.join('');
             }
-            dropdown.innerHTML = htmlParts.join('');
 
             if (selectedArray.length === 0 || selectedArray.length === sellersToShow.length) filterText.textContent = 'Todos Vendedores';
             else if (selectedArray.length === 1) filterText.textContent = selectedArray[0];
@@ -2579,17 +2579,19 @@
             return selectedArray;
         }
 
-        function updateTipoVendaFilter(dropdown, filterText, selectedArray, dataSource) {
+        function updateTipoVendaFilter(dropdown, filterText, selectedArray, dataSource, skipRender = false) {
             const tiposVendaToShow = [...new Set(dataSource.map(item => item.TIPOVENDA).filter(Boolean))].sort();
             selectedArray = selectedArray.filter(tipo => tiposVendaToShow.includes(tipo));
 
-            const htmlParts = [];
-            for (let i = 0; i < tiposVendaToShow.length; i++) {
-                const s = tiposVendaToShow[i];
-                const isChecked = selectedArray.includes(s);
-                htmlParts.push(`<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${s}" ${isChecked ? 'checked' : ''}><span class="ml-2">${s}</span></label>`);
+            if (!skipRender) {
+                const htmlParts = [];
+                for (let i = 0; i < tiposVendaToShow.length; i++) {
+                    const s = tiposVendaToShow[i];
+                    const isChecked = selectedArray.includes(s);
+                    htmlParts.push(`<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${s}" ${isChecked ? 'checked' : ''}><span class="ml-2">${s}</span></label>`);
+                }
+                dropdown.innerHTML = htmlParts.join('');
             }
-            dropdown.innerHTML = htmlParts.join('');
 
             if (selectedArray.length === 0 || selectedArray.length === tiposVendaToShow.length) filterText.textContent = 'Todos os Tipos';
             else if (selectedArray.length === 1) filterText.textContent = selectedArray[0];
@@ -2718,29 +2720,95 @@
         }
 
 
-        function getRelevantClientsForCityFilter() {
-            let clients = [...allClientsData];
-
-            if (cityRedeGroupFilter === 'com_rede') {
-                clients = clients.filter(c => c.ramo && c.ramo !== 'N/A');
-                if (selectedCityRedes.length > 0) {
-                    clients = clients.filter(c => selectedCityRedes.includes(c.ramo));
-                }
-            } else if (cityRedeGroupFilter === 'sem_rede') {
-                clients = clients.filter(c => !c.ramo || c.ramo === 'N/A');
-            }
+        function getCityFilteredData(options = {}) {
+            const { excludeFilter = null } = options;
 
             const supervisor = citySupervisorFilter.value;
-            if (supervisor) {
-                const rcasOfSupervisor = [...new Set(allSalesData.filter(s => s.SUPERV === supervisor).map(s => s.CODUSUR))];
-                clients = clients.filter(c => c.rcas.some(rca => rcasOfSupervisor.includes(rca)));
-            }
-            if (selectedCitySellers.length > 0) {
-                const rcasOfVendedor = [...new Set(allSalesData.filter(s => selectedCitySellers.includes(s.NOME)).map(s => s.CODUSUR))];
-                clients = clients.filter(c => c.rcas.some(rca => rcasOfVendedor.includes(rca)));
+            const sellersSet = new Set(selectedCitySellers);
+            const cityInput = cityNameFilter.value.trim().toLowerCase();
+            const codCli = cityCodCliFilter.value.trim();
+            const tiposVendaSet = new Set(selectedCityTiposVenda);
+
+            let clients = allClientsData;
+
+            if (excludeFilter !== 'rede') {
+                 if (cityRedeGroupFilter === 'com_rede') {
+                    clients = clients.filter(c => c.ramo && c.ramo !== 'N/A');
+                    if (selectedCityRedes.length > 0) {
+                        const redeSet = new Set(selectedCityRedes);
+                        clients = clients.filter(c => redeSet.has(c.ramo));
+                    }
+                } else if (cityRedeGroupFilter === 'sem_rede') {
+                    clients = clients.filter(c => !c.ramo || c.ramo === 'N/A');
+                }
             }
 
-            return clients;
+            if (excludeFilter !== 'supervisor' && supervisor) {
+                const rcas = optimizedData.rcasBySupervisor.get(supervisor) || [];
+                const rcasSet = new Set(rcas);
+                clients = clients.filter(c => c.rcas.some(r => rcasSet.has(r)));
+            }
+
+            if (excludeFilter !== 'seller' && sellersSet.size > 0) {
+                const rcasSet = new Set();
+                sellersSet.forEach(name => {
+                    const code = optimizedData.rcaCodeByName.get(name);
+                    if(code) rcasSet.add(code);
+                });
+                clients = clients.filter(c => c.rcas.some(r => rcasSet.has(r)));
+            }
+
+            if (excludeFilter !== 'city' && cityInput) {
+                clients = clients.filter(c => c.cidade && c.cidade.toLowerCase() === cityInput);
+            }
+
+            if (excludeFilter !== 'codcli' && codCli) {
+                 clients = clients.filter(c => String(c['Código']) === codCli);
+            }
+
+            const clientCodes = new Set(clients.map(c => c['Código']));
+
+            const filters = {
+                supervisor: supervisor,
+                seller: sellersSet,
+                city: cityInput,
+                tipoVenda: tiposVendaSet,
+                clientCodes: clientCodes
+            };
+
+            const sales = getFilteredDataFromIndices(optimizedData.indices.current, optimizedData.salesById, filters, excludeFilter);
+
+            return { clients, sales };
+        }
+
+        function updateAllCityFilters(options = {}) {
+            const { skipFilter = null } = options;
+
+            if (skipFilter !== 'supervisor') {
+                const { sales } = getCityFilteredData({ excludeFilter: 'supervisor' });
+                populateSupervisors('city-supervisor-filter', sales);
+            }
+
+            const { sales: salesSeller } = getCityFilteredData({ excludeFilter: 'seller' });
+            selectedCitySellers = updateSellerFilter(citySupervisorFilter.value, cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, salesSeller, skipFilter === 'seller');
+
+            const { sales: salesTV } = getCityFilteredData({ excludeFilter: 'tipoVenda' });
+            selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, salesTV, skipFilter === 'tipoVenda');
+
+            if (skipFilter !== 'rede') {
+                 const { clients: clientsRede } = getCityFilteredData({ excludeFilter: 'rede' });
+                 if (cityRedeGroupFilter === 'com_rede') {
+                     selectedCityRedes = updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, clientsRede);
+                 }
+            }
+        }
+
+        function handleCityFilterChange(options = {}) {
+            if (window.cityUpdateTimeout) clearTimeout(window.cityUpdateTimeout);
+            window.cityUpdateTimeout = setTimeout(() => {
+                updateAllCityFilters(options);
+                updateCityView();
+            }, 10);
         }
 
         function updateCitySuggestions(filterInput, suggestionsContainer, dataSource) {
@@ -2759,83 +2827,24 @@
         function validateCityFilter() {
             const selectedCity = cityNameFilter.value;
             if (!selectedCity) return;
-            const relevantClients = getRelevantClientsForCityFilter();
-            const availableCities = [...new Set(relevantClients.map(c => c.cidade).filter(Boolean))];
+            const { clients } = getCityFilteredData({ excludeFilter: 'city' });
+            const availableCities = [...new Set(clients.map(c => c.cidade).filter(Boolean))];
             if (!availableCities.includes(selectedCity)) cityNameFilter.value = '';
         }
 
         function updateCityView() {
-            const supervisor = citySupervisorFilter.value;
-            const codcliFilterVal = cityCodCliFilter.value.trim();
-            if (codcliFilterVal && !allClientsData.some(c => String(c['Código']) === codcliFilterVal)) return;
-
-            let clientsForAnalysis = getRelevantClientsForCityFilter();
-            const allAvailableCities = [...new Set(clientsForAnalysis.map(c => c.cidade).filter(Boolean))];
-            const cidadeFiltroInput = cityNameFilter.value.trim();
-            let cidadeFiltro = '';
-            if (cidadeFiltroInput && allAvailableCities.includes(cidadeFiltroInput)) cidadeFiltro = cidadeFiltroInput;
+            let { clients: clientsForAnalysis, sales: salesForAnalysis } = getCityFilteredData();
+            const cidadeFiltro = cityNameFilter.value.trim();
 
             const referenceDate = lastSaleDate;
             const currentMonth = referenceDate.getUTCMonth();
             const currentYear = referenceDate.getUTCFullYear();
-
-            const selectedSellersSet = new Set(selectedCitySellers);
+            
             const selectedTiposVendaSet = new Set(selectedCityTiposVenda);
-
-            // Optimize sales filtering using pre-built indices
-            let clientCodes = null;
-            // Since clientsForAnalysis is already filtered by relevant filters (supervisor/seller/rede), 
-            // we can pass it down if needed, or just rely on the client loop for specific client property filtering.
-            // However, `getRelevantClientsForCityFilter` iterates allClientsData.
-            // Let's use the filters directly in getFilteredDataFromIndices.
-            
-            const filters = {
-                supervisor: supervisor,
-                seller: selectedSellersSet,
-                tipoVenda: selectedTiposVendaSet,
-                city: cidadeFiltro && cidadeFiltro.toLowerCase()
-            };
-
-            // Additional handling for rede filter if it exists
-            let redeSet = null;
-            if (cityRedeGroupFilter === 'com_rede') {
-               if (selectedCityRedes.length > 0) {
-                   redeSet = new Set(selectedCityRedes);
-               }
-            }
-            
-            // We need to filter sales by client codes if specific client logic is applied.
-            // `getRelevantClientsForCityFilter` does this logic.
-            // But for maximum performance, we should use the indices for sales directly.
-            
-            let salesForAnalysis = getFilteredDataFromIndices(optimizedData.indices.current, optimizedData.salesById, filters);
-
-            // Apply remaining filters that are not in the indices efficiently or need special logic
-            if (codcliFilterVal) {
-                salesForAnalysis = salesForAnalysis.filter(s => s.CODCLI === codcliFilterVal);
-            }
-            
-            // The `getRelevantClientsForCityFilter` also applies Rede logic to CLIENTS.
-            // We must ensure the sales also belong to those clients.
-            const clientCodesForAnalysis = new Set(clientsForAnalysis.map(c => c['Código']));
-            
-            // Intersect sales with relevant clients
-            salesForAnalysis = salesForAnalysis.filter(s => clientCodesForAnalysis.has(s.CODCLI));
-
-            if (cidadeFiltro) clientsForAnalysis = clientsForAnalysis.filter(c => c.cidade === cidadeFiltro);
-            if (codcliFilterVal) clientsForAnalysis = clientsForAnalysis.filter(c => String(c['Código']) === codcliFilterVal);
 
             // Pre-aggregate "Sales This Month" for Status Classification
             // We need sales from THIS MONTH for ALL clients (to check active/inactive),
             // potentially filtered by Tipo Venda but usually standard sales.
-            // Note: The original code filtered `allSalesData` by date and `selectedCityTiposVenda`.
-            // It did NOT filter by supervisor/seller for the *status classification* (Active vs Inactive logic).
-            // Wait, let's check the original logic:
-            // `salesThisMonth` was filtered by date and `selectedCityTiposVenda`.
-            // Then `clientTotalsThisMonth` map was built.
-            // Then `clientsForAnalysis` (which IS filtered by supervisor/seller via `getRelevantClientsForCityFilter`) loop checks `clientTotalsThisMonth`.
-            // So yes, "Active" means "Has sales in the current month (of selected types)".
-
             const clientTotalsThisMonth = new Map();
             // Optimization: Iterate once through all sales to build the map for the current month
             for(let i=0; i<allSalesData.length; i++) {
@@ -2876,12 +2885,19 @@
                 }
             });
 
+            // Filter clients using the Coverage page logic
+            // (Include if name contains 'AMERICANAS S.A' OR RCA1 is not '53')
+            clientsForAnalysis = clientsForAnalysis.filter(c => {
+                const rca1 = String(c.rca1 || '').trim();
+                const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
+                return (isAmericanas || rca1 !== '53');
+            });
+
             let activeClientsList = [];
             let inactiveClientsList = [];
 
             clientsForAnalysis.forEach(client => {
                 const codcli = String(client['Código']);
-                if (codcli === '6720' || client.bloqueio === 'S') return;
 
                 const registrationDate = parseDate(client.dataCadastro);
                 client.isNew = registrationDate && registrationDate.getUTCMonth() === currentMonth && registrationDate.getUTCFullYear() === currentYear;
@@ -2900,8 +2916,6 @@
                     if (totalFaturamentoMes < 0) {
                         client.isReturn = true;
                     }
-                    const clientRcas = client.rcas || [];
-                    if (clientRcas.length > 0 && clientRcas.every(rca => rca === '53')) return;
                     client.isNewForInactiveLabel = client.isNew && !parseDate(client.ultimaCompra);
                     inactiveClientsList.push(client);
                 }
@@ -2910,7 +2924,7 @@
             inactiveClientsForExport = inactiveClientsList;
 
             if (clientsForAnalysis.length > 0) {
-                 const statusChartOptions = { animation: { duration: 800, easing: 'easeOutQuart' }, plugins: { legend: { position: 'bottom', labels: { color: '#cbd5e1' } }, tooltip: { callbacks: { label: function(context) { return context.label; } } }, datalabels: { formatter: (value, ctx) => { const total = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0); if (total === 0 || value === 0) return ''; const percentage = (value * 100 / total).toFixed(1) + "%"; return `${value}\n(${percentage})`; }, color: '#fff', font: { weight: 'bold' }, textAlign: 'center' } } };
+                 const statusChartOptions = { animation: { duration: 800, easing: 'easeOutQuart' }, plugins: { legend: { position: 'bottom', labels: { color: '#cbd5e1' } }, tooltip: { callbacks: { label: function(context) { return context.label; } } }, datalabels: { formatter: (value, ctx) => { const total = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0); if (total === 0 || value === 0) return ''; const percentage = (value * 100 / total).toFixed(1) + "%"; return `${value}\n(${percentage})`; }, color: '#fff', backgroundColor: 'rgba(0, 0, 0, 0.6)', borderRadius: 4, padding: 4, font: { weight: 'bold', size: 12 }, textAlign: 'center' } } };
                 createChart('customerStatusChart', 'doughnut', ['Ativos no Mês', 'S/ Vendas no Mês'], [activeClientsList.length, inactiveClientsList.length], statusChartOptions);
             } else showNoDataMessage('customerStatusChart', 'Sem clientes no filtro para exibir o status.');
 
@@ -2971,6 +2985,11 @@
             const cityChartOptions = { indexAxis: 'y', scales: { x: { grace: '15%' } }, plugins: { datalabels: { align: 'end', anchor: 'end', color: '#cbd5e1', font: { size: 14, weight: 'bold' }, formatter: (value) => (value / 1000).toFixed(1) + 'k', offset: 8 } } };
             const totalFaturamentoCidade = salesForAnalysis.reduce((sum, item) => sum + item.VLVENDA, 0);
             totalFaturamentoCidadeEl.textContent = totalFaturamentoCidade.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+            if (totalClientesCidadeEl) {
+                totalClientesCidadeEl.textContent = clientsForAnalysis.length.toLocaleString('pt-BR');
+            }
+
             if (cidadeFiltro) {
                 cityChartTitleEl.textContent = 'Top 10 Bairros';
                 const salesByBairro = {};
@@ -3144,20 +3163,22 @@
             else showNoDataMessage('mixChart', 'Sem dados para o ranking.');
         }
 
-        function updateSupplierFilter(dropdown, filterText, selectedArray, dataSource, filterType = 'comparison') {
+        function updateSupplierFilter(dropdown, filterText, selectedArray, dataSource, filterType = 'comparison', skipRender = false) {
             const suppliers = new Map();
             dataSource.forEach(s => { if(s.CODFOR && s.FORNECEDOR) suppliers.set(s.CODFOR, s.FORNECEDOR); });
             const sortedSuppliers = [...suppliers.entries()].sort((a, b) => a[1].localeCompare(b[1]));
 
             selectedArray = selectedArray.filter(cod => suppliers.has(cod));
 
-            const htmlParts = [];
-            for (let i = 0; i < sortedSuppliers.length; i++) {
-                const [cod, name] = sortedSuppliers[i];
-                const isChecked = selectedArray.includes(cod);
-                htmlParts.push(`<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" data-filter-type="${filterType}" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${cod}" ${isChecked ? 'checked' : ''}><span class="ml-2 text-xs">${cod} - ${name}</span></label>`);
+            if (!skipRender) {
+                const htmlParts = [];
+                for (let i = 0; i < sortedSuppliers.length; i++) {
+                    const [cod, name] = sortedSuppliers[i];
+                    const isChecked = selectedArray.includes(cod);
+                    htmlParts.push(`<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" data-filter-type="${filterType}" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${cod}" ${isChecked ? 'checked' : ''}><span class="ml-2 text-xs">${cod} - ${name}</span></label>`);
+                }
+                dropdown.innerHTML = htmlParts.join('');
             }
-            dropdown.innerHTML = htmlParts.join('');
 
             if (selectedArray.length === 0 || selectedArray.length === sortedSuppliers.length) {
                 filterText.textContent = 'Todos Fornecedores';
@@ -3649,12 +3670,16 @@
             multimarcasBtn.classList.toggle('opacity-50', !hasMultimarcas);
         }
 
-        function updateProductFilter(dropdown, filterText, selectedArray, dataSource, filterType = 'comparison') {
+        function updateProductFilter(dropdown, filterText, selectedArray, dataSource, filterType = 'comparison', skipRender = false) {
             const searchInput = dropdown.querySelector('input[type="text"]');
             const listContainer = dropdown.querySelector('div[id$="-list"]');
             const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
 
             const products = [...new Map(dataSource.map(s => [s.PRODUTO, s.DESCRICAO])).entries()].sort((a,b) => a[1].localeCompare(b[1]));
+
+            // Filter selectedArray to keep only items present in the current dataSource
+            const availableProductCodes = new Set(products.map(p => p[0]));
+            selectedArray = selectedArray.filter(code => availableProductCodes.has(code));
 
             const filteredProducts = searchTerm.length > 0
                 ? products.filter(([code, name]) =>
@@ -3662,17 +3687,19 @@
                   )
                 : products;
 
-            const htmlParts = [];
-            for (let i = 0; i < filteredProducts.length; i++) {
-                const [code, name] = filteredProducts[i];
-                const isChecked = selectedArray.includes(code);
-                htmlParts.push(`
-                    <label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer">
-                        <input type="checkbox" data-filter-type="${filterType}" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${code}" ${isChecked ? 'checked' : ''}>
-                        <span class="ml-2 text-xs">(${code}) ${name}</span>
-                    </label>`);
+            if (!skipRender) {
+                const htmlParts = [];
+                for (let i = 0; i < filteredProducts.length; i++) {
+                    const [code, name] = filteredProducts[i];
+                    const isChecked = selectedArray.includes(code);
+                    htmlParts.push(`
+                        <label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer">
+                            <input type="checkbox" data-filter-type="${filterType}" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${code}" ${isChecked ? 'checked' : ''}>
+                            <span class="ml-2 text-xs">(${code}) ${name}</span>
+                        </label>`);
+                }
+                listContainer.innerHTML = htmlParts.join('');
             }
-            listContainer.innerHTML = htmlParts.join('');
 
             if (selectedArray.length === 0) {
                 filterText.textContent = 'Todos os Produtos';
@@ -3682,26 +3709,27 @@
             } else {
                 filterText.textContent = `${selectedArray.length} produtos selecionados`;
             }
+            return selectedArray;
         }
 
         function updateComparisonProductFilter() {
             const { currentSales, historySales } = getComparisonFilteredData({ excludeFilter: 'product' });
-            updateProductFilter(comparisonProductFilterDropdown, comparisonProductFilterText, selectedComparisonProducts, [...currentSales, ...historySales], 'comparison');
+            selectedComparisonProducts = updateProductFilter(comparisonProductFilterDropdown, comparisonProductFilterText, selectedComparisonProducts, [...currentSales, ...historySales], 'comparison');
         }
 
-        function updateStockProductFilter() {
+        function updateStockProductFilter(skipRender = false) {
             const data = getStockFilteredData({excludeFilter: 'product'});
-            updateProductFilter(stockProductFilterDropdown, stockProductFilterText, selectedStockProducts, [...data.sales, ...data.history], 'stock');
+            selectedStockProducts = updateProductFilter(stockProductFilterDropdown, stockProductFilterText, selectedStockProducts, [...data.sales, ...data.history], 'stock', skipRender);
         }
 
-        function updateStockSupplierFilter() {
+        function updateStockSupplierFilter(skipRender = false) {
             const data = getStockFilteredData({excludeFilter: 'supplier'});
-            selectedStockSuppliers = updateSupplierFilter(stockSupplierFilterDropdown, stockSupplierFilterText, selectedStockSuppliers, [...data.sales, ...data.history], 'stock');
+            selectedStockSuppliers = updateSupplierFilter(stockSupplierFilterDropdown, stockSupplierFilterText, selectedStockSuppliers, [...data.sales, ...data.history], 'stock', skipRender);
         }
 
-        function updateStockSellerFilter() {
+        function updateStockSellerFilter(skipRender = false) {
             const data = getStockFilteredData({excludeFilter: 'seller'});
-            selectedStockSellers = updateSellerFilter(stockSupervisorFilter.value, stockVendedorFilterDropdown, stockVendedorFilterText, selectedStockSellers, [...data.sales, ...data.history]);
+            selectedStockSellers = updateSellerFilter(stockSupervisorFilter.value, stockVendedorFilterDropdown, stockVendedorFilterText, selectedStockSellers, [...data.sales, ...data.history], skipRender);
         }
 
         function updateStockCitySuggestions(dataSource) {
@@ -3791,14 +3819,12 @@
                     populateSupervisors('stock-supervisor-filter', supervisorOptionsData);
                 }
 
-                if (skipFilter !== 'seller') updateStockSellerFilter();
-                if (skipFilter !== 'supplier') updateStockSupplierFilter();
-                if (skipFilter !== 'product') updateStockProductFilter();
+                updateStockSellerFilter(skipFilter === 'seller');
+                updateStockSupplierFilter(skipFilter === 'supplier');
+                updateStockProductFilter(skipFilter === 'product');
 
-                if (skipFilter !== 'tipoVenda') {
-                    const tvData = getStockFilteredData({ excludeFilter: 'tipoVenda' });
-                    selectedStockTiposVenda = updateTipoVendaFilter(stockTipoVendaFilterDropdown, stockTipoVendaFilterText, selectedStockTiposVenda, [...tvData.sales, ...tvData.history]);
-                }
+                const tvData = getStockFilteredData({ excludeFilter: 'tipoVenda' });
+                selectedStockTiposVenda = updateTipoVendaFilter(stockTipoVendaFilterDropdown, stockTipoVendaFilterText, selectedStockTiposVenda, [...tvData.sales, ...tvData.history], skipFilter === 'tipoVenda');
 
                 if (skipFilter !== 'city') {
                     const cityData = getStockFilteredData({ excludeFilter: 'city' });
@@ -5694,23 +5720,24 @@
             // --- City View Filters ---
             const updateCity = () => {
                 markDirty('cidades');
-                updateCityView();
+                handleCityFilterChange();
             };
 
             citySupervisorFilter.addEventListener('change', () => { 
                 selectedCitySellers = []; 
-                selectedCitySellers = updateSellerFilter(citySupervisorFilter.value, cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData); 
-                validateCityFilter(); 
-                updateCity(); 
+                handleCityFilterChange();
             });
+
             cityVendedorFilterBtn.addEventListener('click', () => cityVendedorFilterDropdown.classList.toggle('hidden'));
             cityVendedorFilterDropdown.addEventListener('change', (e) => { 
                 if (e.target.type === 'checkbox') { 
                     const { value, checked } = e.target; 
-                    if (checked) selectedCitySellers.push(value); else selectedCitySellers = selectedCitySellers.filter(s => s !== value); 
-                    selectedCitySellers = updateSellerFilter(citySupervisorFilter.value, cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData); 
-                    validateCityFilter(); 
-                    updateCity(); 
+                    if (checked) {
+                        if (!selectedCitySellers.includes(value)) selectedCitySellers.push(value);
+                    } else {
+                        selectedCitySellers = selectedCitySellers.filter(s => s !== value);
+                    }
+                    handleCityFilterChange({ skipFilter: 'seller' });
                 } 
             });
 
@@ -5723,8 +5750,7 @@
                     } else {
                         selectedCityTiposVenda = selectedCityTiposVenda.filter(s => s !== value);
                     }
-                    selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData);
-                    updateCity();
+                    handleCityFilterChange({ skipFilter: 'tipoVenda' });
                 }
             });
 
@@ -5740,8 +5766,7 @@
                         cityRedeFilterDropdown.classList.add('hidden');
                         selectedCityRedes = [];
                     }
-                    updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData);
-                    updateCity();
+                    handleCityFilterChange();
                 }
             });
             cityRedeFilterDropdown.addEventListener('change', (e) => {
@@ -5754,19 +5779,32 @@
                     cityRedeGroupContainer.querySelectorAll('button').forEach(b => b.classList.remove('active'));
                     cityComRedeBtn.classList.add('active');
 
-                    selectedCityRedes = updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData);
-                    updateCity();
+                    handleCityFilterChange({ skipFilter: 'rede' });
                 }
             });
-
 
             clearCityFiltersBtn.addEventListener('click', () => { resetCityFilters(); markDirty('cidades'); });
             cityCodCliFilter.addEventListener('input', (e) => e.target.value = e.target.value.replace(/[^0-9]/g, ''));
             cityCodCliFilter.addEventListener('change', updateCity);
-            cityNameFilter.addEventListener('input', (e) => { e.target.value = e.target.value.replace(/[0-9]/g, ''); const relevantClients = getRelevantClientsForCityFilter(); updateCitySuggestions(cityNameFilter, citySuggestions, relevantClients); });
-            cityNameFilter.addEventListener('focus', () => { const relevantClients = getRelevantClientsForCityFilter(); citySuggestions.classList.remove('manual-hide'); updateCitySuggestions(cityNameFilter, citySuggestions, relevantClients); });
+
+            cityNameFilter.addEventListener('input', (e) => {
+                e.target.value = e.target.value.replace(/[0-9]/g, '');
+                const { clients } = getCityFilteredData({ excludeFilter: 'city' });
+                updateCitySuggestions(cityNameFilter, citySuggestions, clients);
+            });
+            cityNameFilter.addEventListener('focus', () => {
+                const { clients } = getCityFilteredData({ excludeFilter: 'city' });
+                citySuggestions.classList.remove('manual-hide');
+                updateCitySuggestions(cityNameFilter, citySuggestions, clients);
+            });
             cityNameFilter.addEventListener('blur', () => setTimeout(() => citySuggestions.classList.add('hidden'), 150));
-            cityNameFilter.addEventListener('keydown', (e) => { if (e.key === 'Enter') { citySuggestions.classList.add('hidden', 'manual-hide'); updateCity(); e.target.blur(); } });
+            cityNameFilter.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    citySuggestions.classList.add('hidden', 'manual-hide');
+                    handleCityFilterChange();
+                    e.target.blur();
+                }
+            });
 
             document.addEventListener('click', (e) => {
                 if (!vendedorFilterBtn.contains(e.target) && !vendedorFilterDropdown.contains(e.target)) vendedorFilterDropdown.classList.add('hidden');
@@ -5955,8 +5993,7 @@
 
             stockProductFilterDropdown.addEventListener('change', (e) => {
                 if(e.target.dataset.filterType === 'stock' && handleProductFilterChange(e, selectedStockProducts)) {
-                    handleStockFilterChange();
-                    updateStockProductFilter();
+                    handleStockFilterChange({ skipFilter: 'product' });
                 }
             });
         
@@ -6198,10 +6235,10 @@
 
             const debouncedHandleCoverageChange = debounce(updateCoverage, 400);
 
-            coverageFilialFilter.addEventListener('change', updateCoverage);
+            coverageFilialFilter.addEventListener('change', () => handleCoverageFilterChange());
             coverageSupervisorFilter.addEventListener('change', () => {
                 selectedCoverageSellers = [];
-                updateCoverage();
+                handleCoverageFilterChange();
             });
 
             coverageCityFilter.addEventListener('input', (e) => {
@@ -6219,7 +6256,7 @@
             coverageCityFilter.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
                     coverageCitySuggestions.classList.add('hidden', 'manual-hide');
-                    updateCoverage();
+                    handleCoverageFilterChange();
                     e.target.blur();
                 }
             });
@@ -6227,7 +6264,7 @@
                 if (e.target.tagName === 'DIV') {
                     coverageCityFilter.value = e.target.textContent;
                     coverageCitySuggestions.classList.add('hidden');
-                    updateCoverage();
+                    handleCoverageFilterChange();
                 }
             });
 
@@ -6240,7 +6277,7 @@
                     } else {
                         selectedCoverageTiposVenda = selectedCoverageTiposVenda.filter(s => s !== value);
                     }
-                    updateCoverage();
+                    handleCoverageFilterChange({ skipFilter: 'tipoVenda' });
                 }
             });
 
@@ -6283,13 +6320,13 @@
 
             coverageProductFilterBtn.addEventListener('click', () => {
                 const { sales, history } = getCoverageFilteredData({ excludeFilter: 'product' });
-                updateProductFilter(coverageProductFilterDropdown, coverageProductFilterText, selectedCoverageProducts, [...sales, ...history], 'coverage');
+                selectedCoverageProducts = updateProductFilter(coverageProductFilterDropdown, coverageProductFilterText, selectedCoverageProducts, [...sales, ...history], 'coverage');
                 coverageProductFilterDropdown.classList.toggle('hidden');
             });
 
             const debouncedCoverageProductUpdate = debounce(() => {
                  const { sales, history } = getCoverageFilteredData({ excludeFilter: 'product' });
-                 updateProductFilter(coverageProductFilterDropdown, coverageProductFilterText, selectedCoverageProducts, [...sales, ...history], 'coverage');
+                 selectedCoverageProducts = updateProductFilter(coverageProductFilterDropdown, coverageProductFilterText, selectedCoverageProducts, [...sales, ...history], 'coverage');
             }, 250);
 
             coverageProductFilterDropdown.addEventListener('input', (e) => {
@@ -6309,11 +6346,11 @@
             if (coverageUnitPriceInput) {
                 coverageUnitPriceInput.addEventListener('keydown', (e) => {
                     if (e.key === 'Enter') {
-                        updateCoverage();
+                        handleCoverageFilterChange();
                         e.target.blur();
                     }
                 });
-                coverageUnitPriceInput.addEventListener('blur', updateCoverage);
+                coverageUnitPriceInput.addEventListener('blur', () => handleCoverageFilterChange());
             }
 
 
@@ -6816,9 +6853,24 @@
                                 <!-- Gráficos (Cidades) -->
                                 <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
                                     <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
-                                        <div class="flex justify-between items-center mb-4"><div class="w-1/4"><span class="text-xl font-bold text-indigo-400">Top 10</span></div><div class="w-1/2 text-center"><h2 id="city-chart-title" class="text-lg font-semibold text-white"></h2></div><div class="w-1/4 text-right"><p class="text-slate-400 text-sm">Total Vendido</p><p id="total-faturamento-cidade" class="text-xl font-bold text-green-400">R$ 0,00</p></div></div><div id="salesByClientInCityChartContainer" class="relative h-96"></div>
+                                        <div class="flex justify-between items-center mb-4">
+                                            <div class="w-1/4"><span class="text-xl font-bold text-indigo-400">Top 10</span></div>
+                                            <div class="w-1/2 text-center"><h2 id="city-chart-title" class="text-lg font-semibold text-white"></h2></div>
+                                            <div class="w-1/4 text-right"><p class="text-slate-400 text-sm">Total Vendido</p><p id="total-faturamento-cidade" class="text-xl font-bold text-green-400">R$ 0,00</p></div>
+                                        </div>
+                                        <div id="salesByClientInCityChartContainer" class="relative h-96"></div>
                                     </div>
-                                    <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 class="text-lg font-semibold text-white mb-4 text-center">Status dos Clientes</h2><div id="customerStatusChartContainer" class="relative h-96 flex items-center justify-center"></div></div>
+                                    <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
+                                        <div class="flex justify-between items-center mb-4">
+                                            <div class="w-1/4"></div>
+                                            <div class="w-1/2 text-center"><h2 class="text-lg font-semibold text-white">Status dos Clientes</h2></div>
+                                            <div class="w-1/4 text-right">
+                                                <p class="text-slate-400 text-sm">Total Clientes</p>
+                                                <p id="total-clientes-cidade" class="text-xl font-bold text-teal-400">0</p>
+                                            </div>
+                                        </div>
+                                        <div id="customerStatusChartContainer" class="relative h-96 flex items-center justify-center"></div>
+                                    </div>
                                 </div>
                                 <!-- Tabelas (Cidades) -->
                                 <div class="bg-[#1d2347] p-4 rounded-lg mt-6 border border-slate-700 shadow-sm"><div class="flex justify-between items-center mb-4 px-4"><h3 class="text-lg font-semibold text-white">Clientes Ativos no Mês</h3><button id="export-active-pdf-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg text-sm">Exportar Relatório</button></div><div class="overflow-x-auto custom-scrollbar" style="max-height: 40vh;"><table class="min-w-full text-sm text-left text-slate-300"><thead class="text-xs text-slate-400 uppercase sticky-header"><tr><th class="px-4 py-3">Código</th><th class="px-4 py-3">Nome Fantasia</th><th class="px-4 py-3 text-right">Faturamento</th><th class="px-4 py-3">Cidade</th><th class="px-4 py-3">Bairro</th><th class="px-4 py-3">RCA 1</th></tr></thead><tbody id="city-active-detail-table-body" class="divide-y divide-slate-700"></tbody></table></div></div>
