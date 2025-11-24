@@ -827,7 +827,7 @@
         
         let allSalesData = embeddedData.detailed;
         let allHistoryData = embeddedData.history;
-        const aggregatedOrders = embeddedData.byOrder;
+        let aggregatedOrders = embeddedData.byOrder;
         const allClientsData = embeddedData.clients;
         const stockData05 = new Map(Object.entries(embeddedData.stockMap05 || {}));
         const stockData08 = new Map(Object.entries(embeddedData.stockMap08 || {}));
@@ -886,50 +886,55 @@
 
         function initializeOptimizedDataStructures() {
             // --- INÍCIO DA LÓGICA DE REMAPEAMENTO (Melhoria Solicitada) ---
-            const sellerDetailsMap = new Map();
-            const populateSellerDetails = (data) => {
-                data.forEach(s => {
-                    if (s.CODUSUR && (!sellerDetailsMap.has(s.CODUSUR) || s.NOME)) {
-                        sellerDetailsMap.set(s.CODUSUR, { name: s.NOME, supervisor: s.SUPERV });
-                    }
-                });
-            };
-            populateSellerDetails([...allSalesData, ...allHistoryData]);
-
-            const clientToCurrentSellerMap = new Map();
-            let americanasCodCli = null;
-            allClientsData.forEach(c => {
-                if (c['Código'] && c.rca1) {
-                    clientToCurrentSellerMap.set(String(c['Código']), String(c.rca1));
-                }
-                if (c.razaoSocial && c.razaoSocial.toUpperCase().includes('AMERICANAS')) {
-                    americanasCodCli = String(c['Código']);
-                }
-            });
-
-            const remapSales = (salesList) => {
-                return salesList.map(sale => {
-                    const clientCode = String(sale.CODCLI);
-                    if (clientCode === americanasCodCli) return sale;
-
-                    const currentSellerCode = clientToCurrentSellerMap.get(clientCode);
-                    if (currentSellerCode) {
-                        const sellerDetails = sellerDetailsMap.get(currentSellerCode);
-                        if (sellerDetails) {
-                            return {
-                                ...sale,
-                                CODUSUR: currentSellerCode,
-                                NOME: sellerDetails.name,
-                                SUPERV: sellerDetails.supervisor
-                            };
+            try {
+                const sellerDetailsMap = new Map();
+                const populateSellerDetails = (data) => {
+                    data.forEach(s => {
+                        if (s.CODUSUR && (!sellerDetailsMap.has(s.CODUSUR) || s.NOME)) {
+                            sellerDetailsMap.set(s.CODUSUR, { name: s.NOME, supervisor: s.SUPERV });
                         }
-                    }
-                    return sale;
-                });
-            };
+                    });
+                };
+                populateSellerDetails([...allSalesData, ...allHistoryData]);
 
-            allSalesData = remapSales(allSalesData);
-            allHistoryData = remapSales(allHistoryData);
+                const clientToCurrentSellerMap = new Map();
+                let americanasCodCli = null;
+                allClientsData.forEach(c => {
+                    if (c['Código'] && c.rca1) {
+                        clientToCurrentSellerMap.set(String(c['Código']), String(c.rca1));
+                    }
+                    if (c.razaoSocial && c.razaoSocial.toUpperCase().includes('AMERICANAS')) {
+                        americanasCodCli = String(c['Código']);
+                    }
+                });
+
+                const remapSales = (salesList) => {
+                    return salesList.map(sale => {
+                        const clientCode = String(sale.CODCLI);
+                        if (clientCode === americanasCodCli) return sale;
+
+                        const currentSellerCode = clientToCurrentSellerMap.get(clientCode);
+                        if (currentSellerCode) {
+                            const sellerDetails = sellerDetailsMap.get(currentSellerCode);
+                            if (sellerDetails) {
+                                return {
+                                    ...sale,
+                                    CODUSUR: currentSellerCode,
+                                    NOME: sellerDetails.name,
+                                    SUPERV: sellerDetails.supervisor
+                                };
+                            }
+                        }
+                        return sale;
+                    });
+                };
+
+                allSalesData = remapSales(allSalesData);
+                allHistoryData = remapSales(allHistoryData);
+                aggregatedOrders = remapSales(aggregatedOrders);
+            } catch (e) {
+                console.error("Erro na lógica de remapeamento:", e);
+            }
             // --- FIM DA LÓGICA DE REMAPEAMENTO ---
 
             // 1. Pre-process Clients: Lowercase search fields
@@ -1356,45 +1361,8 @@
         const newProductsTableBody = document.getElementById('new-products-table-body');
         const lostProductsTableBody = document.getElementById('lost-products-table-body');
 
-        const innovationsView = document.getElementById('innovations-view');
-        const viewInnovationsBtn = document.getElementById('viewInnovationsBtn');
-        const backToMainFromInnovationsBtn = document.getElementById('back-to-main-from-innovations-btn');
-        const innovationsSupervisorFilter = document.getElementById('innovations-supervisor-filter');
-        const innovationsVendedorFilterBtn = document.getElementById('innovations-vendedor-filter-btn');
-        const innovationsVendedorFilterText = document.getElementById('innovations-vendedor-filter-text');
-        const innovationsVendedorFilterDropdown = document.getElementById('innovations-vendedor-filter-dropdown');
-        const innovationsSupplierFilterBtn = document.getElementById('innovations-supplier-filter-btn');
-        const innovationsSupplierFilterText = document.getElementById('innovations-supplier-filter-text');
-        const innovationsSupplierFilterDropdown = document.getElementById('innovations-supplier-filter-dropdown');
-        const innovationsCityFilter = document.getElementById('innovations-city-filter');
-        const innovationsCitySuggestions = document.getElementById('innovations-city-suggestions');
-        const innovationsProductFilterBtn = document.getElementById('innovations-product-filter-btn');
-        const innovationsProductFilterText = document.getElementById('innovations-product-filter-text');
-        const innovationsProductFilterDropdown = document.getElementById('innovations-product-filter-dropdown');
-        const clearInnovationsFiltersBtn = document.getElementById('clear-innovations-filters-btn');
-        const innovationsTableBody = document.getElementById('innovations-table-body');
-        const innovationsPlaceholder = document.getElementById('innovations-placeholder');
-        const innovationsResults = document.getElementById('innovations-results');
-        const innovationsActiveClientsKpi = document.getElementById('innovations-active-clients-kpi');
-        const innovationsTopCoverageProductKpi = document.getElementById('innovations-top-coverage-product-kpi');
-        const innovationsTopCoverageValueKpi = document.getElementById('innovations-top-coverage-value-kpi');
-        const innovationsTopCoverageCountKpi = document.getElementById('innovations-top-coverage-count-kpi');
-        const innovationsSelectionCoverageValueKpi = document.getElementById('innovations-selection-coverage-value-kpi');
-        const innovationsSelectionCoverageCountKpi = document.getElementById('innovations-selection-coverage-count-kpi');
-        const innovationsSelectionCoverageValueKpiPrevious = document.getElementById('innovations-selection-coverage-value-kpi-previous');
-        const innovationsSelectionCoverageCountKpiPrevious = document.getElementById('innovations-selection-coverage-count-kpi-previous');
-        const innovationsBonusCoverageValueKpi = document.getElementById('innovations-bonus-coverage-value-kpi');
-        const innovationsBonusCoverageCountKpi = document.getElementById('innovations-bonus-coverage-count-kpi');
-        const innovationsBonusCoverageValueKpiPrevious = document.getElementById('innovations-bonus-coverage-value-kpi-previous');
-        const innovationsBonusCoverageCountKpiPrevious = document.getElementById('innovations-bonus-coverage-count-kpi-previous');
-        const innovationsMonthBtn = document.getElementById('innovations-month-btn');
-        const innovationsFilialFilter = document.getElementById('innovations-filial-filter');
-        const innovationsTipoVendaFilterBtn = document.getElementById('innovations-tipo-venda-filter-btn');
-        const innovationsTipoVendaFilterText = document.getElementById('innovations-tipo-venda-filter-text');
-        const innovationsTipoVendaFilterDropdown = document.getElementById('innovations-tipo-venda-filter-dropdown');
 
         const innovationsMonthView = document.getElementById('innovations-month-view');
-        const backToInnovationsFromMonthBtn = document.getElementById('back-to-innovations-from-month-btn');
         const innovationsMonthChartContainer = document.getElementById('innovations-month-chartContainer');
         const innovationsMonthTableBody = document.getElementById('innovations-month-table-body');
         const innovationsMonthCategoryFilter = document.getElementById('innovations-month-category-filter');
@@ -1513,14 +1481,9 @@
         let comparisonRedeGroupFilter = '';
         let stockRedeGroupFilter = '';
 
-        let selectedInnovationsSellers = [];
-        let selectedInnovationsSuppliers = [];
-        let selectedInnovationsProducts = [];
-        let selectedInnovationsTiposVenda = [];
         let selectedInnovationsMonthSellers = [];
         let selectedInnovationsMonthTiposVenda = [];
 
-        let globalInnovationsKPI = { activeClients: 0, topProduct: { product: '-', coverage: 0, clients: 0 } };
         // let innovationsIncludeBonus = true; // REMOVED
         // let innovationsMonthIncludeBonus = true; // REMOVED
 
@@ -1528,6 +1491,8 @@
         let innovationsByClientForExport = [];
         let categoryLegendForExport = [];
         let chartLabels = [];
+        let globalInnovationCategories = null;
+        let globalProductToCategoryMap = null;
 
         let calendarState = { year: lastSaleDate.getUTCFullYear(), month: lastSaleDate.getUTCMonth() };
 
@@ -1560,22 +1525,37 @@
             return new Date(d.getTime() + userTimezoneOffset).toLocaleDateString('pt-BR');
         }
 
-        function buildClientSalesMap(salesData, typeFilter) {
-            const map = new Map(); // Map<CODCLI, Map<PRODUTO, Set<CODUSUR>>>
+        function buildInnovationSalesMaps(salesData, mainTypes, bonusTypes) {
+            const mainMap = new Map(); // Map<CODCLI, Map<PRODUTO, Set<CODUSUR>>>
+            const bonusMap = new Map();
+            const mainSet = new Set(mainTypes);
+            const bonusSet = new Set(bonusTypes);
+
             salesData.forEach(sale => {
-                if (typeFilter.length > 0 && !typeFilter.includes(sale.TIPOVENDA)) return;
+                const isMain = mainSet.has(sale.TIPOVENDA);
+                const isBonus = bonusSet.has(sale.TIPOVENDA);
+
+                if (!isMain && !isBonus) return;
 
                 const codCli = sale.CODCLI;
                 const prod = sale.PRODUTO;
                 const rca = sale.CODUSUR;
 
-                if (!map.has(codCli)) map.set(codCli, new Map());
-                const clientMap = map.get(codCli);
+                if (isMain) {
+                    if (!mainMap.has(codCli)) mainMap.set(codCli, new Map());
+                    const clientMap = mainMap.get(codCli);
+                    if (!clientMap.has(prod)) clientMap.set(prod, new Set());
+                    clientMap.get(prod).add(rca);
+                }
 
-                if (!clientMap.has(prod)) clientMap.set(prod, new Set());
-                clientMap.get(prod).add(rca);
+                if (isBonus) {
+                    if (!bonusMap.has(codCli)) bonusMap.set(codCli, new Map());
+                    const clientMap = bonusMap.get(codCli);
+                    if (!clientMap.has(prod)) clientMap.set(prod, new Set());
+                    clientMap.get(prod).add(rca);
+                }
             });
-            return map;
+            return { mainMap, bonusMap };
         }
 
         // <!-- INÍCIO DO CÓDIGO RESTAURADO -->
@@ -2779,25 +2759,48 @@
             const currentMonth = referenceDate.getUTCMonth();
             const currentYear = referenceDate.getUTCFullYear();
 
-            // Filter Sales (O(N)) - use simple loop with flags
-            let salesForAnalysis = [];
-            const clientCodesForAnalysis = new Set(clientsForAnalysis.map(c => c['Código']));
             const selectedSellersSet = new Set(selectedCitySellers);
             const selectedTiposVendaSet = new Set(selectedCityTiposVenda);
 
-            // Optimize sales filtering
-            for(let i=0; i<allSalesData.length; i++) {
-                const s = allSalesData[i];
-                if (!clientCodesForAnalysis.has(s.CODCLI)) continue;
-                if (supervisor && s.SUPERV !== supervisor) continue;
-                if (selectedSellersSet.size > 0 && !selectedSellersSet.has(s.NOME)) continue;
-                if (selectedTiposVendaSet.size > 0 && !selectedTiposVendaSet.has(s.TIPOVENDA)) continue;
+            // Optimize sales filtering using pre-built indices
+            let clientCodes = null;
+            // Since clientsForAnalysis is already filtered by relevant filters (supervisor/seller/rede),
+            // we can pass it down if needed, or just rely on the client loop for specific client property filtering.
+            // However, `getRelevantClientsForCityFilter` iterates allClientsData.
+            // Let's use the filters directly in getFilteredDataFromIndices.
 
-                if (cidadeFiltro && s.CIDADE !== cidadeFiltro) continue;
-                if (codcliFilterVal && s.CODCLI !== codcliFilterVal) continue;
+            const filters = {
+                supervisor: supervisor,
+                seller: selectedSellersSet,
+                tipoVenda: selectedTiposVendaSet,
+                city: cidadeFiltro && cidadeFiltro.toLowerCase()
+            };
 
-                salesForAnalysis.push(s);
+            // Additional handling for rede filter if it exists
+            let redeSet = null;
+            if (cityRedeGroupFilter === 'com_rede') {
+               if (selectedCityRedes.length > 0) {
+                   redeSet = new Set(selectedCityRedes);
+               }
             }
+
+            // We need to filter sales by client codes if specific client logic is applied.
+            // `getRelevantClientsForCityFilter` does this logic.
+            // But for maximum performance, we should use the indices for sales directly.
+
+            let salesForAnalysis = getFilteredDataFromIndices(optimizedData.indices.current, optimizedData.salesById, filters);
+
+            // Apply remaining filters that are not in the indices efficiently or need special logic
+            if (codcliFilterVal) {
+                salesForAnalysis = salesForAnalysis.filter(s => s.CODCLI === codcliFilterVal);
+            }
+
+            // The `getRelevantClientsForCityFilter` also applies Rede logic to CLIENTS.
+            // We must ensure the sales also belong to those clients.
+            const clientCodesForAnalysis = new Set(clientsForAnalysis.map(c => c['Código']));
+
+            // Intersect sales with relevant clients
+            salesForAnalysis = salesForAnalysis.filter(s => clientCodesForAnalysis.has(s.CODCLI));
 
             if (cidadeFiltro) clientsForAnalysis = clientsForAnalysis.filter(c => c.cidade === cidadeFiltro);
             if (codcliFilterVal) clientsForAnalysis = clientsForAnalysis.filter(c => String(c['Código']) === codcliFilterVal);
@@ -3007,9 +3010,41 @@
 
         function updateWeeklyView() {
             const selectedSupervisors = Array.from(weeklySupervisorFilter.querySelectorAll('input:checked')).map(cb => cb.value);
-            let dataForGeneralCharts = allSalesData;
-            if (currentWeeklyFornecedor) dataForGeneralCharts = dataForGeneralCharts.filter(row => String(row.OBSERVACAOFOR).trim() === currentWeeklyFornecedor);
-            if (selectedSupervisors.length > 0) dataForGeneralCharts = dataForGeneralCharts.filter(d => selectedSupervisors.includes(d.SUPERV));
+
+            // Optimize using indices
+            const filters = {};
+            if (selectedSupervisors.length > 0) {
+                 // getFilteredDataFromIndices expects 'supervisor' as string, but we have multiple.
+                 // Indices for 'bySupervisor' is a Map<Name, Set<Id>>.
+                 // We can manually intersect or just pass null if complex multiselect logic isn't supported by that helper yet.
+                 // But getFilteredDataFromIndices doesn't support multiple supervisors array directly in 'filters.supervisor'.
+                 // However, we can filter after or adapt.
+                 // Let's manually use the indices here for maximum speed if we want to replace O(N).
+            }
+
+            // Actually, getFilteredDataFromIndices doesn't support multi-supervisor array yet, only single.
+            // Let's stick to a simpler optimization: Use the pasta filter index if available.
+
+            let dataForGeneralCharts;
+
+            if (currentWeeklyFornecedor) {
+                 // Use index
+                 if (optimizedData.indices.current.byPasta.has(currentWeeklyFornecedor)) {
+                     const ids = optimizedData.indices.current.byPasta.get(currentWeeklyFornecedor);
+                     dataForGeneralCharts = [];
+                     ids.forEach(id => dataForGeneralCharts.push(optimizedData.salesById.get(id)));
+                 } else {
+                     dataForGeneralCharts = [];
+                 }
+            } else {
+                dataForGeneralCharts = allSalesData;
+            }
+
+            if (selectedSupervisors.length > 0) {
+                const supSet = new Set(selectedSupervisors);
+                dataForGeneralCharts = dataForGeneralCharts.filter(d => supSet.has(d.SUPERV));
+            }
+
             const currentMonth = lastSaleDate.getUTCMonth(); const currentYear = lastSaleDate.getUTCFullYear();
             const monthSales = dataForGeneralCharts.filter(d => { if (!d.DTPED) return false; const saleDate = parseDate(d.DTPED); return saleDate && saleDate.getUTCMonth() === currentMonth && saleDate.getUTCFullYear() === currentYear; });
             const totalMes = monthSales.reduce((sum, item) => sum + item.VLVENDA, 0);
@@ -3318,8 +3353,14 @@
             return salesByMonth;
         }
 
-        function monthlyKpiAverage(historySales, kpiFn, ...kpiArgs) {
-            const salesByMonth = groupSalesByMonth(historySales);
+        function monthlyKpiAverage(dataInput, kpiFn, isGrouped = false, ...kpiArgs) {
+            let salesByMonth;
+            if (isGrouped) {
+                salesByMonth = dataInput;
+            } else {
+                salesByMonth = groupSalesByMonth(dataInput);
+            }
+
             let sortedMonths = Object.keys(salesByMonth).sort();
 
             if (sortedMonths.length > 0) {
@@ -3673,7 +3714,6 @@
         function getStockFilteredData(options = {}) {
             const { excludeFilter = null } = options;
 
-            // Use Sets for O(1) lookups
             const sellersSet = new Set(selectedStockSellers);
             const suppliersSet = new Set(selectedStockSuppliers);
             const productsSet = new Set(selectedStockProducts);
@@ -3685,36 +3725,37 @@
             const city = stockCityFilter.value.trim().toLowerCase();
             const filial = stockFilialFilter.value;
 
-            let clients = allClientsData; // Reference, avoid copy if not needed
+            let clientCodes = null;
             if (excludeFilter !== 'rede') {
-                if (stockRedeGroupFilter === 'com_rede') {
-                    // Use indexed lookups later if possible, but for now standard filter is safer with Sets
-                    clients = clients.filter(c => c.ramo && c.ramo !== 'N/A');
-                     if (redeSet.size > 0) {
-                        clients = clients.filter(c => redeSet.has(c.ramo));
+                if (stockRedeGroupFilter === 'com_rede' || stockRedeGroupFilter === 'sem_rede') {
+                    let clients = allClientsData;
+                    if (stockRedeGroupFilter === 'com_rede') {
+                        clients = clients.filter(c => c.ramo && c.ramo !== 'N/A');
+                        if (redeSet.size > 0) {
+                            clients = clients.filter(c => redeSet.has(c.ramo));
+                        }
+                    } else if (stockRedeGroupFilter === 'sem_rede') {
+                        clients = clients.filter(c => !c.ramo || c.ramo === 'N/A');
                     }
-                } else if (stockRedeGroupFilter === 'sem_rede') {
-                    clients = clients.filter(c => !c.ramo || c.ramo === 'N/A');
+                    clientCodes = new Set(clients.map(c => c['Código']));
                 }
             }
-            const clientCodes = new Set(clients.map(c => c['Código']));
 
-            const filterFunction = s => {
-                if (filial !== 'ambas' && s.FILIAL !== filial) return false;
-                if (excludeFilter !== 'supervisor' && supervisor && s.SUPERV !== supervisor) return false;
-                if (excludeFilter !== 'pasta' && pasta && s.OBSERVACAOFOR !== pasta) return false;
-                if (excludeFilter !== 'tipoVenda' && tiposVendaSet.size > 0 && !tiposVendaSet.has(s.TIPOVENDA)) return false;
-                if (excludeFilter !== 'seller' && sellersSet.size > 0 && !sellersSet.has(s.NOME)) return false;
-                if (excludeFilter !== 'supplier' && suppliersSet.size > 0 && !suppliersSet.has(s.CODFOR)) return false;
-                if (excludeFilter !== 'product' && productsSet.size > 0 && !productsSet.has(s.PRODUTO)) return false;
-                if (excludeFilter !== 'city' && city && (!s.CIDADE || s.CIDADE.toLowerCase() !== city)) return false;
-
-                return clientCodes.has(s.CODCLI);
+            const filters = {
+                filial,
+                supervisor,
+                pasta,
+                tipoVenda: tiposVendaSet,
+                seller: sellersSet,
+                supplier: suppliersSet,
+                product: productsSet,
+                city,
+                clientCodes
             };
 
             return {
-                sales: allSalesData.filter(filterFunction),
-                history: allHistoryData.filter(filterFunction)
+                sales: getFilteredDataFromIndices(optimizedData.indices.current, optimizedData.salesById, filters, excludeFilter),
+                history: getFilteredDataFromIndices(optimizedData.indices.history, optimizedData.historyById, filters, excludeFilter)
             };
         }
 
@@ -3784,11 +3825,14 @@
             const historyAvgFat = historyTotalFat / QUARTERLY_DIVISOR;
             const historyAvgPeso = historyTotalPeso / 1000 / QUARTERLY_DIVISOR;
 
-            const historyClientsAverage = monthlyKpiAverage(historySales, getPositiveClientsWithNewLogic);
+            // Group sales by month ONCE for optimization
+            const groupedHistorySales = groupSalesByMonth(historySales);
+
+            const historyClientsAverage = monthlyKpiAverage(groupedHistorySales, getPositiveClientsWithNewLogic, true);
             const historyTicketAverage = historyClientsAverage > 0 ? historyAvgFat / historyClientsAverage : 0;
-            const historyMixPepsico = monthlyKpiAverage(historySales, calculateAverageMixComDevolucao, pepsicoCodfors);
-            const historyPositivacaoSalty = monthlyKpiAverage(historySales, calculatePositivacaoPorCestaComDevolucao, saltyCategories);
-            const historyPositivacaoFoods = monthlyKpiAverage(historySales, calculatePositivacaoPorCestaComDevolucao, foodsCategories);
+            const historyMixPepsico = monthlyKpiAverage(groupedHistorySales, calculateAverageMixComDevolucao, true, pepsicoCodfors);
+            const historyPositivacaoSalty = monthlyKpiAverage(groupedHistorySales, calculatePositivacaoPorCestaComDevolucao, true, saltyCategories);
+            const historyPositivacaoFoods = monthlyKpiAverage(groupedHistorySales, calculatePositivacaoPorCestaComDevolucao, true, foodsCategories);
 
             renderKpiCards([
                 { title: 'Faturamento Total', current: currentTotalFat, history: historyAvgFat, format: 'currency' },
@@ -4443,278 +4487,6 @@
             renderProductTable(lostProductsTableBody, lostProducts, false);
         }
 
-        function getInnovationsFilteredData(options = {}) {
-            const { excludeFilter = null } = options;
-
-            const supervisor = innovationsSupervisorFilter.value;
-            const sellers = selectedInnovationsSellers;
-            const city = innovationsCityFilter.value.trim().toLowerCase();
-            const filial = innovationsFilialFilter.value;
-
-            let clients = allClientsData;
-            if (filial !== 'ambas') {
-                clients = clients.filter(c => clientLastBranch.get(c['Código']) === filial);
-            }
-
-            if (excludeFilter !== 'supervisor' && supervisor) {
-                const rcasOfSupervisor = new Set(optimizedData.rcasBySupervisor.get(supervisor) || []);
-                clients = clients.filter(c => c.rcas.some(rca => rcasOfSupervisor.has(rca)));
-            }
-            if (excludeFilter !== 'seller' && sellers.length > 0) {
-                const rcasOfSellers = new Set();
-                sellers.forEach(sellerName => {
-                    const rcaCode = optimizedData.rcaCodeByName.get(sellerName);
-                    if (rcaCode) rcasOfSellers.add(rcaCode);
-                });
-                clients = clients.filter(c => c.rcas.some(rca => rcasOfSellers.has(rca)));
-            }
-            if (excludeFilter !== 'city' && city) {
-                clients = clients.filter(c => c.cidade && c.cidade.toLowerCase() === city);
-            }
-
-            let sales = allSalesData;
-            let history = allHistoryData;
-            if (filial !== 'ambas') {
-                 sales = sales.filter(s => s.FILIAL === filial);
-                 history = history.filter(s => s.FILIAL === filial);
-            }
-
-            return { sales, history, clients };
-        }
-
-        function updateInnovationsFilters() {
-            const { sales, history } = getInnovationsFilteredData();
-            let productSource = [...sales, ...history];
-
-            if (selectedInnovationsSuppliers.length > 0) {
-                 productSource = productSource.filter(s => selectedInnovationsSuppliers.includes(String(s.CODFOR)));
-            }
-
-            updateProductFilter(innovationsProductFilterDropdown, innovationsProductFilterText, selectedInnovationsProducts, productSource, 'innovations');
-            innovationsProductFilterText.textContent = selectedInnovationsProducts.length > 0 ? `${selectedInnovationsProducts.length} produtos selecionados` : 'Selecione um ou mais produtos';
-        }
-
-        function resetInnovationsFilters() {
-            innovationsSupervisorFilter.value = '';
-            innovationsCityFilter.value = '';
-            innovationsFilialFilter.value = 'ambas';
-            selectedInnovationsSellers = [];
-            selectedInnovationsSuppliers = [];
-            selectedInnovationsProducts = [];
-            selectedInnovationsTiposVenda = [];
-            updateSellerFilter('', innovationsVendedorFilterDropdown, innovationsVendedorFilterText, [], allSalesData);
-            updateSupplierFilter(innovationsSupplierFilterDropdown, innovationsSupplierFilterText, [], allSalesData, 'innovations');
-            selectedInnovationsTiposVenda = updateTipoVendaFilter(innovationsTipoVendaFilterDropdown, innovationsTipoVendaFilterText, selectedInnovationsTiposVenda, allSalesData);
-            updateInnovationsFilters();
-            updateInnovationsView();
-        }
-
-        function updateInnovationsView() {
-            const productsToAnalyze = selectedInnovationsProducts;
-            const { clients, sales, history } = getInnovationsFilteredData();
-
-            const supervisor = innovationsSupervisorFilter.value;
-            const sellers = selectedInnovationsSellers;
-            const sellerRcaCodes = new Set();
-            if (sellers.length > 0) {
-                sellers.forEach(sellerName => {
-                    const rcaCode = optimizedData.rcaCodeByName.get(sellerName);
-                    if (rcaCode) sellerRcaCodes.add(rcaCode);
-                });
-            } else if (supervisor) {
-                (optimizedData.rcasBySupervisor.get(supervisor) || []).forEach(rca => sellerRcaCodes.add(rca));
-            }
-
-            const activeClientsForCoverage = clients.filter(c => {
-                const codcli = c['Código'];
-                const rca1 = String(c.rca1 || '').trim();
-                if (rca1 === '306' || rca1 === '300') return false;
-                const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                return (isAmericanas || rca1 !== '53');
-            });
-
-            const activeClientsCount = activeClientsForCoverage.length;
-            const activeClientCodes = new Set(activeClientsForCoverage.map(c => c['Código']));
-
-            innovationsActiveClientsKpi.textContent = activeClientsCount.toLocaleString('pt-BR');
-
-            if (productsToAnalyze.length === 0) {
-                innovationsPlaceholder.classList.remove('hidden');
-                innovationsResults.classList.add('hidden');
-                innovationsSelectionCoverageValueKpi.textContent = '0%';
-                innovationsSelectionCoverageCountKpi.textContent = `0 de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
-                innovationsSelectionCoverageValueKpiPrevious.textContent = '0%';
-                innovationsSelectionCoverageCountKpiPrevious.textContent = `0 de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
-                innovationsBonusCoverageValueKpi.textContent = '0%';
-                innovationsBonusCoverageCountKpi.textContent = `0 de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
-                innovationsBonusCoverageValueKpiPrevious.textContent = '0%';
-                innovationsBonusCoverageCountKpiPrevious.textContent = `0 de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
-                innovationsTopCoverageValueKpi.textContent = '0%';
-                innovationsTopCoverageProductKpi.textContent = '-';
-                innovationsTopCoverageCountKpi.textContent = '0 PDVs';
-                return;
-            }
-
-            innovationsPlaceholder.classList.add('hidden');
-            innovationsResults.classList.remove('hidden');
-
-            // Determine types to use
-            const availableTypes = new Set([...allSalesData.map(s => s.TIPOVENDA), ...allHistoryData.map(s => s.TIPOVENDA)]);
-            let currentSelection = selectedInnovationsTiposVenda.length > 0 ? selectedInnovationsTiposVenda : Array.from(availableTypes);
-
-            // Main Coverage: Selection EXCLUDING 5 and 11
-            const mainTypes = currentSelection.filter(t => t !== '5' && t !== '11');
-
-            // Bonus Coverage: Selection INTERSECTING 5 and 11
-            const bonusTypes = currentSelection.filter(t => t === '5' || t === '11');
-
-            // Build maps
-            // Use empty Map if the filter array is empty (meaning we shouldn't match anything for that category)
-            const clientSalesCurrentMap = mainTypes.length > 0 ? buildClientSalesMap(allSalesData, mainTypes) : new Map();
-            const clientSalesPreviousMap = mainTypes.length > 0 ? buildClientSalesMap(allHistoryData, mainTypes) : new Map();
-
-            const clientBonusCurrentMap = bonusTypes.length > 0 ? buildClientSalesMap(allSalesData, bonusTypes) : new Map();
-            const clientBonusPreviousMap = bonusTypes.length > 0 ? buildClientSalesMap(allHistoryData, bonusTypes) : new Map();
-
-            const tableData = [];
-            const clientsWhoGotSelectionCurrent = new Set();
-            const clientsWhoGotSelectionPrevious = new Set();
-            const clientsWhoGotBonusSelectionCurrent = new Set();
-            const clientsWhoGotBonusSelectionPrevious = new Set();
-            let topCoverageItem = { name: '-', coverage: 0, clients: 0 };
-
-            productsToAnalyze.forEach(productCode => {
-                const productInfo = productDetailsMap.get(productCode) || { DESCRICAO: `Produto ${productCode}`};
-
-                let clientsWhoGotProductCurrent = 0;
-                let clientsWhoGotProductPrevious = 0;
-
-                activeClientCodes.forEach(codcli => {
-                    // Main Coverage Calculation (Current)
-                    const clientSalesCurrent = clientSalesCurrentMap.get(codcli);
-                    let boughtCurrent = false;
-                    if (clientSalesCurrent && clientSalesCurrent.has(productCode)) {
-                        const rcasWhoSold = clientSalesCurrent.get(productCode);
-                        if (sellerRcaCodes.size === 0 || [...rcasWhoSold].some(rca => sellerRcaCodes.has(rca))) {
-                            boughtCurrent = true;
-                        }
-                    }
-                    if (boughtCurrent) {
-                        clientsWhoGotProductCurrent++;
-                        clientsWhoGotSelectionCurrent.add(codcli);
-                    }
-
-                    // Main Coverage Calculation (Previous)
-                    const clientSalesPrevious = clientSalesPreviousMap.get(codcli);
-                    let boughtPrevious = false;
-                    if (clientSalesPrevious && clientSalesPrevious.has(productCode)) {
-                        const rcasWhoSold = clientSalesPrevious.get(productCode);
-                        if (sellerRcaCodes.size === 0 || [...rcasWhoSold].some(rca => sellerRcaCodes.has(rca))) {
-                            boughtPrevious = true;
-                        }
-                    }
-                    if (boughtPrevious) {
-                        clientsWhoGotProductPrevious++;
-                        clientsWhoGotSelectionPrevious.add(codcli);
-                    }
-
-                    // Bonus Coverage Calculation (Current)
-                    const clientBonusCurrent = clientBonusCurrentMap.get(codcli);
-                    if (clientBonusCurrent && clientBonusCurrent.has(productCode)) {
-                        const rcasWhoBonused = clientBonusCurrent.get(productCode);
-                        if (sellerRcaCodes.size === 0 || [...rcasWhoBonused].some(rca => sellerRcaCodes.has(rca))) {
-                            clientsWhoGotBonusSelectionCurrent.add(codcli);
-                        }
-                    }
-
-                    // Bonus Coverage Calculation (Previous)
-                    const clientBonusPrevious = clientBonusPreviousMap.get(codcli);
-                    if (clientBonusPrevious && clientBonusPrevious.has(productCode)) {
-                        const rcasWhoBonused = clientBonusPrevious.get(productCode);
-                        if (sellerRcaCodes.size === 0 || [...rcasWhoBonused].some(rca => sellerRcaCodes.has(rca))) {
-                            clientsWhoGotBonusSelectionPrevious.add(codcli);
-                        }
-                    }
-                });
-
-                const coverageCurrent = activeClientsCount > 0 ? (clientsWhoGotProductCurrent / activeClientsCount) * 100 : 0;
-                const coveragePrevious = activeClientsCount > 0 ? (clientsWhoGotProductPrevious / activeClientsCount) * 100 : 0;
-
-                if (coverageCurrent > topCoverageItem.coverage) {
-                    topCoverageItem = {
-                        name: `(${productCode}) ${productInfo.descricao}`,
-                        coverage: coverageCurrent,
-                        clients: clientsWhoGotProductCurrent
-                    };
-                }
-
-                const variation = coveragePrevious > 0 ? ((coverageCurrent - coveragePrevious) / coveragePrevious) * 100 : (coverageCurrent > 0 ? Infinity : 0);
-                const stockQty = getActiveStockMap(innovationsFilialFilter.value).get(productCode) || 0;
-
-                tableData.push({
-                    descricao: `(${productCode}) ${productInfo.descricao}`,
-                    stockQty: stockQty,
-                    coveragePrevious: coveragePrevious,
-                    coverageCurrent: coverageCurrent,
-                    variation: variation,
-                    clientsPreviousCount: clientsWhoGotProductPrevious,
-                    clientsCurrentCount: clientsWhoGotProductCurrent
-                });
-            });
-
-            innovationsTopCoverageValueKpi.textContent = `${topCoverageItem.coverage.toFixed(2)}%`;
-            innovationsTopCoverageProductKpi.textContent = topCoverageItem.name;
-            innovationsTopCoverageProductKpi.title = topCoverageItem.name;
-            innovationsTopCoverageCountKpi.textContent = `${topCoverageItem.clients.toLocaleString('pt-BR')} PDVs`;
-
-            const selectionCoveredCountCurrent = clientsWhoGotSelectionCurrent.size;
-            const selectionCoveragePercentCurrent = activeClientsCount > 0 ? (selectionCoveredCountCurrent / activeClientsCount) * 100 : 0;
-            innovationsSelectionCoverageValueKpi.textContent = `${selectionCoveragePercentCurrent.toFixed(2)}%`;
-            innovationsSelectionCoverageCountKpi.textContent = `${selectionCoveredCountCurrent.toLocaleString('pt-BR')} de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
-
-            const selectionCoveredCountPrevious = clientsWhoGotSelectionPrevious.size;
-            const selectionCoveragePercentPrevious = activeClientsCount > 0 ? (selectionCoveredCountPrevious / activeClientsCount) * 100 : 0;
-            innovationsSelectionCoverageValueKpiPrevious.textContent = `${selectionCoveragePercentPrevious.toFixed(2)}%`;
-            innovationsSelectionCoverageCountKpiPrevious.textContent = `${selectionCoveredCountPrevious.toLocaleString('pt-BR')} de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
-
-            const bonusCoveredCountCurrent = clientsWhoGotBonusSelectionCurrent.size;
-            const bonusCoveragePercentCurrent = activeClientsCount > 0 ? (bonusCoveredCountCurrent / activeClientsCount) * 100 : 0;
-            innovationsBonusCoverageValueKpi.textContent = `${bonusCoveragePercentCurrent.toFixed(2)}%`;
-            innovationsBonusCoverageCountKpi.textContent = `${bonusCoveredCountCurrent.toLocaleString('pt-BR')} de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
-
-            const bonusCoveredCountPrevious = clientsWhoGotBonusSelectionPrevious.size;
-            const bonusCoveragePercentPrevious = activeClientsCount > 0 ? (bonusCoveredCountPrevious / activeClientsCount) * 100 : 0;
-            innovationsBonusCoverageValueKpiPrevious.textContent = `${bonusCoveragePercentPrevious.toFixed(2)}%`;
-            innovationsBonusCoverageCountKpiPrevious.textContent = `${bonusCoveredCountPrevious.toLocaleString('pt-BR')} de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
-
-
-            tableData.sort((a, b) => b.coverageCurrent - a.coverageCurrent);
-
-            innovationsTableBody.innerHTML = tableData.map(item => {
-                let variationContent;
-                if (isFinite(item.variation)) {
-                    const colorClass = item.variation >= 0 ? 'text-green-400' : 'text-red-400';
-                    variationContent = `<span class="${colorClass}">${item.variation.toFixed(1)}%</span>`;
-                } else if (item.coverageCurrent > 0) {
-                    variationContent = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-500/30 text-purple-300">Novo</span>`;
-                } else {
-                    variationContent = `<span>-</span>`;
-                }
-                return `
-                    <tr class="hover:bg-slate-700/50">
-                        <td class="px-2 py-1.5 text-xs">${item.descricao}</td>
-                        <td class="px-2 py-1.5 text-xs text-right">${item.stockQty.toLocaleString('pt-BR')}</td>
-                        <td class="px-2 py-1.5 text-xs text-right">
-                            <div class="tooltip">${item.coveragePrevious.toFixed(2)}%<span class="tooltip-text">${item.clientsPreviousCount} PDVs</span></div>
-                        </td>
-                        <td class="px-2 py-1.5 text-xs text-right">
-                            <div class="tooltip">${item.coverageCurrent.toFixed(2)}%<span class="tooltip-text">${item.clientsCurrentCount} PDVs</span></div>
-                        </td>
-                        <td class="px-2 py-1.5 text-xs text-right">${variationContent}</td>
-                    </tr>
-                `;
-            }).join('');
-        }
 
         function getInnovationsMonthFilteredData(options = {}) {
             const { excludeFilter = null } = options;
@@ -4764,6 +4536,38 @@
         function updateInnovationsMonthView() {
             const selectedCategory = innovationsMonthCategoryFilter.value;
 
+            // Initialize Global Categories if not already done (Optimization)
+            if (!globalInnovationCategories && innovationsMonthData && innovationsMonthData.length > 0) {
+                globalInnovationCategories = {};
+                globalProductToCategoryMap = new Map();
+                innovationsMonthData.forEach(item => {
+                    const categoryName = item.Inovacoes;
+                    if (!categoryName) return;
+                    if (!globalInnovationCategories[categoryName]) {
+                        globalInnovationCategories[categoryName] = { productCodes: new Set(), products: [] };
+                    }
+                    const productCode = String(item.Codigo).trim();
+                    globalInnovationCategories[categoryName].productCodes.add(productCode);
+                    globalInnovationCategories[categoryName].products.push({ ...item, Codigo: productCode });
+                    globalProductToCategoryMap.set(productCode, categoryName);
+                });
+            }
+
+            const categories = globalInnovationCategories || {};
+            const currentFilterValue = innovationsMonthCategoryFilter.value;
+            const allCategories = Object.keys(categories).sort();
+
+            // Only update dropdown if empty or number of items changed significantly (simplistic check)
+            if (innovationsMonthCategoryFilter.options.length <= 1 && allCategories.length > 0) {
+                innovationsMonthCategoryFilter.innerHTML = '<option value="">Todas as Categorias</option>';
+                allCategories.forEach(cat => {
+                    innovationsMonthCategoryFilter.innerHTML += `<option value="${cat}">${cat}</option>`;
+                });
+                if (allCategories.includes(currentFilterValue)) {
+                    innovationsMonthCategoryFilter.value = currentFilterValue;
+                }
+            }
+
             const { clients: filteredClients } = getInnovationsMonthFilteredData();
 
             const supervisor = innovationsMonthSupervisorFilter.value;
@@ -4778,30 +4582,6 @@
                 (optimizedData.rcasBySupervisor.get(supervisor) || []).forEach(rca => sellerRcaCodes.add(rca));
             }
 
-            const categories = {};
-            if (innovationsMonthData && innovationsMonthData.length > 0) {
-                innovationsMonthData.forEach(item => {
-                    const categoryName = item.Inovacoes;
-                    if (!categoryName) return;
-                    if (!categories[categoryName]) {
-                        categories[categoryName] = { productCodes: new Set(), products: [] };
-                    }
-                    const productCode = String(item.Codigo).trim();
-                    categories[categoryName].productCodes.add(productCode);
-                    categories[categoryName].products.push({ ...item, Codigo: productCode });
-                });
-            }
-
-            const allCategories = Object.keys(categories).sort();
-            const currentFilterValue = innovationsMonthCategoryFilter.value;
-            innovationsMonthCategoryFilter.innerHTML = '<option value="">Todas as Categorias</option>';
-            allCategories.forEach(cat => {
-                innovationsMonthCategoryFilter.innerHTML += `<option value="${cat}">${cat}</option>`;
-            });
-            if (allCategories.includes(currentFilterValue)) {
-                innovationsMonthCategoryFilter.value = currentFilterValue;
-            }
-
             const activeClients = filteredClients.filter(c => {
                 const codcli = c['Código'];
                 const rca1 = String(c.rca1 || '').trim();
@@ -4812,128 +4592,179 @@
             const activeClientsCount = activeClients.length;
             const activeClientCodes = new Set(activeClients.map(c => c['Código']));
 
-            const categoryAnalysis = {};
-            let topCoverageItem = { name: '-', coverage: 0, clients: 0 };
-
-            const clientsWhoGotAnyVisibleProductCurrent = new Set();
-            const clientsWhoGotAnyVisibleProductPrevious = new Set();
-            const clientsWhoGotBonusAnyVisibleProductCurrent = new Set();
-            const clientsWhoGotBonusAnyVisibleProductPrevious = new Set();
+            // --- OPTIMIZED AGGREGATION LOGIC ---
 
             // Determine types to use
             const availableTypes = new Set([...allSalesData.map(s => s.TIPOVENDA), ...allHistoryData.map(s => s.TIPOVENDA)]);
             let currentSelection = selectedInnovationsMonthTiposVenda.length > 0 ? selectedInnovationsMonthTiposVenda : Array.from(availableTypes);
 
-            // Main Coverage: Selection EXCLUDING 5 and 11
             const mainTypes = currentSelection.filter(t => t !== '5' && t !== '11');
-
-            // Bonus Coverage: Selection INTERSECTING 5 and 11
             const bonusTypes = currentSelection.filter(t => t === '5' || t === '11');
 
-            // Build maps
-            const clientSalesCurrentMap = mainTypes.length > 0 ? buildClientSalesMap(allSalesData, mainTypes) : new Map();
-            const clientSalesPreviousMap = mainTypes.length > 0 ? buildClientSalesMap(allHistoryData, mainTypes) : new Map();
-            const clientBonusCurrentMap = bonusTypes.length > 0 ? buildClientSalesMap(allSalesData, bonusTypes) : new Map();
-            const clientBonusPreviousMap = bonusTypes.length > 0 ? buildClientSalesMap(allHistoryData, bonusTypes) : new Map();
+            // Optimized Map Building (2 passes instead of 4)
+            const mapsCurrent = buildInnovationSalesMaps(allSalesData, mainTypes, bonusTypes);
+            const mapsPrevious = buildInnovationSalesMaps(allHistoryData, mainTypes, bonusTypes);
 
-            for (const categoryName in categories) {
-                 if(selectedCategory && categoryName !== selectedCategory) continue;
+            // Structures to hold results
+            // categoryResults[catName] = { current: Set<CodCli>, previous: Set<CodCli>, bonusCurrent: Set<CodCli>, bonusPrevious: Set<CodCli> }
+            // productResults[prodCode] = { current: Set<CodCli> } -> For Top Item Logic
+            const categoryResults = {};
+            const productResults = {};
 
-                const productCodes = categories[categoryName].productCodes;
-                let clientsCurrentCount = 0;
-                let clientsPreviousCount = 0;
+            for (const cat in categories) {
+                categoryResults[cat] = {
+                    current: new Set(),
+                    previous: new Set(),
+                    bonusCurrent: new Set(),
+                    bonusPrevious: new Set()
+                };
+                categories[cat].productCodes.forEach(p => {
+                    productResults[p] = { current: new Set(), previous: new Set() };
+                });
+            }
 
-                activeClientCodes.forEach(codcli => {
-                    const currentSales = clientSalesCurrentMap.get(codcli);
-                    const currentBonus = clientBonusCurrentMap.get(codcli);
+            // Helper to process maps and populate sets
+            const processMap = (salesMap, isCurrent, isBonus) => {
+                salesMap.forEach((productsMap, codCli) => {
+                    // Only count if client is in the filtered active list
+                    if (!activeClientCodes.has(codCli)) return;
 
-                    let gotItCurrent = false;
-                    if (currentSales && [...productCodes].some(p => {
-                        const rcasWhoSold = currentSales.get(p);
-                        return rcasWhoSold && (sellerRcaCodes.size === 0 || [...rcasWhoSold].some(rca => sellerRcaCodes.has(rca)));
-                    })) {
-                        gotItCurrent = true;
-                    }
+                    productsMap.forEach((rcas, prodCode) => {
+                        const category = globalProductToCategoryMap ? globalProductToCategoryMap.get(prodCode) : null;
+                        if (!category) return; // Should not happen if innovation data is consistent
 
-                    if (gotItCurrent) {
-                        clientsCurrentCount++;
-                        clientsWhoGotAnyVisibleProductCurrent.add(codcli);
-                    }
+                        // Check RCA Filter
+                        let soldBySelected = false;
+                        if (sellerRcaCodes.size === 0) {
+                            soldBySelected = true;
+                        } else {
+                            for (const rca of rcas) {
+                                if (sellerRcaCodes.has(rca)) {
+                                    soldBySelected = true;
+                                    break;
+                                }
+                            }
+                        }
 
-                    if (currentBonus && [...productCodes].some(p => {
-                        const rcasWhoBonused = currentBonus.get(p);
-                        return rcasWhoBonused && (sellerRcaCodes.size === 0 || [...rcasWhoBonused].some(rca => sellerRcaCodes.has(rca)));
-                    })) {
-                        clientsWhoGotBonusAnyVisibleProductCurrent.add(codcli);
-                    }
+                        if (!soldBySelected) return;
 
-                    const previousSales = clientSalesPreviousMap.get(codcli);
-                    const previousBonus = clientBonusPreviousMap.get(codcli);
+                        const targetSetField = isCurrent ? 'current' : 'previous';
 
-                    let gotItPrevious = false;
-                    if (previousSales && [...productCodes].some(p => {
-                        const rcasWhoSold = previousSales.get(p);
-                        return rcasWhoSold && (sellerRcaCodes.size === 0 || [...rcasWhoSold].some(rca => sellerRcaCodes.has(rca)));
-                    })) {
-                        gotItPrevious = true;
-                    }
+                        // Add to Category Set (Normal or Bonus)
+                        if (categoryResults[category]) {
+                            if (isBonus) {
+                                categoryResults[category][isCurrent ? 'bonusCurrent' : 'bonusPrevious'].add(codCli);
+                            } else {
+                                categoryResults[category][targetSetField].add(codCli);
+                            }
+                        }
 
-                    if(gotItPrevious) {
-                        clientsPreviousCount++;
-                        clientsWhoGotAnyVisibleProductPrevious.add(codcli);
-                    }
+                        // Add to Product Set (For Top Item Logic)
+                        // We only care about combined coverage for top item usually, but let's track mainly 'Main' types for top item chart?
+                        // The original logic checked CurrentSales OR Bonus for the product.
+                        if (productResults[prodCode]) {
+                            productResults[prodCode][targetSetField].add(codCli);
+                        }
+                    });
+                });
+            };
 
-                     if (previousBonus && [...productCodes].some(p => {
-                        const rcasWhoBonused = previousBonus.get(p);
-                        return rcasWhoBonused && (sellerRcaCodes.size === 0 || [...rcasWhoBonused].some(rca => sellerRcaCodes.has(rca)));
-                    })) {
-                        clientsWhoGotBonusAnyVisibleProductPrevious.add(codcli);
+            // Process all 4 maps efficiently (Looping over Sales, not all Clients)
+            processMap(mapsCurrent.mainMap, true, false);
+            processMap(mapsCurrent.bonusMap, true, true);
+            processMap(mapsPrevious.mainMap, false, false);
+            processMap(mapsPrevious.bonusMap, false, true);
+
+            // Consolidate Results
+            const categoryAnalysis = {};
+            let topCoverageItem = { name: '-', coverage: 0, clients: 0 };
+
+            // Consolidate Product Results for Top Item
+            // We need to merge Main and Bonus for product coverage if needed,
+            // but `processMap` populated `productResults` separately for main/bonus?
+            // Wait, `processMap` handles Main and Bonus calls sequentially.
+            // `productResults[prodCode].current` is a Set.
+            // If we call processMap for Main, it adds clients.
+            // If we call processMap for Bonus, it adds clients to SAME Set.
+            // So `productResults` automatically handles the UNION of Main and Bonus coverage per product.
+
+            if (selectedCategory && categories[selectedCategory]) {
+                categories[selectedCategory].products.forEach(product => {
+                    const pCode = String(product.Codigo).trim();
+                    if (productResults[pCode]) {
+                        const count = productResults[pCode].current.size;
+                        const coverage = activeClientsCount > 0 ? (count / activeClientsCount) * 100 : 0;
+                        if (coverage > topCoverageItem.coverage) {
+                            topCoverageItem = { name: `(${pCode}) ${product.Produto}`, coverage, clients: count };
+                        }
                     }
                 });
+            } else {
+                // Top Category Logic
+                for (const cat in categoryResults) {
+                    const set = categoryResults[cat].current; // Main coverage
+                    // Wait, original logic: "gotItCurrent" if sales OR bonus.
+                    // My categoryResults structure separates them. I need to union them for the metric?
+                    // Original logic:
+                    // clientsWhoGotAnyVisibleProductCurrent.add(codcli) if (Sales OR Bonus) of ANY product in category.
 
-                const coverageCurrent = activeClientsCount > 0 ? (clientsCurrentCount / activeClientsCount) * 100 : 0;
+                    // Let's create a Union Set for the category coverage metric
+                    const unionSet = new Set([...categoryResults[cat].current, ...categoryResults[cat].bonusCurrent]);
+                    const count = unionSet.size;
+                    const coverage = activeClientsCount > 0 ? (count / activeClientsCount) * 100 : 0;
 
-                if (!selectedCategory && coverageCurrent > topCoverageItem.coverage) {
-                    topCoverageItem = { name: categoryName, coverage: coverageCurrent, clients: clientsCurrentCount };
+                    if (coverage > topCoverageItem.coverage) {
+                        topCoverageItem = { name: cat, coverage, clients: count };
+                    }
                 }
+            }
 
-                const coveragePrevious = activeClientsCount > 0 ? (clientsPreviousCount / activeClientsCount) * 100 : 0;
+            // Calculate Global KPIs (Union of all categories selected)
+            const clientsWhoGotAnyVisibleProductCurrent = new Set();
+            const clientsWhoGotAnyVisibleProductPrevious = new Set();
+            const clientsWhoGotBonusAnyVisibleProductCurrent = new Set();
+            const clientsWhoGotBonusAnyVisibleProductPrevious = new Set();
 
-                const variation = coveragePrevious > 0 ? ((coverageCurrent - coveragePrevious) / coveragePrevious) * 100 : (coverageCurrent > 0 ? Infinity : 0);
+            for (const cat in categoryResults) {
+                if (selectedCategory && cat !== selectedCategory) continue;
 
-                categoryAnalysis[categoryName] = {
-                    coverageCurrent,
-                    coveragePrevious,
-                    variation,
-                    clientsCount: clientsCurrentCount
+                // Merge sets into global KPI sets
+                categoryResults[cat].current.forEach(c => clientsWhoGotAnyVisibleProductCurrent.add(c));
+                categoryResults[cat].previous.forEach(c => clientsWhoGotAnyVisibleProductPrevious.add(c));
+                categoryResults[cat].bonusCurrent.forEach(c => clientsWhoGotBonusAnyVisibleProductCurrent.add(c));
+                categoryResults[cat].bonusPrevious.forEach(c => clientsWhoGotBonusAnyVisibleProductPrevious.add(c));
+
+                // Prepare Analysis Object for Chart/Table
+                const currentUnion = new Set([...categoryResults[cat].current, ...categoryResults[cat].bonusCurrent]);
+                const previousUnion = new Set([...categoryResults[cat].previous, ...categoryResults[cat].bonusPrevious]);
+
+                // NOTE: The chart/table in original code used "coverageCurrent" derived from
+                // (clientsCurrentCount / activeClientsCount).
+                // clientsCurrentCount was incremented if (Sales OR Bonus).
+
+                const countCurr = currentUnion.size;
+                const countPrev = previousUnion.size;
+
+                const covCurr = activeClientsCount > 0 ? (countCurr / activeClientsCount) * 100 : 0;
+                const covPrev = activeClientsCount > 0 ? (countPrev / activeClientsCount) * 100 : 0;
+                const varPct = covPrev > 0 ? ((covCurr - covPrev) / covPrev) * 100 : (covCurr > 0 ? Infinity : 0);
+
+                categoryAnalysis[cat] = {
+                    coverageCurrent: covCurr,
+                    coveragePrevious: covPrev,
+                    variation: varPct,
+                    clientsCount: countCurr,
+                    clientsPreviousCount: countPrev
                 };
             }
 
-            if (selectedCategory && categories[selectedCategory]) {
-                const productsInCategory = categories[selectedCategory].products;
-                topCoverageItem = { name: '-', coverage: 0, clients: 0 };
-
-                productsInCategory.forEach(product => {
-                    const productCode = product.Codigo;
-                    let clientsWhoGotProduct = 0;
-                    activeClientCodes.forEach(codcli => {
-                        const currentSales = clientSalesCurrentMap.get(codcli);
-                        let gotIt = false;
-                        if (currentSales && currentSales.has(productCode)) {
-                             const rcasWhoSold = currentSales.get(productCode);
-                             if (sellerRcaCodes.size === 0 || [...rcasWhoSold].some(rca => sellerRcaCodes.has(rca))) {
-                                gotIt = true;
-                             }
-                        }
-                        if(gotIt) clientsWhoGotProduct++;
-                    });
-
-                    const coverage = activeClientsCount > 0 ? (clientsWhoGotProduct / activeClientsCount) * 100 : 0;
-                    if (coverage > topCoverageItem.coverage) {
-                        topCoverageItem = { name: `(${productCode}) ${product.Produto}`, coverage: coverage, clients: clientsWhoGotProduct };
-                    }
-                });
-            }
+            // Total KPI calculations (Union of Sets)
+            // Note: Original code did:
+            // clientsWhoGotAnyVisibleProductCurrent -> Sales
+            // clientsWhoGotBonusAnyVisibleProductCurrent -> Bonus
+            // It kept them separate for the KPI cards at the top.
+            // "Innovations Month Selection Coverage" -> Sales
+            // "Innovations Month Bonus Coverage" -> Bonus
 
             const selectionCoveredCountCurrent = clientsWhoGotAnyVisibleProductCurrent.size;
             const selectionCoveragePercentCurrent = activeClientsCount > 0 ? (selectionCoveredCountCurrent / activeClientsCount) * 100 : 0;
@@ -4945,6 +4776,7 @@
             const bonusCoveredCountPrevious = clientsWhoGotBonusAnyVisibleProductPrevious.size;
             const bonusCoveragePercentPrevious = activeClientsCount > 0 ? (bonusCoveredCountPrevious / activeClientsCount) * 100 : 0;
 
+            // Update DOM
             innovationsMonthActiveClientsKpi.textContent = activeClientsCount.toLocaleString('pt-BR');
             innovationsMonthTopCoverageValueKpi.textContent = `${topCoverageItem.coverage.toFixed(2)}%`;
             innovationsMonthTopCoverageKpi.textContent = topCoverageItem.name;
@@ -4962,6 +4794,7 @@
             innovationsMonthBonusCoverageValueKpiPrevious.textContent = `${bonusCoveragePercentPrevious.toFixed(2)}%`;
             innovationsMonthBonusCoverageCountKpiPrevious.textContent = `${bonusCoveredCountPrevious.toLocaleString('pt-BR')} de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
 
+            // Chart Update
             chartLabels = Object.keys(categoryAnalysis).sort((a,b) => categoryAnalysis[b].coverageCurrent - categoryAnalysis[a].coverageCurrent);
             const chartDataCurrent = chartLabels.map(cat => categoryAnalysis[cat].coverageCurrent);
             const chartDataPrevious = chartLabels.map(cat => categoryAnalysis[cat].coveragePrevious);
@@ -4999,6 +4832,7 @@
                 showNoDataMessage('innovations-month-chart', 'Sem dados de inovações para exibir com os filtros atuais.');
             }
 
+            // Table Update
             const tableData = [];
             const activeStockMap = getActiveStockMap(innovationsMonthFilialFilter.value);
 
@@ -5008,52 +4842,22 @@
                 categoryData.products.forEach((product) => {
                     const productCode = product.Codigo;
                     const productName = product.Produto;
-
                     const stock = activeStockMap.get(productCode) || 0;
 
-                    let clientsCurrentCount = 0;
-                    let clientsPreviousCount = 0;
+                    // Re-calculate per product using the Product Results Sets
+                    // Optimization: productResults[productCode] already contains sets of clients who bought
+                    const pRes = productResults[productCode];
 
-                    activeClientCodes.forEach(codcli => {
-                         // Use the maps built inside updateInnovationsMonthView (clientSalesCurrentMap, clientBonusCurrentMap, etc.)
-                         // instead of the global optimizedData which doesn't respect the specific type filters of this view for this specific calculation block.
-                         // Ideally we should use the same maps we built earlier in this function.
+                    // IMPORTANT: productResults contains ALL clients who bought.
+                    // We must filter by 'activeClientCodes' if not already done?
+                    // 'processMap' already checked: `if (!activeClientCodes.has(codCli)) return;`
+                    // So the sets in productResults are already filtered by active clients.
 
-                         // Re-using the maps defined at the start of updateInnovationsMonthView:
-                         // clientSalesCurrentMap, clientBonusCurrentMap, clientSalesPreviousMap, clientBonusPreviousMap
-
-                         const currentSales = clientSalesCurrentMap.get(codcli);
-                         const currentBonus = clientBonusCurrentMap.get(codcli);
-
-                         let gotItCurrent = false;
-                         if (currentSales && currentSales.has(productCode)) {
-                             const rcas = currentSales.get(productCode);
-                             if (sellerRcaCodes.size === 0 || [...rcas].some(rca => sellerRcaCodes.has(rca))) gotItCurrent = true;
-                         }
-                         if (!gotItCurrent && currentBonus && currentBonus.has(productCode)) {
-                             const rcas = currentBonus.get(productCode);
-                             if (sellerRcaCodes.size === 0 || [...rcas].some(rca => sellerRcaCodes.has(rca))) gotItCurrent = true;
-                         }
-                         if (gotItCurrent) clientsCurrentCount++;
-
-                         const previousSales = clientSalesPreviousMap.get(codcli);
-                         const previousBonus = clientBonusPreviousMap.get(codcli);
-
-                         let gotItPrevious = false;
-                         if (previousSales && previousSales.has(productCode)) {
-                             const rcas = previousSales.get(productCode);
-                             if (sellerRcaCodes.size === 0 || [...rcas].some(rca => sellerRcaCodes.has(rca))) gotItPrevious = true;
-                         }
-                         if (!gotItPrevious && previousBonus && previousBonus.has(productCode)) {
-                             const rcas = previousBonus.get(productCode);
-                             if (sellerRcaCodes.size === 0 || [...rcas].some(rca => sellerRcaCodes.has(rca))) gotItPrevious = true;
-                         }
-                         if (gotItPrevious) clientsPreviousCount++;
-                    });
+                    const clientsCurrentCount = pRes ? pRes.current.size : 0;
+                    const clientsPreviousCount = pRes ? pRes.previous.size : 0;
 
                     const coverageCurrent = activeClientsCount > 0 ? (clientsCurrentCount / activeClientsCount) * 100 : 0;
                     const coveragePrevious = activeClientsCount > 0 ? (clientsPreviousCount / activeClientsCount) * 100 : 0;
-
                     const variation = coveragePrevious > 0 ? ((coverageCurrent - coveragePrevious) / coveragePrevious) * 100 : (coverageCurrent > 0 ? Infinity : 0);
 
                     tableData.push({
@@ -5071,7 +4875,6 @@
             });
 
             tableData.sort((a,b) => b.coverageCurrent - a.coverageCurrent);
-
             innovationsMonthTableDataForExport = tableData;
 
             innovationsMonthTableBody.innerHTML = tableData.map(item => {
@@ -5101,12 +4904,12 @@
                 `;
             }).join('');
 
+            // Innovations by Client Table
             const innovationsByClientTableHead = document.getElementById('innovations-by-client-table-head');
             const innovationsByClientTableBody = document.getElementById('innovations-by-client-table-body');
             const innovationsByClientLegend = document.getElementById('innovations-by-client-legend');
 
-            const categoryNames = Object.keys(categories).sort();
-            categoryLegendForExport = categoryNames.map((name, index) => `${index + 1} - ${name}`);
+            categoryLegendForExport = chartLabels.map((name, index) => `${index + 1} - ${name}`);
             innovationsByClientLegend.innerHTML = `<strong>Legenda:</strong> ${categoryLegendForExport.join('; ')}`;
 
             let tableHeadHTML = `
@@ -5117,34 +4920,25 @@
                     <th class="px-2 py-2 text-left">Bairro</th>
                     <th class="px-2 py-2 text-center">Últ. Compra</th>
             `;
-            categoryNames.forEach((name, index) => {
+            chartLabels.forEach((name, index) => {
                 tableHeadHTML += `<th class="px-2 py-2 text-center">${index + 1}</th>`;
             });
             tableHeadHTML += `</tr>`;
             innovationsByClientTableHead.innerHTML = tableHeadHTML;
 
+            // Build Client Status List
+            // Optimized: Iterate Active Clients and check sets in categoryResults
             const clientInnovationStatus = activeClients.map(client => {
                 const codcli = client['Código'];
-                const clientBoughtProducts = clientSalesCurrentMap.get(codcli);
-                const clientBonusedProducts = clientBonusCurrentMap.get(codcli);
-
                 const status = {};
-                categoryNames.forEach(catName => {
-                    const productCodes = categories[catName].productCodes;
-                    status[catName] = [...productCodes].some(p => {
-                        let sold = false;
-                        if (clientBoughtProducts && clientBoughtProducts.has(p)) {
-                            const rcas = clientBoughtProducts.get(p);
-                            if (sellerRcaCodes.size === 0 || [...rcas].some(rca => sellerRcaCodes.has(rca))) sold = true;
-                        }
-                        let bonused = false;
-                        if (clientBonusedProducts && clientBonusedProducts.has(p)) {
-                            const rcas = clientBonusedProducts.get(p);
-                            if (sellerRcaCodes.size === 0 || [...rcas].some(rca => sellerRcaCodes.has(rca))) bonused = true;
-                        }
-                        return sold || bonused;
-                    });
+
+                chartLabels.forEach(catName => {
+                    // Check if client exists in Main OR Bonus sets for this category
+                    const inMain = categoryResults[catName].current.has(codcli);
+                    const inBonus = categoryResults[catName].bonusCurrent.has(codcli);
+                    status[catName] = inMain || inBonus;
                 });
+
                 return { ...client, innovationStatus: status };
             });
 
@@ -5153,9 +4947,7 @@
                 const cidadeB = b.cidade || '';
                 const bairroA = a.bairro || '';
                 const bairroB = b.bairro || '';
-                if (cidadeA.localeCompare(cidadeB) !== 0) {
-                    return cidadeA.localeCompare(cidadeB);
-                }
+                if (cidadeA.localeCompare(cidadeB) !== 0) return cidadeA.localeCompare(cidadeB);
                 return bairroA.localeCompare(bairroB);
             });
 
@@ -5174,7 +4966,7 @@
                         <td class="px-2 py-1.5 text-xs">${client.bairro}</td>
                         <td class="px-2 py-1.5 text-xs text-center">${formatDate(client.ultimaCompra)}</td>
                 `;
-                categoryNames.forEach(catName => {
+                chartLabels.forEach(catName => {
                     tableBodyHTML += `<td class="px-2 py-1.5 text-center">${client.innovationStatus[catName] ? checkIcon : xIcon}</td>`;
                 });
                 tableBodyHTML += `</tr>`;
@@ -5587,25 +5379,120 @@
             };
         }
 
-        function setupEventListeners() {
-            viewTableBtn.addEventListener('click', () => { chartView.classList.add('hidden'); tableView.classList.remove('hidden'); tablePaginationControls.classList.remove('hidden'); viewTableBtn.classList.add('hidden'); viewChartBtn.classList.remove('hidden'); updateAllVisuals(); });
-            viewChartBtn.addEventListener('click', () => { tableView.classList.add('hidden'); tablePaginationControls.classList.add('hidden'); chartView.classList.remove('hidden'); viewChartBtn.classList.add('hidden'); viewTableBtn.classList.remove('hidden'); updateAllVisuals(); });
-            viewComparisonBtn.addEventListener('click', () => { mainDashboard.classList.add('hidden'); comparisonView.classList.remove('hidden'); updateAllComparisonFilters(); updateComparisonView(); });
-            viewStockBtn.addEventListener('click', () => { 
-                mainDashboard.classList.add('hidden'); 
-                stockView.classList.remove('hidden'); 
-                const maxDaysLabel = document.getElementById('max-working-days-label');
-                if (maxDaysLabel) maxDaysLabel.textContent = `(Máx: ${maxWorkingDaysStock})`;
-                const daysInput = document.getElementById('stock-working-days-input');
-                if(daysInput && parseInt(daysInput.value) === 0) daysInput.value = customWorkingDaysStock;
-                handleStockFilterChange(); 
+        function toggleSidebar() {
+            const sideMenu = document.getElementById('side-menu');
+            const sidebarOverlay = document.getElementById('sidebar-overlay');
+            if (sideMenu) sideMenu.classList.toggle('-translate-x-full');
+            if (sidebarOverlay) sidebarOverlay.classList.toggle('hidden');
+        }
+
+        function navigateTo(view) {
+            const sideMenu = document.getElementById('side-menu');
+            const sidebarOverlay = document.getElementById('sidebar-overlay');
+            if (window.innerWidth < 1024) {
+                if (sideMenu) sideMenu.classList.add('-translate-x-full');
+                if (sidebarOverlay) sidebarOverlay.classList.add('hidden');
+            }
+
+            [mainDashboard, cityView, weeklyView, comparisonView, stockView, innovationsMonthView, coverageView].forEach(el => {
+                if(el) el.classList.add('hidden');
             });
-            showCityBtn.addEventListener('click', () => { resetMainFilters(); mainDashboard.classList.add('hidden'); cityView.classList.remove('hidden'); document.getElementById('city-view-content').classList.add('hidden'); document.getElementById('city-view-loader').classList.remove('hidden'); setTimeout(() => { populateSupervisors('city-supervisor-filter', allSalesData); selectedCitySellers = updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData); selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData); updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData); updateCityView(); document.getElementById('city-view-loader').classList.add('hidden'); document.getElementById('city-view-content').classList.remove('hidden'); }, 10); });
-            backToMainFromCityBtn.addEventListener('click', () => { resetCityFilters(); cityView.classList.add('hidden'); mainDashboard.classList.remove('hidden'); updateAllVisuals(); });
-            showWeeklyBtn.addEventListener('click', () => { resetMainFilters(); mainDashboard.classList.add('hidden'); weeklyView.classList.remove('hidden'); populateWeeklyFilters(); updateWeeklyView(); });
-            backToMainFromWeeklyBtn.addEventListener('click', () => { weeklyView.classList.add('hidden'); mainDashboard.classList.remove('hidden'); currentWeeklyFornecedor = ''; updateAllVisuals(); });
-            backToMainFromComparisonBtn.addEventListener('click', () => { comparisonView.classList.add('hidden'); mainDashboard.classList.remove('hidden'); updateAllVisuals(); });
-            backToMainFromStockBtn.addEventListener('click', () => { stockView.classList.add('hidden'); mainDashboard.classList.remove('hidden'); updateAllVisuals(); });
+
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.remove('bg-slate-700', 'text-white');
+                const icon = link.querySelector('svg');
+                if(icon) icon.classList.remove('text-white');
+            });
+            const activeLink = document.querySelector(`.nav-link[data-target="${view}"]`);
+            if (activeLink) {
+                activeLink.classList.add('bg-slate-700', 'text-white');
+                const icon = activeLink.querySelector('svg');
+                if(icon) icon.classList.add('text-white');
+            }
+
+            switch(view) {
+                case 'dashboard':
+                    mainDashboard.classList.remove('hidden');
+                    if (chartView) chartView.classList.remove('hidden');
+                    if (tableView) tableView.classList.add('hidden');
+                    if (tablePaginationControls) tablePaginationControls.classList.add('hidden');
+                    updateAllVisuals();
+                    break;
+                case 'pedidos':
+                    mainDashboard.classList.remove('hidden');
+                    if (chartView) chartView.classList.add('hidden');
+                    if (tableView) tableView.classList.remove('hidden');
+                    if (tablePaginationControls) tablePaginationControls.classList.remove('hidden');
+                    updateAllVisuals();
+                    break;
+                case 'comparativo':
+                    comparisonView.classList.remove('hidden');
+                    updateAllComparisonFilters();
+                    updateComparisonView();
+                    break;
+                case 'estoque':
+                    stockView.classList.remove('hidden');
+                    const maxDaysLabel = document.getElementById('max-working-days-label');
+                    if (maxDaysLabel) maxDaysLabel.textContent = `(Máx: ${maxWorkingDaysStock})`;
+                    const daysInput = document.getElementById('stock-working-days-input');
+                    if(daysInput && parseInt(daysInput.value) === 0) daysInput.value = customWorkingDaysStock;
+                    handleStockFilterChange();
+                    break;
+                case 'cobertura':
+                    coverageView.classList.remove('hidden');
+                    customWorkingDaysCoverage = maxWorkingDaysStock;
+                    const workingDaysInputCov = document.getElementById('coverage-working-days-input');
+                    if(workingDaysInputCov) workingDaysInputCov.value = customWorkingDaysCoverage;
+                    updateAllCoverageFilters();
+                    updateCoverageView();
+                    break;
+                case 'cidades':
+                    cityView.classList.remove('hidden');
+                    resetMainFilters();
+                    const cityContent = document.getElementById('city-view-content');
+                    const cityLoader = document.getElementById('city-view-loader');
+                    if (cityContent) cityContent.classList.add('hidden');
+                    if (cityLoader) cityLoader.classList.remove('hidden');
+                    setTimeout(() => {
+                        if (cityLoader) cityLoader.classList.add('hidden');
+                        if (cityContent) cityContent.classList.remove('hidden');
+
+                        populateSupervisors('city-supervisor-filter', allSalesData);
+                        selectedCitySellers = updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData);
+                        selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData);
+                        updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData);
+                        updateCityView();
+                    }, 10);
+                    break;
+                case 'semanal':
+                    weeklyView.classList.remove('hidden');
+                    resetMainFilters();
+                    populateWeeklyFilters();
+                    updateWeeklyView();
+                    break;
+                case 'inovacoes-mes':
+                    innovationsMonthView.classList.remove('hidden');
+                    populateSupervisors('innovations-month-supervisor-filter', allSalesData);
+                    updateSellerFilter('', innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
+                    selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
+                    updateInnovationsMonthView();
+                    break;
+            }
+        }
+
+        function setupEventListeners() {
+            document.querySelectorAll('.sidebar-toggle').forEach(btn => btn.addEventListener('click', toggleSidebar));
+            const closeSidebarBtn = document.getElementById('close-sidebar-btn');
+            if(closeSidebarBtn) closeSidebarBtn.addEventListener('click', toggleSidebar);
+            const sidebarOverlay = document.getElementById('sidebar-overlay');
+            if(sidebarOverlay) sidebarOverlay.addEventListener('click', toggleSidebar);
+
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    const target = e.currentTarget.dataset.target;
+                    navigateTo(target);
+                });
+            });
 
             supervisorFilter.addEventListener('change', () => { selectedSellers = []; updateSellerFilter(supervisorFilter.value, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData); mainTableState.currentPage = 1; updateAllVisuals(); });
             fornecedorFilter.addEventListener('change', () => { mainTableState.currentPage = 1; updateAllVisuals(); });
@@ -6045,148 +5932,7 @@
             faturamentoBtn.addEventListener('click', () => { currentProductMetric = 'faturamento'; faturamentoBtn.classList.add('active'); pesoBtn.classList.remove('active'); updateAllVisuals(); });
             pesoBtn.addEventListener('click', () => { currentProductMetric = 'peso'; pesoBtn.classList.add('active'); faturamentoBtn.classList.remove('active'); updateAllVisuals(); });
 
-            const debouncedUpdateInnovations = debounce(() => {
-                updateInnovationsFilters();
-                updateInnovationsView();
-            }, 400);
-
-            viewInnovationsBtn.addEventListener('click', () => {
-                mainDashboard.classList.add('hidden');
-                innovationsView.classList.remove('hidden');
-                populateSupervisors('innovations-supervisor-filter', allSalesData);
-                updateSellerFilter('', innovationsVendedorFilterDropdown, innovationsVendedorFilterText, [], allSalesData);
-                updateSupplierFilter(innovationsSupplierFilterDropdown, innovationsSupplierFilterText, [], allSalesData, 'innovations');
-                selectedInnovationsTiposVenda = updateTipoVendaFilter(innovationsTipoVendaFilterDropdown, innovationsTipoVendaFilterText, selectedInnovationsTiposVenda, allSalesData);
-                updateInnovationsFilters();
-                updateInnovationsView();
-            });
-
-            backToMainFromInnovationsBtn.addEventListener('click', () => {
-                innovationsView.classList.add('hidden');
-                mainDashboard.classList.remove('hidden');
-                updateAllVisuals();
-            });
-
-            innovationsMonthBtn.addEventListener('click', () => {
-                innovationsView.classList.add('hidden');
-                innovationsMonthView.classList.remove('hidden');
-                populateSupervisors('innovations-month-supervisor-filter', allSalesData);
-                updateSellerFilter('', innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
-                selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
-                updateInnovationsMonthView();
-            });
-
-            backToInnovationsFromMonthBtn.addEventListener('click', () => {
-                innovationsMonthView.classList.add('hidden');
-                innovationsView.classList.remove('hidden');
-            });
-
             innovationsMonthCategoryFilter.addEventListener('change', updateInnovationsMonthView);
-            innovationsFilialFilter.addEventListener('change', debouncedUpdateInnovations);
-
-            innovationsSupervisorFilter.addEventListener('change', () => {
-                selectedInnovationsSellers = [];
-                updateSellerFilter(innovationsSupervisorFilter.value, innovationsVendedorFilterDropdown, innovationsVendedorFilterText, selectedInnovationsSellers, allSalesData);
-                debouncedUpdateInnovations();
-            });
-
-            innovationsCityFilter.addEventListener('input', (e) => {
-                e.target.value = e.target.value.replace(/[0-9]/g, '');
-                const cityDataSource = getInnovationsFilteredData({ excludeFilter: 'city' }).clients;
-                innovationsCitySuggestions.classList.remove('manual-hide');
-                updateCitySuggestions(innovationsCityFilter, innovationsCitySuggestions, cityDataSource);
-            });
-            innovationsCityFilter.addEventListener('focus', () => {
-                const cityDataSource = getInnovationsFilteredData({ excludeFilter: 'city' }).clients;
-                innovationsCitySuggestions.classList.remove('manual-hide');
-                updateCitySuggestions(innovationsCityFilter, innovationsCitySuggestions, cityDataSource);
-            });
-            innovationsCityFilter.addEventListener('blur', () => setTimeout(() => innovationsCitySuggestions.classList.add('hidden'), 150));
-            innovationsCityFilter.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    innovationsCitySuggestions.classList.add('hidden', 'manual-hide');
-                    debouncedUpdateInnovations();
-                    e.target.blur();
-                }
-            });
-            innovationsCitySuggestions.addEventListener('click', (e) => {
-                if (e.target.tagName === 'DIV') {
-                    innovationsCityFilter.value = e.target.textContent;
-                    innovationsCitySuggestions.classList.add('hidden');
-                    debouncedUpdateInnovations();
-                }
-            });
-
-
-            clearInnovationsFiltersBtn.addEventListener('click', resetInnovationsFilters);
-
-            innovationsVendedorFilterBtn.addEventListener('click', () => innovationsVendedorFilterDropdown.classList.toggle('hidden'));
-            innovationsVendedorFilterDropdown.addEventListener('change', (e) => {
-                if (e.target.type === 'checkbox') {
-                    const { value, checked } = e.target;
-                    if (checked) {
-                        if (!selectedInnovationsSellers.includes(value)) selectedInnovationsSellers.push(value);
-                    } else {
-                        selectedInnovationsSellers = selectedInnovationsSellers.filter(s => s !== value);
-                    }
-                    updateSellerFilter(innovationsSupervisorFilter.value, innovationsVendedorFilterDropdown, innovationsVendedorFilterText, selectedInnovationsSellers, allSalesData);
-                    debouncedUpdateInnovations();
-                }
-            });
-
-            innovationsSupplierFilterBtn.addEventListener('click', () => innovationsSupplierFilterDropdown.classList.toggle('hidden'));
-            innovationsSupplierFilterDropdown.addEventListener('change', (e) => {
-                if (e.target.type === 'checkbox' && e.target.dataset.filterType === 'innovations') {
-                    const { value, checked } = e.target;
-                    if (checked) {
-                        if (!selectedInnovationsSuppliers.includes(value)) selectedInnovationsSuppliers.push(value);
-                    } else {
-                        selectedInnovationsSuppliers = selectedInnovationsSuppliers.filter(s => s !== value);
-                    }
-                    updateSupplierFilter(innovationsSupplierFilterDropdown, innovationsSupplierFilterText, selectedInnovationsSuppliers, allSalesData, 'innovations');
-
-                    const supplierProducts = new Set();
-                    selectedInnovationsSuppliers.forEach(codfor => {
-                        (optimizedData.productsBySupplier.get(codfor) || []).forEach(prod => supplierProducts.add(prod));
-                    });
-                    selectedInnovationsProducts = Array.from(supplierProducts);
-
-                    debouncedUpdateInnovations();
-                }
-            });
-
-            innovationsProductFilterBtn.addEventListener('click', () => {
-                updateInnovationsFilters();
-                innovationsProductFilterDropdown.classList.toggle('hidden');
-            });
-
-            const debouncedInnovationsProductSearch = debounce(updateInnovationsFilters, 250);
-
-            innovationsProductFilterDropdown.addEventListener('input', (e) => {
-                if (e.target.id === 'innovations-product-search-input') {
-                    debouncedInnovationsProductSearch();
-                }
-            });
-
-            innovationsProductFilterDropdown.addEventListener('change', (e) => {
-                if (e.target.dataset.filterType === 'innovations' && handleProductFilterChange(e, selectedInnovationsProducts)) {
-                    debouncedUpdateInnovations();
-                }
-            });
-
-            innovationsTipoVendaFilterBtn.addEventListener('click', () => innovationsTipoVendaFilterDropdown.classList.toggle('hidden'));
-            innovationsTipoVendaFilterDropdown.addEventListener('change', (e) => {
-                if (e.target.type === 'checkbox') {
-                    const { value, checked } = e.target;
-                    if (checked) {
-                        if (!selectedInnovationsTiposVenda.includes(value)) selectedInnovationsTiposVenda.push(value);
-                    } else {
-                        selectedInnovationsTiposVenda = selectedInnovationsTiposVenda.filter(s => s !== value);
-                    }
-                    selectedInnovationsTiposVenda = updateTipoVendaFilter(innovationsTipoVendaFilterDropdown, innovationsTipoVendaFilterText, selectedInnovationsTiposVenda, allSalesData);
-                    debouncedUpdateInnovations();
-                }
-            });
 
             const debouncedUpdateInnovationsMonth = debounce(updateInnovationsMonthView, 400);
 
@@ -6255,23 +6001,6 @@
                 }
             });
 
-            viewCoverageBtn.addEventListener('click', () => {
-                mainDashboard.classList.add('hidden');
-                coverageView.classList.remove('hidden');
-
-                customWorkingDaysCoverage = maxWorkingDaysStock;
-                const workingDaysInput = document.getElementById('coverage-working-days-input');
-                if(workingDaysInput) workingDaysInput.value = customWorkingDaysCoverage;
-
-                updateAllCoverageFilters();
-                updateCoverageView();
-            });
-
-            backToMainFromCoverageBtn.addEventListener('click', () => {
-                coverageView.classList.add('hidden');
-                mainDashboard.classList.remove('hidden');
-                updateAllVisuals();
-            });
 
             document.getElementById('export-coverage-pdf-btn').addEventListener('click', exportCoveragePDF);
 
@@ -6394,10 +6123,6 @@
 
 
             document.addEventListener('click', (e) => {
-                if (!innovationsVendedorFilterBtn.contains(e.target) && !innovationsVendedorFilterDropdown.contains(e.target)) innovationsVendedorFilterDropdown.classList.add('hidden');
-                if (!innovationsSupplierFilterBtn.contains(e.target) && !innovationsSupplierFilterDropdown.contains(e.target)) innovationsSupplierFilterDropdown.classList.add('hidden');
-                if (!innovationsProductFilterBtn.contains(e.target) && !innovationsProductFilterDropdown.contains(e.target)) innovationsProductFilterDropdown.classList.add('hidden');
-                if (!innovationsTipoVendaFilterBtn.contains(e.target) && !innovationsTipoVendaFilterDropdown.contains(e.target)) innovationsTipoVendaFilterDropdown.classList.add('hidden');
                 if (!innovationsMonthVendedorFilterBtn.contains(e.target) && !innovationsMonthVendedorFilterDropdown.contains(e.target)) innovationsMonthVendedorFilterDropdown.classList.add('hidden');
                 if (!innovationsMonthTipoVendaFilterBtn.contains(e.target) && !innovationsMonthTipoVendaFilterDropdown.contains(e.target)) innovationsMonthTipoVendaFilterDropdown.classList.add('hidden');
                 if (!coverageVendedorFilterBtn.contains(e.target) && !coverageVendedorFilterDropdown.contains(e.target)) coverageVendedorFilterDropdown.classList.add('hidden');
@@ -6469,9 +6194,9 @@
         setupEventListeners();
         
         // Assegura que os dados históricos estão prontos antes da primeira renderização
-        // calculateHistoricalBests(); // <-- REMOVIDA DAQUI
+        calculateHistoricalBests();
         
-        updateAllVisuals();
+        navigateTo('dashboard');
         renderTable(aggregatedOrders);
     </script>
 
@@ -6657,17 +6382,85 @@
                         </style>
                     </head>
                     <body class="bg-[#0d1126] text-slate-300 antialiased">
-                        <div id="main-dashboard">
-                            <div class="container mx-auto p-4 sm:p-6 lg:p-8">
-                                <!-- Cabeçalho com gradiente escuro -->
-                                <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                    <div class="flex flex-col sm:flex-row justify-between items-start gap-4">
-                                        <div class="text-center sm:text-left">
-                                            <h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1>
-                                            <p class="text-slate-300 mt-1">Dados atualizados em: ${generationDate}</p>
+                        <aside id="side-menu" class="fixed top-0 left-0 z-50 w-64 h-screen transition-transform -translate-x-full lg:translate-x-0 bg-[#1d2347] border-r border-slate-700 flex flex-col">
+                            <div class="flex items-center justify-between p-4 border-b border-slate-700">
+                                <span class="text-xl font-bold text-white">Menu</span>
+                                <button id="close-sidebar-btn" class="lg:hidden text-slate-400 hover:text-white">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                </button>
+                            </div>
+                            <div class="flex-1 overflow-y-auto custom-scrollbar py-4 px-3">
+                                <ul class="space-y-2 font-medium">
+                                    <li>
+                                        <button data-target="dashboard" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+                                            <span class="ml-3">Dashboard</span>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button data-target="pedidos" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                                            <span class="ml-3">Pedidos</span>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button data-target="comparativo" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
+                                            <span class="ml-3">Comparativo</span>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button data-target="estoque" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
+                                            <span class="ml-3">Estoque</span>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button data-target="cobertura" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                                            <span class="ml-3">Cobertura</span>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button data-target="cidades" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                                            <span class="ml-3">Cidades</span>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button data-target="semanal" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                            <span class="ml-3">Semanal</span>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button data-target="inovacoes-mes" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                            <span class="ml-3">Inovações</span>
+                                        </button>
+                                    </li>
+                                </ul>
+                            </div>
+                        </aside>
+                        <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-40 hidden lg:hidden glass-effect"></div>
+
+                        <div id="content-wrapper" class="lg:ml-64 min-h-screen transition-all duration-300">
+                            <div id="main-dashboard">
+                                <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+                                    <!-- Cabeçalho com gradiente escuro -->
+                                    <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
+                                        <div class="flex items-center gap-4">
+                                            <button class="sidebar-toggle lg:hidden text-white focus:outline-none">
+                                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                                            </button>
+                                            <div class="flex-1 flex flex-col sm:flex-row justify-between items-start gap-4">
+                                                <div class="text-center sm:text-left">
+                                                    <h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1>
+                                                    <p class="text-slate-300 mt-1">Dados atualizados em: ${generationDate}</p>
+                                                </div>
+                                            </div>
                                         </div>
-                                    </div>
-                                </header>
+                                    </header>
 
                                 <!-- KPIs com bordas e cores atualizadas -->
                                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
@@ -6696,14 +6489,7 @@
                                         <button data-fornecedor="PEPSICO" class="fornecedor-btn bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg flex-1 sm:flex-none">PEPSICO</button>
                                         <button data-fornecedor="MULTIMARCAS" class="fornecedor-btn bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg flex-1 sm:flex-none">MULTIMARCAS</button>
                                     </div>
-                                    <!-- Botões de Navegação -->
-                                    <div class="flex gap-2 w-full sm:w-auto">
-                                        <button id="viewChartBtn" class="w-full bg-teal-500 hover:bg-teal-400 text-white font-bold py-2 px-4 rounded-lg hidden">Gráficos</button>
-                                        <button id="viewTableBtn" class="w-full bg-teal-500 hover:bg-teal-400 text-white font-bold py-2 px-4 rounded-lg">Pedidos</button>
-                                        <button id="viewComparisonBtn" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg">Comparativo</button>
-                                        <button id="viewStockBtn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Estoque</button>
-                                        <button id="viewCoverageBtn" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-4 rounded-lg">Cobertura</button>
-                                    </div>
+                                    <!-- Botões de Navegação removidos (movidos para sidebar) -->
                                 </div>
                                 
                                 <!-- Container de Filtros -->
@@ -6763,12 +6549,6 @@
                                             </div>
                                             <div id="salesByProductBarChartContainer" class="relative h-80"></div>
                                         </div>
-                                        <!-- Botões de Navegação Secundários -->
-                                        <div class="mt-6 space-y-3">
-                                            <button id="show-weekly-btn" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg">Gráficos Semanais</button>
-                                            <button id="show-city-btn" class="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 px-4 rounded-lg">Gráficos por Cidade</button>
-                                            <button id="viewInnovationsBtn" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 px-4 rounded-lg">Inovações</button>
-                                        </div>
                                     </div>
                                     <!-- Visão de Tabela (Pedidos) -->
                                     <div id="tableView" class="hidden">
@@ -6794,7 +6574,12 @@
                         <!-- Ecrã de Cidades -->
                         <div id="city-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                <div class="flex justify-between items-center"><div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Análise de Vendas por Cidade</p></div><button id="back-to-main-from-city-btn" class="bg-white/20 hover:bg-white/30 text-white font-bold py-2 px-4 rounded-lg">Voltar ao Dashboard</button></div>
+                                <div class="flex items-center gap-4">
+                                    <button class="sidebar-toggle lg:hidden text-white focus:outline-none">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                                    </button>
+                                    <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Análise de Vendas por Cidade</p></div>
+                                </div>
                             </header>
                             <div id="city-view-loader" class="text-center p-16"><p class="text-lg text-slate-400">Carregando dados...</p></div>
                             <div id="city-view-content" class="hidden">
@@ -6849,7 +6634,12 @@
                         <!-- Ecrã Semanal -->
                         <div id="weekly-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                <div class="flex justify-between items-center"><div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Acompanhamento Semanal</p></div><button id="back-to-main-from-weekly-btn" class="bg-white/20 hover:bg-white/30 text-white font-bold py-2 px-4 rounded-lg">Voltar ao Dashboard</button></div>
+                                <div class="flex items-center gap-4">
+                                    <button class="sidebar-toggle lg:hidden text-white focus:outline-none">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                                    </button>
+                                    <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Acompanhamento Semanal</p></div>
+                                </div>
                             </header>
                             <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
                                 <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -6870,7 +6660,12 @@
                         <!-- Ecrã Comparativo -->
                         <div id="comparison-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                <div class="flex justify-between items-center"><div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Comparativo entre Meses</p></div><button id="back-to-main-from-comparison-btn" class="bg-white/20 hover:bg-white/30 text-white font-bold py-2 px-4 rounded-lg">Voltar ao Dashboard</button></div>
+                                <div class="flex items-center gap-4">
+                                    <button class="sidebar-toggle lg:hidden text-white focus:outline-none">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                                    </button>
+                                    <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Comparativo entre Meses</p></div>
+                                </div>
                             </header>
                             <!-- Filtros (Comparativo) -->
                             <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
@@ -6960,7 +6755,12 @@
                         <!-- Ecrã Estoque -->
                         <div id="stock-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                <div class="flex justify-between items-center"><div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Análise de Estoque</p></div><button id="back-to-main-from-stock-btn" class="bg-white/20 hover:bg-white/30 text-white font-bold py-2 px-4 rounded-lg">Voltar ao Dashboard</button></div>
+                                <div class="flex items-center gap-4">
+                                    <button class="sidebar-toggle lg:hidden text-white focus:outline-none">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                                    </button>
+                                    <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Análise de Estoque</p></div>
+                                </div>
                             </header>
                             <!-- Filtros (Estoque) -->
                             <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
@@ -7084,102 +6884,17 @@
                             </div>
                         </div>
 
-                        <!-- Ecrã Inovações -->
-                        <div id="innovations-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
-                            <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                <div class="flex justify-between items-center">
-                                    <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Análise de Inovações</p></div>
-                                    <div class="flex gap-4">
-                                        <button id="innovations-month-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg">Inovações Mês</button>
-                                        <button id="back-to-main-from-innovations-btn" class="bg-white/20 hover:bg-white/30 text-white font-bold py-2 px-4 rounded-lg">Voltar ao Dashboard</button>
-                                    </div>
-                                </div>
-                            </header>
-                            <!-- KPIs (Inovações) -->
-                             <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6 mb-6">
-                                <div class="kpi-card">
-                                    <p class="text-slate-400 text-sm font-medium">Clientes Ativos (Filtro)</p>
-                                    <p id="innovations-active-clients-kpi" class="text-3xl font-bold text-teal-400 my-1">0</p>
-                                    <p class="text-xs text-slate-500">Base para os KPIs</p>
-                                </div>
-                                <div class="kpi-card">
-                                    <p class="text-slate-400 text-sm font-medium">Cobertura Mês Anterior</p>
-                                    <p id="innovations-selection-coverage-value-kpi-previous" class="text-3xl font-bold text-orange-400 my-1">0%</p>
-                                    <p id="innovations-selection-coverage-count-kpi-previous" class="text-xs text-slate-500">0 de 0 clientes</p>
-                                </div>
-                                <div class="kpi-card">
-                                    <p class="text-slate-400 text-sm font-medium">Cobertura Mês Atual</p>
-                                    <p id="innovations-selection-coverage-value-kpi" class="text-3xl font-bold text-cyan-400 my-1">0%</p>
-                                    <p id="innovations-selection-coverage-count-kpi" class="text-xs text-slate-500">0 de 0 clientes</p>
-                                </div>
-                                <div class="kpi-card">
-                                    <p class="text-slate-400 text-sm font-medium">Cobertura Bonificação Ant.</p>
-                                    <p id="innovations-bonus-coverage-value-kpi-previous" class="text-3xl font-bold text-orange-400 my-1">0%</p>
-                                    <p id="innovations-bonus-coverage-count-kpi-previous" class="text-xs text-slate-500">0 de 0 clientes</p>
-                                </div>
-                                <div class="kpi-card">
-                                    <p class="text-slate-400 text-sm font-medium">Cobertura Bonificação Atual</p>
-                                    <p id="innovations-bonus-coverage-value-kpi" class="text-3xl font-bold text-cyan-400 my-1">0%</p>
-                                    <p id="innovations-bonus-coverage-count-kpi" class="text-xs text-slate-500">0 de 0 clientes</p>
-                                </div>
-                                <div class="kpi-card">
-                                    <p id="innovations-top-coverage-title" class="text-slate-400 text-sm font-medium">Item com Maior Cobertura</p>
-                                    <p id="innovations-top-coverage-value-kpi" class="text-3xl font-bold text-purple-400 my-1">0%</p>
-                                    <p id="innovations-top-coverage-product-kpi" class="text-xs text-slate-500 truncate" title="Nenhum item analisado">-</p>
-                                    <p id="innovations-top-coverage-count-kpi" class="text-xs text-slate-500">0 PDVs</p>
-                                </div>
-                            </div>
-                            <!-- Filtros (Inovações) -->
-                            <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
-                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
-                                    <div><label for="innovations-supervisor-filter" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label><select id="innovations-supervisor-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="">Todos</option></select></div>
-                                    <div class="relative"><label for="innovations-vendedor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Vendedor</label><button id="innovations-vendedor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="innovations-vendedor-filter-text">Todos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button><div id="innovations-vendedor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
-                                    <div class="relative"><label for="innovations-supplier-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Fornecedor</label><button id="innovations-supplier-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="innovations-supplier-filter-text">Todos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button><div id="innovations-supplier-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
-                                    <div class="relative"><label for="innovations-city-filter" class="block mb-2 text-sm font-medium text-slate-400">Cidade</label><input type="text" id="innovations-city-filter" placeholder="Digite a cidade..." class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5" autocomplete="off"><div id="innovations-city-suggestions" class="absolute z-10 w-full bg-slate-800 border border-slate-600 rounded-lg mt-1 hidden max-h-48 overflow-y-auto custom-scrollbar text-white"></div></div>
-                                    <div><label for="innovations-filial-filter" class="block mb-2 text-sm font-medium text-slate-400">Filial</label><select id="innovations-filial-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="ambas" selected>Ambas</option><option value="05">Filial 05</option><option value="08">Filial 08</option></select></div>
-                                </div>
-                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
-                                    <div class="lg:col-span-2 relative">
-                                        <label for="innovations-product-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Produto (Obrigatório)</label>
-                                        <button id="innovations-product-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="innovations-product-filter-text">Selecione um ou mais produtos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button>
-                                        <div id="innovations-product-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg">
-                                            <div class="p-2 border-b border-slate-700"><input type="text" id="innovations-product-search-input" placeholder="Buscar produto..." class="bg-slate-600 text-xs rounded-lg block w-full p-2 border border-slate-500 placeholder-slate-400 text-white focus:outline-none focus:ring-2 focus:ring-teal-500"></div>
-                                            <div id="innovations-product-list" class="max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                        </div>
-                                    </div>
-                                    <div class="relative">
-                                        <label for="innovations-tipo-venda-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Tipo Venda</label>
-                                        <button id="innovations-tipo-venda-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
-                                            <span id="innovations-tipo-venda-filter-text">Todos os Tipos</span>
-                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                        </button>
-                                        <div id="innovations-tipo-venda-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                    </div>
-                                    <button id="clear-innovations-filters-btn" class="w-full bg-slate-600 hover:bg-slate-500 text-white font-bold py-2.5 px-4 rounded-lg">Limpar Filtros</button>
-                                </div>
-                            </div>
-                            <!-- Tabela (Inovações) -->
-                            <div id="innovations-table-container" class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
-                                <div id="innovations-placeholder" class="text-center py-16"><p class="text-slate-400 text-lg">Aguardando filtro de produtos...</p></div>
-                                <div id="innovations-results" class="hidden overflow-auto custom-scrollbar" style="max-height: 60vh;">
-                                    <table class="min-w-full text-sm text-left text-slate-300">
-                                        <thead class="text-xs text-slate-400 uppercase sticky-header">
-                                            <tr><th class="px-2 py-2">PRODUTO</th><th class="px-2 py-2 text-right">ESTOQUE CAIXAS</th><th class="px-2 py-2 text-right">COBERTURA MÊS ANT.</th><th class="px-2 py-2 text-right">COBERTURA MÊS ATUAL</th><th class="px-2 py-2 text-right">VARIAÇÃO</th></tr>
-                                        </thead>
-                                        <tbody id="innovations-table-body" class="divide-y divide-slate-700"></tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
 
                         <!-- Ecrã Inovações Mês -->
                         <div id="innovations-month-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
                              <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                <div class="flex justify-between items-center">
-                                    <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Gráfico de Cobertura por Categoria de Inovação</p></div>
-                                    <div class="flex gap-4">
+                                <div class="flex items-center gap-4">
+                                    <button class="sidebar-toggle lg:hidden text-white focus:outline-none">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                                    </button>
+                                    <div class="flex-1 flex flex-col sm:flex-row justify-between items-center gap-4">
+                                        <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Gráfico de Cobertura por Categoria de Inovação</p></div>
                                         <button id="export-innovations-month-pdf-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Exportar PDF</button>
-                                        <button id="back-to-innovations-from-month-btn" class="bg-white/20 hover:bg-white/30 text-white font-bold py-2 px-4 rounded-lg">Voltar</button>
                                     </div>
                                 </div>
                             </header>
@@ -7239,11 +6954,13 @@
                         <!-- Ecrã Cobertura (Novo) -->
                         <div id="coverage-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                <div class="flex justify-between items-center">
-                                    <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Análise de Cobertura (Estoque x PDVs)</p></div>
-                                    <div class="flex gap-4">
+                                <div class="flex items-center gap-4">
+                                    <button class="sidebar-toggle lg:hidden text-white focus:outline-none">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                                    </button>
+                                    <div class="flex-1 flex flex-col sm:flex-row justify-between items-center gap-4">
+                                        <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Análise de Cobertura (Estoque x PDVs)</p></div>
                                         <button id="export-coverage-pdf-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Exportar PDF</button>
-                                        <button id="back-to-main-from-coverage-btn" class="bg-white/20 hover:bg-white/30 text-white font-bold py-2 px-4 rounded-lg">Voltar ao Dashboard</button>
                                     </div>
                                 </div>
                             </header>
@@ -7361,6 +7078,7 @@
                                 </div>
                             </div>
                         </div>
+                        </div> <!-- End content-wrapper -->
                         
                         <script>
                             const embeddedData = ${jsonDataString};
