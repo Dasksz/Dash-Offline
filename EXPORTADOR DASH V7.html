@@ -885,100 +885,108 @@
         let customWorkingDaysStock = 0;
 
         function initializeOptimizedDataStructures() {
-            // --- INÍCIO DA LÓGICA DE REMAPEAMENTO (Melhoria Solicitada) ---
+            // --- OTIMIZAÇÃO: Lógica de Remapeamento In-Place e Normalização ---
             try {
                 const sellerDetailsMap = new Map();
-                const populateSellerDetails = (data) => {
-                    data.forEach(s => {
-                        if (s.CODUSUR && (!sellerDetailsMap.has(s.CODUSUR) || s.NOME)) {
-                            sellerDetailsMap.set(s.CODUSUR, { name: s.NOME, supervisor: s.SUPERV });
-                        }
-                    });
+                // Popula mapa de detalhes do vendedor (Nome/Supervisor) baseado no CODUSUR
+                // Itera uma vez sobre dados concatenados (virtualmente)
+                const extractSellerDetails = (s) => {
+                    if (s.CODUSUR && (!sellerDetailsMap.has(s.CODUSUR) || s.NOME)) {
+                        sellerDetailsMap.set(s.CODUSUR, { name: s.NOME, supervisor: s.SUPERV });
+                    }
                 };
-                populateSellerDetails([...allSalesData, ...allHistoryData]);
+                for (let i = 0; i < allSalesData.length; i++) extractSellerDetails(allSalesData[i]);
+                for (let i = 0; i < allHistoryData.length; i++) extractSellerDetails(allHistoryData[i]);
 
                 const clientToCurrentSellerMap = new Map();
                 let americanasCodCli = null;
-                allClientsData.forEach(c => {
-                    if (c['Código'] && c.rca1) {
-                        clientToCurrentSellerMap.set(String(c['Código']), String(c.rca1));
-                    }
-                    if (c.razaoSocial && c.razaoSocial.toUpperCase().includes('AMERICANAS')) {
-                        americanasCodCli = String(c['Código']);
-                    }
-                });
 
-                const remapSales = (salesList) => {
-                    return salesList.map(sale => {
-                        const clientCode = String(sale.CODCLI);
-                        if (clientCode === americanasCodCli) return sale;
+                // 1. Pre-process Clients: Create maps and search indices
+                optimizedData.clientsByRca = new Map();
+                optimizedData.searchIndices.clients = new Array(allClientsData.length);
 
-                        const currentSellerCode = clientToCurrentSellerMap.get(clientCode);
-                        if (currentSellerCode) {
-                            const sellerDetails = sellerDetailsMap.get(currentSellerCode);
-                            if (sellerDetails) {
-                                return {
-                                    ...sale,
-                                    CODUSUR: currentSellerCode,
-                                    NOME: sellerDetails.name,
-                                    SUPERV: sellerDetails.supervisor
-                                };
+                for(let i=0; i<allClientsData.length; i++) {
+                    const client = allClientsData[i];
+
+                    // Ensure primitives for Client
+                    client['Código'] = String(client['Código']);
+                    client.cidade = client.cidade || 'N/A';
+
+                    if (client.rca1) {
+                        clientToCurrentSellerMap.set(client['Código'], String(client.rca1));
+                    }
+                    if (client.razaoSocial && client.razaoSocial.toUpperCase().includes('AMERICANAS')) {
+                        americanasCodCli = client['Código'];
+                    }
+
+                    clientRamoMap.set(client['Código'], client.ramo || 'N/A');
+
+                    if (client.rcas) {
+                        client.rcas.forEach(rca => {
+                            if (!optimizedData.clientsByRca.has(rca)) {
+                                optimizedData.clientsByRca.set(rca, []);
+                            }
+                            optimizedData.clientsByRca.get(rca).push(client);
+                        });
+                    }
+
+                    optimizedData.searchIndices.clients[i] = {
+                        code: client['Código'],
+                        nameLower: (client.nomeCliente || '').toLowerCase(),
+                        cityLower: (client.cidade || '').toLowerCase()
+                    };
+                }
+
+                // Function to process sales data in-place: Remap Seller + Ensure Primitives + Parse Dates
+                const processSalesDataInPlace = (dataList) => {
+                    for (let i = 0; i < dataList.length; i++) {
+                        const sale = dataList[i];
+
+                        // 1. Ensure Primitives
+                        sale.PRODUTO = String(sale.PRODUTO);
+                        sale.CODFOR = String(sale.CODFOR);
+                        sale.TIPOVENDA = String(sale.TIPOVENDA);
+                        sale.CODCLI = String(sale.CODCLI);
+                        // sale.SUPERV = sale.SUPERV || 'N/A'; // Will be handled in remapping
+                        // sale.NOME = sale.NOME || 'N/A'; // Will be handled in remapping
+                        sale.CIDADE = sale.CIDADE || 'N/A';
+
+                        // 2. Remap Seller Logic
+                        const clientCode = sale.CODCLI;
+                        if (clientCode !== americanasCodCli) {
+                            const currentSellerCode = clientToCurrentSellerMap.get(clientCode);
+                            if (currentSellerCode) {
+                                const sellerDetails = sellerDetailsMap.get(currentSellerCode);
+                                if (sellerDetails) {
+                                    sale.CODUSUR = currentSellerCode;
+                                    sale.NOME = sellerDetails.name;
+                                    sale.SUPERV = sellerDetails.supervisor;
+                                }
                             }
                         }
-                        return sale;
-                    });
-                };
 
-                allSalesData = remapSales(allSalesData);
-                allHistoryData = remapSales(allHistoryData);
-                aggregatedOrders = remapSales(aggregatedOrders);
-            } catch (e) {
-                console.error("Erro na lógica de remapeamento:", e);
-            }
-            // --- FIM DA LÓGICA DE REMAPEAMENTO ---
+                        // Final check for nulls after potential remapping
+                        sale.SUPERV = sale.SUPERV || 'N/A';
+                        sale.NOME = sale.NOME || 'N/A';
 
-            // 1. Pre-process Clients: Lowercase search fields
-            optimizedData.clientsByRca = new Map();
-            optimizedData.searchIndices.clients = new Array(allClientsData.length);
-
-            for(let i=0; i<allClientsData.length; i++) {
-                const client = allClientsData[i];
-                // Ensure primitives
-                client['Código'] = String(client['Código']);
-                client.cidade = client.cidade || 'N/A';
-
-                clientRamoMap.set(client['Código'], client.ramo || 'N/A');
-                if (client.rcas) {
-                    client.rcas.forEach(rca => {
-                        if (!optimizedData.clientsByRca.has(rca)) {
-                            optimizedData.clientsByRca.set(rca, []);
+                        // 3. Parse Dates Once
+                        // Converts string dates to Date objects in-place to avoid repetitive parsing
+                        if (sale.DTPED && typeof sale.DTPED === 'string') {
+                            sale.DTPED = parseDate(sale.DTPED);
                         }
-                        optimizedData.clientsByRca.get(rca).push(client);
-                    });
-                }
-
-                optimizedData.searchIndices.clients[i] = {
-                    code: client['Código'],
-                    nameLower: (client.nomeCliente || '').toLowerCase(),
-                    cityLower: (client.cidade || '').toLowerCase()
+                        if (sale.DTSAIDA && typeof sale.DTSAIDA === 'string') {
+                            sale.DTSAIDA = parseDate(sale.DTSAIDA);
+                        }
+                    }
                 };
-            }
 
-            // 2. Pre-process Sales & History: Ensure primitives
-            const ensurePrimitives = (data) => {
-                for(let i=0; i<data.length; i++) {
-                    const s = data[i];
-                    s.PRODUTO = String(s.PRODUTO);
-                    s.CODFOR = String(s.CODFOR);
-                    s.TIPOVENDA = String(s.TIPOVENDA);
-                    s.CODCLI = String(s.CODCLI);
-                    s.SUPERV = s.SUPERV || 'N/A';
-                    s.NOME = s.NOME || 'N/A';
-                    s.CIDADE = s.CIDADE || 'N/A';
-                }
-            };
-            ensurePrimitives(allSalesData);
-            ensurePrimitives(allHistoryData);
+                processSalesDataInPlace(allSalesData);
+                processSalesDataInPlace(allHistoryData);
+                processSalesDataInPlace(aggregatedOrders);
+
+            } catch (e) {
+                console.error("Erro na inicialização otimizada:", e);
+            }
 
             // 3. Build optimized indices
             optimizedData.rcasBySupervisor = new Map();
@@ -1443,6 +1451,18 @@
         const prevPageBtn = document.getElementById('prev-page-btn');
         const nextPageBtn = document.getElementById('next-page-btn');
         const pageInfoText = document.getElementById('page-info-text');
+
+        // --- View State Management ---
+        const viewState = {
+            dashboard: { dirty: true },
+            pedidos: { dirty: true },
+            comparativo: { dirty: true },
+            estoque: { dirty: true },
+            cobertura: { dirty: true },
+            cidades: { dirty: true },
+            semanal: { dirty: true },
+            inovacoes: { dirty: true, cache: null, lastTypesKey: '' }
+        };
 
         let charts = {};
         let currentProductMetric = 'faturamento';
@@ -1964,7 +1984,7 @@
 
             coverageTableDataForExport = filteredTableData;
 
-            coverageTableBody.innerHTML = filteredTableData.map(item => {
+            coverageTableBody.innerHTML = filteredTableData.slice(0, 500).map(item => {
                 let boxesVariationContent;
                 if (isFinite(item.boxesVariation)) {
                     const colorClass = item.boxesVariation >= 0 ? 'text-green-400' : 'text-red-400';
@@ -2924,7 +2944,7 @@
 
             const sortedActiveClients = Object.values(salesByActiveClient).sort((a, b) => b.total - a.total);
             activeClientsForExport = sortedActiveClients;
-            cityActiveDetailTableBody.innerHTML = sortedActiveClients.map(data => {
+            cityActiveDetailTableBody.innerHTML = sortedActiveClients.slice(0, 500).map(data => {
                 const novoLabel = data.isNew ? `<span class="ml-2 text-xs font-semibold text-purple-400 bg-purple-900/50 px-2 py-0.5 rounded-full">NOVO</span>` : '';
                 let tooltipParts = [];
                 if (data.pepsico > 0) tooltipParts.push(`PEPSICO: ${data.pepsico.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`);
@@ -2941,7 +2961,7 @@
                 if (!a.isNewForInactiveLabel && b.isNewForInactiveLabel) return 1;
                 return (parseDate(b.ultimaCompra) || 0) - (parseDate(a.ultimaCompra) || 0);
             });
-            cityInactiveDetailTableBody.innerHTML = inactiveClientsList.map(client => {
+            cityInactiveDetailTableBody.innerHTML = inactiveClientsList.slice(0, 500).map(client => {
                 const novoLabel = client.isNewForInactiveLabel ? `<span class="ml-2 text-xs font-semibold text-purple-400 bg-purple-900/50 px-2 py-0.5 rounded-full">NOVO</span>` : '';
                 const devolucaoLabel = client.isReturn ? `<span class="ml-2 text-xs font-semibold text-red-400 bg-red-900/50 px-2 py-0.5 rounded-full">DEVOLUÇÃO</span>` : '';
                 return `<tr class="hover:bg-slate-700"><td class="px-4 py-2"><a href="#" class="text-teal-400 hover:underline" data-codcli="${client['Código']}">${client['Código']}</a></td><td class="px-4 py-2 flex items-center">${client.fantasia || client.razaoSocial}${novoLabel}${devolucaoLabel}</td><td class="px-4 py-2">${client.cidade}</td><td class="px-4 py-2">${client.bairro}</td><td class="px-4 py-2 text-center">${formatDate(client.ultimaCompra)}</td><td class="px-4 py-2">${client.rcas[0] || '-'}</td></tr>`
@@ -4388,7 +4408,7 @@
             }
 
 
-            stockAnalysisTableBody.innerHTML = sortedAnalysis.map(item => {
+            stockAnalysisTableBody.innerHTML = sortedAnalysis.slice(0, 500).map(item => {
                 let trendText;
                 let newTag = item.isNew ? ` <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/30 text-blue-300 ml-1">NOVO</span>` : '';
 
@@ -4597,13 +4617,24 @@
             // Determine types to use
             const availableTypes = new Set([...allSalesData.map(s => s.TIPOVENDA), ...allHistoryData.map(s => s.TIPOVENDA)]);
             let currentSelection = selectedInnovationsMonthTiposVenda.length > 0 ? selectedInnovationsMonthTiposVenda : Array.from(availableTypes);
+            const currentSelectionKey = currentSelection.slice().sort().join(',');
 
-            const mainTypes = currentSelection.filter(t => t !== '5' && t !== '11');
-            const bonusTypes = currentSelection.filter(t => t === '5' || t === '11');
+            // Caching Strategy: Reuse maps if Tipo Venda selection hasn't changed
+            let mapsCurrent, mapsPrevious;
+            if (viewState.inovacoes.lastTypesKey === currentSelectionKey && viewState.inovacoes.cache) {
+                mapsCurrent = viewState.inovacoes.cache.mapsCurrent;
+                mapsPrevious = viewState.inovacoes.cache.mapsPrevious;
+            } else {
+                const mainTypes = currentSelection.filter(t => t !== '5' && t !== '11');
+                const bonusTypes = currentSelection.filter(t => t === '5' || t === '11');
 
-            // Optimized Map Building (2 passes instead of 4)
-            const mapsCurrent = buildInnovationSalesMaps(allSalesData, mainTypes, bonusTypes);
-            const mapsPrevious = buildInnovationSalesMaps(allHistoryData, mainTypes, bonusTypes);
+                // Optimized Map Building (2 passes instead of 4)
+                mapsCurrent = buildInnovationSalesMaps(allSalesData, mainTypes, bonusTypes);
+                mapsPrevious = buildInnovationSalesMaps(allHistoryData, mainTypes, bonusTypes);
+
+                viewState.inovacoes.lastTypesKey = currentSelectionKey;
+                viewState.inovacoes.cache = { mapsCurrent, mapsPrevious };
+            }
 
             // Structures to hold results
             // categoryResults[catName] = { current: Set<CodCli>, previous: Set<CodCli>, bonusCurrent: Set<CodCli>, bonusPrevious: Set<CodCli> }
@@ -4638,6 +4669,7 @@
                         if (sellerRcaCodes.size === 0) {
                             soldBySelected = true;
                         } else {
+                            // Check intersection of rcas and sellerRcaCodes
                             for (const rca of rcas) {
                                 if (sellerRcaCodes.has(rca)) {
                                     soldBySelected = true;
@@ -4660,8 +4692,6 @@
                         }
 
                         // Add to Product Set (For Top Item Logic)
-                        // We only care about combined coverage for top item usually, but let's track mainly 'Main' types for top item chart?
-                        // The original logic checked CurrentSales OR Bonus for the product.
                         if (productResults[prodCode]) {
                             productResults[prodCode][targetSetField].add(codCli);
                         }
@@ -4953,25 +4983,75 @@
 
             innovationsByClientForExport = clientInnovationStatus;
 
-            let tableBodyHTML = '';
-            const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-400 mx-auto" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>`;
-            const xIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-400 mx-auto" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>`;
+            // Pagination for Innovations Client Table
+            const itemsPerPage = 100;
+            const totalPages = Math.ceil(clientInnovationStatus.length / itemsPerPage);
+            let currentPage = 1;
 
-            clientInnovationStatus.forEach(client => {
-                tableBodyHTML += `
-                    <tr class="hover:bg-slate-700/50">
-                        <td class="px-2 py-1.5 text-xs">${client['Código']}</td>
-                        <td class="px-2 py-1.5 text-xs">${client.fantasia || client.razaoSocial}</td>
-                        <td class="px-2 py-1.5 text-xs">${client.cidade}</td>
-                        <td class="px-2 py-1.5 text-xs">${client.bairro}</td>
-                        <td class="px-2 py-1.5 text-xs text-center">${formatDate(client.ultimaCompra)}</td>
-                `;
-                chartLabels.forEach(catName => {
-                    tableBodyHTML += `<td class="px-2 py-1.5 text-center">${client.innovationStatus[catName] ? checkIcon : xIcon}</td>`;
+            const renderInnovationsPage = (page) => {
+                const startIndex = (page - 1) * itemsPerPage;
+                const endIndex = startIndex + itemsPerPage;
+                const pageData = clientInnovationStatus.slice(startIndex, endIndex);
+
+                const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-400 mx-auto" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>`;
+                const xIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-400 mx-auto" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>`;
+
+                let tableBodyHTML = '';
+                pageData.forEach(client => {
+                    tableBodyHTML += `
+                        <tr class="hover:bg-slate-700/50">
+                            <td class="px-2 py-1.5 text-xs">${client['Código']}</td>
+                            <td class="px-2 py-1.5 text-xs">${client.fantasia || client.razaoSocial}</td>
+                            <td class="px-2 py-1.5 text-xs">${client.cidade}</td>
+                            <td class="px-2 py-1.5 text-xs">${client.bairro}</td>
+                            <td class="px-2 py-1.5 text-xs text-center">${formatDate(client.ultimaCompra)}</td>
+                    `;
+                    chartLabels.forEach(catName => {
+                        tableBodyHTML += `<td class="px-2 py-1.5 text-center">${client.innovationStatus[catName] ? checkIcon : xIcon}</td>`;
+                    });
+                    tableBodyHTML += `</tr>`;
                 });
-                tableBodyHTML += `</tr>`;
-            });
-            innovationsByClientTableBody.innerHTML = tableBodyHTML;
+                innovationsByClientTableBody.innerHTML = tableBodyHTML;
+
+                // Update Pagination Controls
+                const prevBtn = document.getElementById('innovations-prev-page-btn');
+                const nextBtn = document.getElementById('innovations-next-page-btn');
+                const infoText = document.getElementById('innovations-page-info-text');
+                const controls = document.getElementById('innovations-pagination-controls');
+
+                if (controls) {
+                    if (totalPages > 1) {
+                        controls.classList.remove('hidden');
+                        infoText.textContent = `Página ${page} de ${totalPages} (${clientInnovationStatus.length} clientes)`;
+                        prevBtn.disabled = page === 1;
+                        nextBtn.disabled = page === totalPages;
+
+                        // Clone and replace buttons to remove old event listeners
+                        const newPrevBtn = prevBtn.cloneNode(true);
+                        const newNextBtn = nextBtn.cloneNode(true);
+                        prevBtn.parentNode.replaceChild(newPrevBtn, prevBtn);
+                        nextBtn.parentNode.replaceChild(newNextBtn, nextBtn);
+
+                        newPrevBtn.addEventListener('click', () => {
+                            if (currentPage > 1) {
+                                currentPage--;
+                                renderInnovationsPage(currentPage);
+                            }
+                        });
+                        newNextBtn.addEventListener('click', () => {
+                            if (currentPage < totalPages) {
+                                currentPage++;
+                                renderInnovationsPage(currentPage);
+                            }
+                        });
+
+                    } else {
+                        controls.classList.add('hidden');
+                    }
+                }
+            };
+
+            renderInnovationsPage(1);
         }
 
         async function exportInnovationsMonthPDF() {
@@ -5416,19 +5496,28 @@
                     if (chartView) chartView.classList.remove('hidden');
                     if (tableView) tableView.classList.add('hidden');
                     if (tablePaginationControls) tablePaginationControls.classList.add('hidden');
-                    updateAllVisuals();
+                    if (viewState.dashboard.dirty) {
+                        updateAllVisuals();
+                        viewState.dashboard.dirty = false;
+                    }
                     break;
                 case 'pedidos':
                     mainDashboard.classList.remove('hidden');
                     if (chartView) chartView.classList.add('hidden');
                     if (tableView) tableView.classList.remove('hidden');
                     if (tablePaginationControls) tablePaginationControls.classList.remove('hidden');
-                    updateAllVisuals();
+                    if (viewState.pedidos.dirty) {
+                        updateAllVisuals(); // Uses same visual update but switches DOM visibility
+                        viewState.pedidos.dirty = false;
+                    }
                     break;
                 case 'comparativo':
                     comparisonView.classList.remove('hidden');
-                    updateAllComparisonFilters();
-                    updateComparisonView();
+                    if (viewState.comparativo.dirty) {
+                        updateAllComparisonFilters();
+                        updateComparisonView();
+                        viewState.comparativo.dirty = false;
+                    }
                     break;
                 case 'estoque':
                     stockView.classList.remove('hidden');
@@ -5436,51 +5525,78 @@
                     if (maxDaysLabel) maxDaysLabel.textContent = `(Máx: ${maxWorkingDaysStock})`;
                     const daysInput = document.getElementById('stock-working-days-input');
                     if(daysInput && parseInt(daysInput.value) === 0) daysInput.value = customWorkingDaysStock;
-                    handleStockFilterChange(); 
+
+                    if (viewState.estoque.dirty) {
+                        handleStockFilterChange();
+                        viewState.estoque.dirty = false;
+                    }
                     break;
                 case 'cobertura':
                     coverageView.classList.remove('hidden');
                     customWorkingDaysCoverage = maxWorkingDaysStock;
                     const workingDaysInputCov = document.getElementById('coverage-working-days-input');
                     if(workingDaysInputCov) workingDaysInputCov.value = customWorkingDaysCoverage;
-                    updateAllCoverageFilters();
-                    updateCoverageView();
+
+                    if (viewState.cobertura.dirty) {
+                        updateAllCoverageFilters();
+                        updateCoverageView();
+                        viewState.cobertura.dirty = false;
+                    }
                     break;
                 case 'cidades':
                     cityView.classList.remove('hidden');
-                    resetMainFilters();
                     const cityContent = document.getElementById('city-view-content');
                     const cityLoader = document.getElementById('city-view-loader');
-                    if (cityContent) cityContent.classList.add('hidden'); 
-                    if (cityLoader) cityLoader.classList.remove('hidden'); 
-                    setTimeout(() => { 
-                        if (cityLoader) cityLoader.classList.add('hidden'); 
-                        if (cityContent) cityContent.classList.remove('hidden'); 
 
-                        populateSupervisors('city-supervisor-filter', allSalesData); 
-                        selectedCitySellers = updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData); 
-                        selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData); 
-                        updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData); 
-                        updateCityView(); 
-                    }, 10);
+                    if (viewState.cidades.dirty) {
+                        // Show loader only if dirty (first load or forced refresh)
+                        if (cityContent) cityContent.classList.add('hidden');
+                        if (cityLoader) cityLoader.classList.remove('hidden');
+
+                        setTimeout(() => {
+                            if (cityLoader) cityLoader.classList.add('hidden');
+                            if (cityContent) cityContent.classList.remove('hidden');
+
+                            populateSupervisors('city-supervisor-filter', allSalesData);
+                            selectedCitySellers = updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData);
+                            selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData);
+                            updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData);
+                            updateCityView();
+                            viewState.cidades.dirty = false;
+                        }, 10);
+                    } else {
+                        // Ensure content is visible if not dirty
+                        if (cityLoader) cityLoader.classList.add('hidden');
+                        if (cityContent) cityContent.classList.remove('hidden');
+                    }
                     break;
                 case 'semanal':
                     weeklyView.classList.remove('hidden');
-                    resetMainFilters();
-                    populateWeeklyFilters(); 
-                    updateWeeklyView();
+                    if (viewState.semanal.dirty) {
+                        populateWeeklyFilters();
+                        updateWeeklyView();
+                        viewState.semanal.dirty = false;
+                    }
                     break;
                 case 'inovacoes-mes':
                     innovationsMonthView.classList.remove('hidden');
-                    populateSupervisors('innovations-month-supervisor-filter', allSalesData);
-                    updateSellerFilter('', innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
-                    selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
-                    updateInnovationsMonthView();
+                    if (viewState.inovacoes.dirty) {
+                        populateSupervisors('innovations-month-supervisor-filter', allSalesData);
+                        updateSellerFilter('', innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
+                        selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
+                        updateInnovationsMonthView();
+                        viewState.inovacoes.dirty = false;
+                    }
                     break;
             }
         }
 
         function setupEventListeners() {
+            // Helper to mark dirty states
+            const markDirty = (view) => {
+                if (viewState[view]) viewState[view].dirty = true;
+            };
+
             document.querySelectorAll('.sidebar-toggle').forEach(btn => btn.addEventListener('click', toggleSidebar));
             const closeSidebarBtn = document.getElementById('close-sidebar-btn');
             if(closeSidebarBtn) closeSidebarBtn.addEventListener('click', toggleSidebar);
@@ -5494,10 +5610,29 @@
                 });
             });
 
-            supervisorFilter.addEventListener('change', () => { selectedSellers = []; updateSellerFilter(supervisorFilter.value, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData); mainTableState.currentPage = 1; updateAllVisuals(); });
-            fornecedorFilter.addEventListener('change', () => { mainTableState.currentPage = 1; updateAllVisuals(); });
+            // --- Dashboard/Pedidos Filters ---
+            const updateDashboard = () => {
+                markDirty('dashboard'); markDirty('pedidos');
+                updateAllVisuals();
+            };
+
+            supervisorFilter.addEventListener('change', () => {
+                selectedSellers = [];
+                updateSellerFilter(supervisorFilter.value, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData);
+                mainTableState.currentPage = 1;
+                updateDashboard();
+            });
+            fornecedorFilter.addEventListener('change', () => { mainTableState.currentPage = 1; updateDashboard(); });
             vendedorFilterBtn.addEventListener('click', () => vendedorFilterDropdown.classList.toggle('hidden'));
-            vendedorFilterDropdown.addEventListener('change', (e) => { if (e.target.type === 'checkbox') { const { value, checked } = e.target; if (checked) selectedSellers.push(value); else selectedSellers = selectedSellers.filter(s => s !== value); selectedSellers = updateSellerFilter(supervisorFilter.value, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData); mainTableState.currentPage = 1; updateAllVisuals(); } });
+            vendedorFilterDropdown.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox') {
+                    const { value, checked } = e.target;
+                    if (checked) selectedSellers.push(value); else selectedSellers = selectedSellers.filter(s => s !== value);
+                    selectedSellers = updateSellerFilter(supervisorFilter.value, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData);
+                    mainTableState.currentPage = 1;
+                    updateDashboard();
+                }
+            });
             
             tipoVendaFilterBtn.addEventListener('click', () => tipoVendaFilterDropdown.classList.toggle('hidden'));
             tipoVendaFilterDropdown.addEventListener('change', (e) => { 
@@ -5507,14 +5642,14 @@
                     else selectedTiposVenda = selectedTiposVenda.filter(s => s !== value); 
                     selectedTiposVenda = updateTipoVendaFilter(tipoVendaFilterDropdown, tipoVendaFilterText, selectedTiposVenda, allSalesData); 
                     mainTableState.currentPage = 1; 
-                    updateAllVisuals(); 
+                    updateDashboard();
                 } 
             });
 
-            posicaoFilter.addEventListener('change', () => { mainTableState.currentPage = 1; updateAllVisuals(); });
+            posicaoFilter.addEventListener('change', () => { mainTableState.currentPage = 1; updateDashboard(); });
             codcliFilter.addEventListener('input', (e) => e.target.value = e.target.value.replace(/[^0-9]/g, ''));
-            codcliFilter.addEventListener('change', () => { mainTableState.currentPage = 1; updateAllVisuals(); });
-            clearFiltersBtn.addEventListener('click', resetMainFilters);
+            codcliFilter.addEventListener('change', () => { mainTableState.currentPage = 1; updateDashboard(); });
+            clearFiltersBtn.addEventListener('click', () => { resetMainFilters(); markDirty('dashboard'); markDirty('pedidos'); });
             
             prevPageBtn.addEventListener('click', () => {
                 if (mainTableState.currentPage > 1) {
@@ -5542,7 +5677,7 @@
                     }
                     updateRedeFilter(mainRedeFilterDropdown, mainComRedeBtnText, selectedMainRedes, allClientsData);
                     mainTableState.currentPage = 1;
-                    updateAllVisuals();
+                    updateDashboard();
                 }
             });
             mainRedeFilterDropdown.addEventListener('change', (e) => {
@@ -5552,13 +5687,32 @@
                     else selectedMainRedes = selectedMainRedes.filter(r => r !== value);
                     selectedMainRedes = updateRedeFilter(mainRedeFilterDropdown, mainComRedeBtnText, selectedMainRedes, allClientsData);
                     mainTableState.currentPage = 1;
-                    updateAllVisuals();
+                    updateDashboard();
                 }
             });
 
-            citySupervisorFilter.addEventListener('change', () => { selectedCitySellers = []; selectedCitySellers = updateSellerFilter(citySupervisorFilter.value, cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData); validateCityFilter(); updateCityView(); });
+            // --- City View Filters ---
+            const updateCity = () => {
+                markDirty('cidades');
+                updateCityView();
+            };
+
+            citySupervisorFilter.addEventListener('change', () => {
+                selectedCitySellers = [];
+                selectedCitySellers = updateSellerFilter(citySupervisorFilter.value, cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData);
+                validateCityFilter();
+                updateCity();
+            });
             cityVendedorFilterBtn.addEventListener('click', () => cityVendedorFilterDropdown.classList.toggle('hidden'));
-            cityVendedorFilterDropdown.addEventListener('change', (e) => { if (e.target.type === 'checkbox') { const { value, checked } = e.target; if (checked) selectedCitySellers.push(value); else selectedCitySellers = selectedCitySellers.filter(s => s !== value); selectedCitySellers = updateSellerFilter(citySupervisorFilter.value, cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData); validateCityFilter(); updateCityView(); } });
+            cityVendedorFilterDropdown.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox') {
+                    const { value, checked } = e.target;
+                    if (checked) selectedCitySellers.push(value); else selectedCitySellers = selectedCitySellers.filter(s => s !== value);
+                    selectedCitySellers = updateSellerFilter(citySupervisorFilter.value, cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData);
+                    validateCityFilter();
+                    updateCity();
+                }
+            });
 
             cityTipoVendaFilterBtn.addEventListener('click', () => cityTipoVendaFilterDropdown.classList.toggle('hidden'));
             cityTipoVendaFilterDropdown.addEventListener('change', (e) => {
@@ -5570,7 +5724,7 @@
                         selectedCityTiposVenda = selectedCityTiposVenda.filter(s => s !== value);
                     }
                     selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData);
-                    updateCityView();
+                    updateCity();
                 }
             });
 
@@ -5587,7 +5741,7 @@
                         selectedCityRedes = [];
                     }
                     updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData);
-                    updateCityView();
+                    updateCity();
                 }
             });
             cityRedeFilterDropdown.addEventListener('change', (e) => {
@@ -5601,18 +5755,18 @@
                     cityComRedeBtn.classList.add('active');
 
                     selectedCityRedes = updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData);
-                    updateCityView();
+                    updateCity();
                 }
             });
 
 
-            clearCityFiltersBtn.addEventListener('click', resetCityFilters);
+            clearCityFiltersBtn.addEventListener('click', () => { resetCityFilters(); markDirty('cidades'); });
             cityCodCliFilter.addEventListener('input', (e) => e.target.value = e.target.value.replace(/[^0-9]/g, ''));
-            cityCodCliFilter.addEventListener('change', updateCityView);
+            cityCodCliFilter.addEventListener('change', updateCity);
             cityNameFilter.addEventListener('input', (e) => { e.target.value = e.target.value.replace(/[0-9]/g, ''); const relevantClients = getRelevantClientsForCityFilter(); updateCitySuggestions(cityNameFilter, citySuggestions, relevantClients); });
             cityNameFilter.addEventListener('focus', () => { const relevantClients = getRelevantClientsForCityFilter(); citySuggestions.classList.remove('manual-hide'); updateCitySuggestions(cityNameFilter, citySuggestions, relevantClients); });
             cityNameFilter.addEventListener('blur', () => setTimeout(() => citySuggestions.classList.add('hidden'), 150));
-            cityNameFilter.addEventListener('keydown', (e) => { if (e.key === 'Enter') { citySuggestions.classList.add('hidden', 'manual-hide'); updateCityView(); e.target.blur(); } });
+            cityNameFilter.addEventListener('keydown', (e) => { if (e.key === 'Enter') { citySuggestions.classList.add('hidden', 'manual-hide'); updateCity(); e.target.blur(); } });
 
             document.addEventListener('click', (e) => {
                 if (!vendedorFilterBtn.contains(e.target) && !vendedorFilterDropdown.contains(e.target)) vendedorFilterDropdown.classList.add('hidden');
@@ -5640,15 +5794,41 @@
                 else if (!stockCityFilter.contains(e.target)) stockCitySuggestions.classList.add('hidden');
             });
 
-            fornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(btn => { btn.addEventListener('click', () => { const fornecedor = btn.dataset.fornecedor; if (currentFornecedor === fornecedor) { currentFornecedor = ''; btn.classList.remove('active'); } else { currentFornecedor = fornecedor; fornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); } populateSupervisors('supervisor-filter', allSalesData); selectedSellers = []; updateSellerFilter(supervisorFilter.value, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData); mainTableState.currentPage = 1; updateAllVisuals(); }); });
-            weeklyFornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(btn => { btn.addEventListener('click', () => { const fornecedor = btn.dataset.fornecedor; if (currentWeeklyFornecedor === fornecedor) { currentWeeklyFornecedor = ''; btn.classList.remove('active'); } else { currentWeeklyFornecedor = fornecedor; weeklyFornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); } updateWeeklyView(); }); });
-            weeklySupervisorFilter.addEventListener('change', updateWeeklyView);
-            clearWeeklyFiltersBtn.addEventListener('click', resetWeeklyFilters);
+            fornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const fornecedor = btn.dataset.fornecedor;
+                    if (currentFornecedor === fornecedor) { currentFornecedor = ''; btn.classList.remove('active'); } else { currentFornecedor = fornecedor; fornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
+                    populateSupervisors('supervisor-filter', allSalesData);
+                    selectedSellers = [];
+                    updateSellerFilter(supervisorFilter.value, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData);
+                    mainTableState.currentPage = 1;
+                    updateDashboard();
+                });
+            });
 
-            const handleComparisonFilterChange = () => {
+            const updateWeekly = () => {
+                markDirty('semanal');
+                updateWeeklyView();
+            };
+
+            weeklyFornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const fornecedor = btn.dataset.fornecedor;
+                    if (currentWeeklyFornecedor === fornecedor) { currentWeeklyFornecedor = ''; btn.classList.remove('active'); } else { currentWeeklyFornecedor = fornecedor; weeklyFornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
+                    updateWeekly();
+                });
+            });
+            weeklySupervisorFilter.addEventListener('change', updateWeekly);
+            clearWeeklyFiltersBtn.addEventListener('click', () => { resetWeeklyFilters(); markDirty('semanal'); });
+
+            // --- Comparison View Filters ---
+            const updateComparison = () => {
+                markDirty('comparativo');
                 updateAllComparisonFilters();
                 updateComparisonView();
             };
+
+            const handleComparisonFilterChange = updateComparison;
 
             comparisonSupervisorFilter.addEventListener('change', handleComparisonFilterChange);
             comparisonFilialFilter.addEventListener('change', handleComparisonFilterChange);
@@ -5863,21 +6043,21 @@
                 comparisonTendencyToggle.classList.toggle('hover:bg-orange-500');
                 comparisonTendencyToggle.classList.toggle('bg-purple-600');
                 comparisonTendencyToggle.classList.toggle('hover:bg-purple-500');
-                updateComparisonView();
+                updateComparison();
             });
 
             toggleWeeklyBtn.addEventListener('click', () => {
                 comparisonChartType = 'weekly';
                 toggleWeeklyBtn.classList.add('active');
                 toggleMonthlyBtn.classList.remove('active');
-                updateComparisonView();
+                updateComparison();
             });
 
             toggleMonthlyBtn.addEventListener('click', () => {
                 comparisonChartType = 'monthly';
                 toggleMonthlyBtn.classList.add('active');
                 toggleWeeklyBtn.classList.remove('active');
-                updateComparisonView();
+                updateComparison();
             });
 
             mainHolidayPickerBtn.addEventListener('click', () => {
@@ -5894,8 +6074,8 @@
                 const holidayBtnText = selectedHolidays.length > 0 ? `${selectedHolidays.length} feriado(s)` : 'Selecionar Feriados';
                 comparisonHolidayPickerBtn.textContent = holidayBtnText;
                 mainHolidayPickerBtn.textContent = holidayBtnText;
-                updateComparisonView();
-                updateAllVisuals();
+                updateComparison();
+                updateDashboard();
             });
             calendarContainer.addEventListener('click', (e) => {
                 if (e.target.id === 'prev-month-btn') {
@@ -5929,12 +6109,18 @@
             document.getElementById('export-inactive-pdf-btn').addEventListener('click', () => exportClientsPDF(inactiveClientsForExport, 'Relatório de Clientes Sem Vendas no Mês', 'clientes_sem_vendas', false));
             modalCloseBtn.addEventListener('click', () => modal.classList.add('hidden'));
             clientModalCloseBtn.addEventListener('click', () => clientModal.classList.add('hidden'));
-            faturamentoBtn.addEventListener('click', () => { currentProductMetric = 'faturamento'; faturamentoBtn.classList.add('active'); pesoBtn.classList.remove('active'); updateAllVisuals(); });
-            pesoBtn.addEventListener('click', () => { currentProductMetric = 'peso'; pesoBtn.classList.add('active'); faturamentoBtn.classList.remove('active'); updateAllVisuals(); });
+            faturamentoBtn.addEventListener('click', () => { currentProductMetric = 'faturamento'; faturamentoBtn.classList.add('active'); pesoBtn.classList.remove('active'); updateDashboard(); });
+            pesoBtn.addEventListener('click', () => { currentProductMetric = 'peso'; pesoBtn.classList.add('active'); faturamentoBtn.classList.remove('active'); updateDashboard(); });
 
-            innovationsMonthCategoryFilter.addEventListener('change', updateInnovationsMonthView);
+            // --- Innovations View Filters ---
+            const updateInnovations = () => {
+                markDirty('inovacoes');
+                updateInnovationsMonthView();
+            };
 
-            const debouncedUpdateInnovationsMonth = debounce(updateInnovationsMonthView, 400);
+            innovationsMonthCategoryFilter.addEventListener('change', updateInnovations);
+
+            const debouncedUpdateInnovationsMonth = debounce(updateInnovations, 400);
 
             innovationsMonthSupervisorFilter.addEventListener('change', () => {
                 selectedInnovationsMonthSellers = [];
@@ -5984,7 +6170,7 @@
             });
 
             innovationsMonthFilialFilter.addEventListener('change', debouncedUpdateInnovationsMonth);
-            clearInnovationsMonthFiltersBtn.addEventListener('click', resetInnovationsMonthFilters);
+            clearInnovationsMonthFiltersBtn.addEventListener('click', () => { resetInnovationsMonthFilters(); markDirty('inovacoes'); });
             exportInnovationsMonthPdfBtn.addEventListener('click', exportInnovationsMonthPDF);
 
             innovationsMonthTipoVendaFilterBtn.addEventListener('click', () => innovationsMonthTipoVendaFilterDropdown.classList.toggle('hidden'));
@@ -6004,12 +6190,18 @@
 
             document.getElementById('export-coverage-pdf-btn').addEventListener('click', exportCoveragePDF);
 
-            const debouncedHandleCoverageChange = debounce(handleCoverageFilterChange, 400);
+            // --- Coverage View Filters ---
+            const updateCoverage = () => {
+                markDirty('cobertura');
+                handleCoverageFilterChange();
+            };
 
-            coverageFilialFilter.addEventListener('change', handleCoverageFilterChange);
+            const debouncedHandleCoverageChange = debounce(updateCoverage, 400);
+
+            coverageFilialFilter.addEventListener('change', updateCoverage);
             coverageSupervisorFilter.addEventListener('change', () => {
                 selectedCoverageSellers = [];
-                handleCoverageFilterChange();
+                updateCoverage();
             });
 
             coverageCityFilter.addEventListener('input', (e) => {
@@ -6027,7 +6219,7 @@
             coverageCityFilter.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
                     coverageCitySuggestions.classList.add('hidden', 'manual-hide');
-                    handleCoverageFilterChange();
+                    updateCoverage();
                     e.target.blur();
                 }
             });
@@ -6035,7 +6227,7 @@
                 if (e.target.tagName === 'DIV') {
                     coverageCityFilter.value = e.target.textContent;
                     coverageCitySuggestions.classList.add('hidden');
-                    handleCoverageFilterChange();
+                    updateCoverage();
                 }
             });
 
@@ -6048,11 +6240,11 @@
                     } else {
                         selectedCoverageTiposVenda = selectedCoverageTiposVenda.filter(s => s !== value);
                     }
-                    handleCoverageFilterChange();
+                    updateCoverage();
                 }
             });
 
-            clearCoverageFiltersBtn.addEventListener('click', resetCoverageFilters);
+            clearCoverageFiltersBtn.addEventListener('click', () => { resetCoverageFilters(); markDirty('cobertura'); });
 
             coverageVendedorFilterBtn.addEventListener('click', () => coverageVendedorFilterDropdown.classList.toggle('hidden'));
             coverageVendedorFilterDropdown.addEventListener('change', (e) => {
@@ -6063,6 +6255,7 @@
                     } else {
                         selectedCoverageSellers = selectedCoverageSellers.filter(s => s !== value);
                     }
+                    markDirty('cobertura');
                     handleCoverageFilterChange({ skipFilter: 'seller' });
                 }
             });
@@ -6083,6 +6276,7 @@
                     });
                     selectedCoverageProducts = Array.from(supplierProducts);
 
+                    markDirty('cobertura');
                     handleCoverageFilterChange({ skipFilter: 'supplier' });
                 }
             });
@@ -6106,6 +6300,7 @@
 
             coverageProductFilterDropdown.addEventListener('change', (e) => {
                 if (e.target.dataset.filterType === 'coverage' && handleProductFilterChange(e, selectedCoverageProducts)) {
+                    markDirty('cobertura');
                     handleCoverageFilterChange({ skipFilter: 'product' });
                 }
             });
@@ -6114,11 +6309,11 @@
             if (coverageUnitPriceInput) {
                 coverageUnitPriceInput.addEventListener('keydown', (e) => {
                     if (e.key === 'Enter') {
-                        handleCoverageFilterChange();
+                        updateCoverage();
                         e.target.blur();
                     }
                 });
-                coverageUnitPriceInput.addEventListener('blur', handleCoverageFilterChange);
+                coverageUnitPriceInput.addEventListener('blur', updateCoverage);
             }
 
 
@@ -6947,6 +7142,12 @@
                                         <thead id="innovations-by-client-table-head" class="text-xs text-slate-400 uppercase sticky-header"></thead>
                                         <tbody id="innovations-by-client-table-body" class="divide-y divide-slate-700"></tbody>
                                     </table>
+                                </div>
+                                <!-- Paginação da Tabela Inovações -->
+                                <div id="innovations-pagination-controls" class="hidden mt-4 flex justify-between items-center">
+                                    <button id="innovations-prev-page-btn" class="bg-slate-700 border border-slate-600 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg disabled:opacity-50" disabled>Anterior</button>
+                                    <span id="innovations-page-info-text" class="text-slate-400">Página 1 de 1</span>
+                                    <button id="innovations-next-page-btn" class="bg-slate-700 border border-slate-600 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg disabled:opacity-50" disabled>Próxima</button>
                                 </div>
                             </div>
                         </div>
