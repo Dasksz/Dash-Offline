@@ -994,72 +994,59 @@
             // 3. Build optimized indices
             optimizedData.rcasBySupervisor = new Map();
             const supervisorToRcaMap = new Map();
-            const populateSupervisorMap = (sale) => {
-                 if (sale.CODUSUR && sale.SUPERV) {
-                    if (!supervisorToRcaMap.has(sale.SUPERV)) {
-                        supervisorToRcaMap.set(sale.SUPERV, new Set());
-                    }
-                    supervisorToRcaMap.get(sale.SUPERV).add(sale.CODUSUR);
-                }
-            };
-            allSalesData.forEach(populateSupervisorMap);
-            allHistoryData.forEach(populateSupervisorMap);
-
-            supervisorToRcaMap.forEach((rcas, supervisor) => {
-                optimizedData.rcasBySupervisor.set(supervisor, Array.from(rcas));
-            });
-
             optimizedData.productsBySupplier = new Map();
-            const populateProductMap = (sale) => {
-                if (sale.CODFOR && sale.PRODUTO) {
-                    const codfor = sale.CODFOR;
-                    if (!optimizedData.productsBySupplier.has(codfor)) {
-                        optimizedData.productsBySupplier.set(codfor, new Set());
-                    }
-                    optimizedData.productsBySupplier.get(codfor).add(sale.PRODUTO);
-                }
-            };
-            allSalesData.forEach(populateProductMap);
-            allHistoryData.forEach(populateProductMap);
-
-
             optimizedData.salesByProduct = { current: new Map(), history: new Map() };
-            allSalesData.forEach(sale => {
-                if (sale.PRODUTO) {
-                    if (!optimizedData.salesByProduct.current.has(sale.PRODUTO)) {
-                        optimizedData.salesByProduct.current.set(sale.PRODUTO, []);
-                    }
-                    optimizedData.salesByProduct.current.get(sale.PRODUTO).push(sale);
-                }
-            });
-            allHistoryData.forEach(sale => {
-                if (sale.PRODUTO) {
-                    if (!optimizedData.salesByProduct.history.has(sale.PRODUTO)) {
-                        optimizedData.salesByProduct.history.set(sale.PRODUTO, []);
-                    }
-                    optimizedData.salesByProduct.history.get(sale.PRODUTO).push(sale);
-                }
-            });
-
             optimizedData.rcaCodeByName = new Map();
-            const populateRcaCodeMap = (s) => {
-                if(s.NOME && s.CODUSUR) optimizedData.rcaCodeByName.set(s.NOME, s.CODUSUR);
-            };
-            allSalesData.forEach(populateRcaCodeMap);
-            allHistoryData.forEach(populateRcaCodeMap);
+            optimizedData.productPastaMap = new Map();
+            const workingDaysSet = new Set();
 
-            [...allSalesData, ...allHistoryData].forEach(sale => {
-                if (sale.CODCLI && sale.FILIAL) {
-                    clientLastBranch.set(sale.CODCLI, sale.FILIAL);
-                }
-            });
-
-            const buildIndex = (data, indexSet, dataMap) => {
+            const processDatasetForIndices = (dataList, indexSet, dataMap, isHistory) => {
                 const { bySupervisor, byRca, byPasta, bySupplier, byClient, byPosition, byRede, byTipoVenda, byProduct, byCity, byFilial } = indexSet;
-                
-                data.forEach((sale, index) => {
+                const salesByProductMap = isHistory ? optimizedData.salesByProduct.history : optimizedData.salesByProduct.current;
+
+                for (let i = 0; i < dataList.length; i++) {
+                    const sale = dataList[i];
                     const id = dataMap.size;
                     dataMap.set(id, sale);
+
+                    // --- Global Maps Population (Consolidated) ---
+
+                    if (sale.CODUSUR && sale.SUPERV) {
+                        if (!supervisorToRcaMap.has(sale.SUPERV)) supervisorToRcaMap.set(sale.SUPERV, new Set());
+                        supervisorToRcaMap.get(sale.SUPERV).add(sale.CODUSUR);
+                    }
+
+                    if (sale.CODFOR && sale.PRODUTO) {
+                        if (!optimizedData.productsBySupplier.has(sale.CODFOR)) optimizedData.productsBySupplier.set(sale.CODFOR, new Set());
+                        optimizedData.productsBySupplier.get(sale.CODFOR).add(sale.PRODUTO);
+                    }
+
+                    if (sale.PRODUTO) {
+                        if (!salesByProductMap.has(sale.PRODUTO)) salesByProductMap.set(sale.PRODUTO, []);
+                        salesByProductMap.get(sale.PRODUTO).push(sale);
+
+                        if (sale.OBSERVACAOFOR && !optimizedData.productPastaMap.has(sale.PRODUTO)) {
+                            optimizedData.productPastaMap.set(sale.PRODUTO, sale.OBSERVACAOFOR);
+                        }
+                    }
+
+                    if (sale.NOME && sale.CODUSUR) {
+                        optimizedData.rcaCodeByName.set(sale.NOME, sale.CODUSUR);
+                    }
+
+                    if (sale.CODCLI && sale.FILIAL) {
+                        clientLastBranch.set(sale.CODCLI, sale.FILIAL);
+                    }
+
+                    const date = parseDate(sale.DTPED);
+                    if (date) {
+                        const dayOfWeek = date.getUTCDay();
+                        if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+                            workingDaysSet.add(date.toISOString().split('T')[0]);
+                        }
+                    }
+
+                    // --- Index Building ---
 
                     const supervisor = sale.SUPERV;
                     const rca = sale.NOME;
@@ -1117,12 +1104,15 @@
                         if (!byFilial.has(filial)) byFilial.set(filial, new Set());
                         byFilial.get(filial).add(id);
                     }
-                });
+                }
             };
 
-            buildIndex(allSalesData, optimizedData.indices.current, optimizedData.salesById);
-            buildIndex(allHistoryData, optimizedData.indices.history, optimizedData.historyById);
+            processDatasetForIndices(allSalesData, optimizedData.indices.current, optimizedData.salesById, false);
+            processDatasetForIndices(allHistoryData, optimizedData.indices.history, optimizedData.historyById, true);
 
+            supervisorToRcaMap.forEach((rcas, supervisor) => {
+                optimizedData.rcasBySupervisor.set(supervisor, Array.from(rcas));
+            });
 
             optimizedData.salesByClientAndRca_CurrentMonth = new Map();
             allSalesData.forEach(s => {
@@ -1784,10 +1774,18 @@
             const trendSalesMap = new Map();
 
             // Process Current Sales (O(N))
+            // --- OTIMIZAÇÃO: Mapa invertido para performance O(1) no cálculo de cobertura ---
+            const productClientsCurrent = new Map(); // Map<PRODUTO, Set<CODCLI>>
+            const productClientsPrevious = new Map(); // Map<PRODUTO, Set<CODCLI>>
+
             sales.forEach(s => {
-                // Coverage Map
+                // Coverage Map (Standard)
                 if (!currentSalesMap.has(s.CODCLI)) currentSalesMap.set(s.CODCLI, new Set());
                 currentSalesMap.get(s.CODCLI).add(s.PRODUTO);
+
+                // Coverage Map (Inverted for Performance)
+                if (!productClientsCurrent.has(s.PRODUTO)) productClientsCurrent.set(s.PRODUTO, new Set());
+                productClientsCurrent.get(s.PRODUTO).add(s.CODCLI);
 
                 // Box Quantity Map
                 boxesSoldCurrentMap.set(s.PRODUTO, (boxesSoldCurrentMap.get(s.PRODUTO) || 0) + s.QTVENDA_EMBALAGEM_MASTER);
@@ -1807,6 +1805,10 @@
                     if (!previousSalesMap.has(s.CODCLI)) previousSalesMap.set(s.CODCLI, new Set());
                     previousSalesMap.get(s.CODCLI).add(s.PRODUTO);
 
+                    // Coverage Map (Inverted for Performance)
+                    if (!productClientsPrevious.has(s.PRODUTO)) productClientsPrevious.set(s.PRODUTO, new Set());
+                    productClientsPrevious.get(s.PRODUTO).add(s.CODCLI);
+
                     // Box Quantity Map (only if prev month)
                     boxesSoldPreviousMap.set(s.PRODUTO, (boxesSoldPreviousMap.get(s.PRODUTO) || 0) + s.QTVENDA_EMBALAGEM_MASTER);
                 }
@@ -1818,59 +1820,37 @@
 
             // Pre-calculate global dates for Trend
             const endDate = parseDate(sortedWorkingDays[sortedWorkingDays.length - 1]);
-            // We can't pre-calculate start date globally because it depends on product creation date,
-            // but we can optimize the lookups.
 
             productsToAnalyze.forEach(productCode => {
                 const productInfo = productDetailsMap.get(productCode) || { descricao: `Produto ${productCode}`};
 
-                // Coverage Calculation: Loop only over active clients (O(C))
-                // Optimization: Instead of looping clients for every product, can we check the inverse?
-                // No, we need 'clientsWhoGotSelectionCurrent' which is the union.
-                // But for individual product coverage, we can just check size of the Set if we built it reversed.
-                // However, building Map<Product, Set<Client>> is also O(N).
-                // Let's stick to checking clients but optimize the Set lookup (it's already O(1)).
-                // Actually, checking 5000 clients for every product is slow (5000 * 2000 = 10M ops).
-                // BETTER: In the first pass, calculate the counts!
-                // But we need to know if the client is "Active" (in the filtered list).
-                // Since `currentSalesMap` only contains sales from `sales` array (which is filtered),
-                // any client in `currentSalesMap` IS active relative to the filters applied to sales.
-                // BUT `activeClientsForCoverage` applies specific logic (excluding RCA 53, etc.).
-                // So we MUST intersect `currentSalesMap` keys with `activeClientCodes`.
-
                 let clientsWhoGotProductCurrent = 0;
                 let clientsWhoGotProductPrevious = 0;
 
-                // To avoid O(Clients * Products), we iterate active clients ONLY ONCE outside this loop?
-                // No, we need per-product counts.
-                // Optimization: Iterate over `currentSalesMap` entries?
-                // No, that's unstructured.
+                // --- OTIMIZAÇÃO CRÍTICA: Iterar apenas os compradores do produto em vez de todos os clientes ativos ---
+                // Reduz a complexidade de O(Produtos * Clientes) para O(Total Vendas)
 
-                // Let's optimize the loop below by doing it only for products that actually HAVE sales.
-                // If boxesSoldCurrentMap.get(productCode) is undefined/0, coverage is 0.
-
-                const hasCurrentSales = boxesSoldCurrentMap.has(productCode);
-                const hasPreviousSales = boxesSoldPreviousMap.has(productCode);
-
-                if (hasCurrentSales) {
-                    // Only iterate clients if we know there are sales for this product
-                    // Actually, even better: Build Map<Product, Set<ActiveClient>> during the first pass?
-                    // Yes, but we need to know `activeClientCodes` first.
+                // Check Current
+                const buyersCurrent = productClientsCurrent.get(productCode);
+                if (buyersCurrent) {
+                    buyersCurrent.forEach(buyer => {
+                        if (activeClientCodes.has(buyer)) {
+                            clientsWhoGotProductCurrent++;
+                            clientsWhoGotSelectionCurrent.add(buyer);
+                        }
+                    });
                 }
 
-                // Fallback to standard loop but simplified
-                activeClientCodes.forEach(codcli => {
-                    // Check Current
-                    if (currentSalesMap.has(codcli) && currentSalesMap.get(codcli).has(productCode)) {
-                        clientsWhoGotProductCurrent++;
-                        clientsWhoGotSelectionCurrent.add(codcli);
-                    }
-                    // Check Previous
-                    if (previousSalesMap.has(codcli) && previousSalesMap.get(codcli).has(productCode)) {
-                        clientsWhoGotProductPrevious++;
-                        clientsWhoGotSelectionPrevious.add(codcli);
-                    }
-                });
+                // Check Previous
+                const buyersPrevious = productClientsPrevious.get(productCode);
+                if (buyersPrevious) {
+                    buyersPrevious.forEach(buyer => {
+                        if (activeClientCodes.has(buyer)) {
+                            clientsWhoGotProductPrevious++;
+                            clientsWhoGotSelectionPrevious.add(buyer);
+                        }
+                    });
+                }
 
                 const coverageCurrent = activeClientsCount > 0 ? (clientsWhoGotProductCurrent / activeClientsCount) * 100 : 0;
                 
@@ -3289,23 +3269,86 @@
                 : '';
         }
 
-        function getPositiveClientsWithNewLogic(salesData) {
-            const salesByClient = new Map();
-            salesData.forEach(sale => {
-                if (!sale.CODCLI) return;
-                const clientTotal = salesByClient.get(sale.CODCLI) || 0;
-                salesByClient.set(sale.CODCLI, clientTotal + sale.VLVENDA);
-            });
+        function calculateUnifiedMetrics(salesData, pepsicoCodfors, saltyCategories, foodsCategories) {
+            const clientDataMap = new Map();
+            const pepsicoSet = new Set(pepsicoCodfors);
+            const saltySet = new Set(saltyCategories.map(normalize));
+            const foodsSet = new Set(foodsCategories.map(normalize));
 
-            let positiveClients = 0;
-            const threshold = 1;
+            for (let i = 0; i < salesData.length; i++) {
+                const sale = salesData[i];
+                const codcli = sale.CODCLI;
+                if (!codcli) continue;
 
-            for (const total of salesByClient.values()) {
-                if (total > threshold) {
-                    positiveClients++;
+                if (!clientDataMap.has(codcli)) {
+                    clientDataMap.set(codcli, { totalValue: 0, products: new Map() });
+                }
+                const clientData = clientDataMap.get(codcli);
+                const val = Number(sale.VLVENDA) || 0;
+
+                clientData.totalValue += val;
+
+                const prod = sale.PRODUTO;
+                if (prod) {
+                    if (!clientData.products.has(prod)) {
+                        clientData.products.set(prod, { value: 0, desc: sale.DESCRICAO, codfor: String(sale.CODFOR) });
+                    }
+                    clientData.products.get(prod).value += val;
                 }
             }
-            return positiveClients;
+
+            let positiveClientsCount = 0;
+            let sumMixPepsico = 0;
+            let sumPositivacaoSalty = 0;
+            let sumPositivacaoFoods = 0;
+            let pepsicoClientsCount = 0;
+
+            for (const client of clientDataMap.values()) {
+                if (client.totalValue > 1) {
+                    positiveClientsCount++;
+                }
+
+                let pepsicoCount = 0;
+                const clientCategories = new Set();
+
+                for (const prodData of client.products.values()) {
+                    if (prodData.value > 1) {
+                        if (pepsicoSet.has(prodData.codfor)) {
+                            pepsicoCount++;
+                        }
+
+                        const normalizedDesc = normalize(prodData.desc);
+                        for (const cat of saltySet) {
+                            if (normalizedDesc.includes(cat)) clientCategories.add(cat);
+                        }
+                        for (const cat of foodsSet) {
+                            if (normalizedDesc.includes(cat)) clientCategories.add(cat);
+                        }
+                    }
+                }
+
+                if (pepsicoCount > 0) {
+                    sumMixPepsico += pepsicoCount;
+                    pepsicoClientsCount++;
+                }
+
+                let saltyCount = 0;
+                for (const cat of saltySet) if (clientCategories.has(cat)) saltyCount++;
+                if (saltyCount >= saltySet.size) sumPositivacaoSalty++;
+
+                let foodsCount = 0;
+                for (const cat of foodsSet) if (clientCategories.has(cat)) foodsCount++;
+                if (foodsCount >= foodsSet.size) sumPositivacaoFoods++;
+            }
+
+            const avgMixPepsico = pepsicoClientsCount > 0 ? sumMixPepsico / pepsicoClientsCount : 0;
+
+            return {
+                positiveClients: positiveClientsCount,
+                avgMixPepsico: avgMixPepsico,
+                positivacaoSalty: sumPositivacaoSalty,
+                positivacaoFoods: sumPositivacaoFoods
+            };
         }
 
         const formatValue = (val, format) => {
@@ -3348,94 +3391,6 @@
             }).join('');
         }
 
-        function calculateAverageMixComDevolucao(salesData, targetCodfors) {
-             if (!salesData || salesData.length === 0 || !targetCodfors || targetCodfors.length === 0) return 0;
-
-            const clientProductNetValue = new Map();
-
-            for (const sale of salesData) {
-                if (!targetCodfors.includes(String(sale.CODFOR))) continue;
-                if (!sale.CODCLI || !sale.PRODUTO) continue;
-
-                if (!clientProductNetValue.has(sale.CODCLI)) {
-                    clientProductNetValue.set(sale.CODCLI, new Map());
-                }
-                const clientProducts = clientProductNetValue.get(sale.CODCLI);
-
-                const currentValue = clientProducts.get(sale.PRODUTO) || 0;
-                clientProducts.set(sale.PRODUTO, currentValue + (Number(sale.VLVENDA) || 0));
-            }
-
-            const mixValues = [];
-            for (const products of clientProductNetValue.values()) {
-                let positiveProductCount = 0;
-                for (const netValue of products.values()) {
-                    if (netValue > 1) {
-                        positiveProductCount++;
-                    }
-                }
-                if (positiveProductCount > 0) {
-                    mixValues.push(positiveProductCount);
-                }
-            }
-
-            if (mixValues.length === 0) return 0;
-
-            return mixValues.reduce((a, b) => a + b, 0) / mixValues.length;
-        }
-
-        function calculatePositivacaoPorCestaComDevolucao(salesData, requiredCategories) {
-            if (!salesData || salesData.length === 0 || !requiredCategories || requiredCategories.length === 0) return 0;
-
-            const normalizedCategories = requiredCategories.map(normalize);
-            const clientProductNetSales = new Map();
-
-            for (const sale of salesData) {
-                if (!sale.CODCLI || !sale.PRODUTO) continue;
-
-                if (!clientProductNetSales.has(sale.CODCLI)) {
-                    clientProductNetSales.set(sale.CODCLI, new Map());
-                }
-                const clientProducts = clientProductNetSales.get(sale.CODCLI);
-
-                if (!clientProducts.has(sale.PRODUTO)) {
-                    clientProducts.set(sale.PRODUTO, { netValue: 0, description: sale.DESCRICAO });
-                }
-                const productData = clientProducts.get(sale.PRODUTO);
-                productData.netValue += (Number(sale.VLVENDA) || 0);
-            }
-
-            const clientPurchasedCategories = new Map();
-
-            for (const [codcli, products] of clientProductNetSales.entries()) {
-                for (const data of products.values()) {
-                    if (data.netValue > 1) {
-                        const normalizedDescription = normalize(data.description);
-                        for (const category of normalizedCategories) {
-                            if (normalizedDescription.includes(category)) {
-                                if (!clientPurchasedCategories.has(codcli)) {
-                                    clientPurchasedCategories.set(codcli, new Set());
-                                }
-                                clientPurchasedCategories.get(codcli).add(category);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            let positivadosCount = 0;
-            const requiredCategoryCount = normalizedCategories.length;
-            for (const categoriesPurchased of clientPurchasedCategories.values()) {
-                if (categoriesPurchased.size >= requiredCategoryCount) {
-                    positivadosCount++;
-                }
-            }
-
-            return positivadosCount;
-        }
-
-
         function groupSalesByMonth(salesData) {
             const salesByMonth = {};
             salesData.forEach(sale => {
@@ -3446,39 +3401,6 @@
                 salesByMonth[monthKey].push(sale);
             });
             return salesByMonth;
-        }
-
-        function monthlyKpiAverage(dataInput, kpiFn, isGrouped = false, ...kpiArgs) {
-            let salesByMonth;
-            if (isGrouped) {
-                salesByMonth = dataInput;
-            } else {
-                salesByMonth = groupSalesByMonth(dataInput);
-            }
-
-            let sortedMonths = Object.keys(salesByMonth).sort();
-
-            if (sortedMonths.length > 0) {
-                const firstMonthKey = sortedMonths[0];
-                const firstSaleInFirstMonth = salesByMonth[firstMonthKey].reduce((earliest, sale) => {
-                    const saleDate = parseDate(sale.DTPED);
-                    return (!earliest || (saleDate && saleDate < earliest)) ? saleDate : earliest;
-                }, null);
-
-                if (firstSaleInFirstMonth && firstSaleInFirstMonth.getUTCDate() > 20) {
-                    sortedMonths.shift();
-                }
-            }
-            
-            const monthsToAverage = sortedMonths.slice(-3);
-
-            const kpiValues = monthsToAverage.map(monthKey => {
-                const salesForMonth = salesByMonth[monthKey];
-                return kpiFn(salesForMonth, ...kpiArgs);
-            });
-
-            if (kpiValues.length === 0) return 0;
-            return kpiValues.reduce((a, b) => a + b, 0) / QUARTERLY_DIVISOR;
         }
 
         function calculateStockMonthlyAverage(historySales) {
@@ -3880,7 +3802,7 @@
                 if (skipFilter !== 'supervisor') {
                     const supervisorData = getStockFilteredData({ excludeFilter: 'supervisor' });
                     const supervisorOptionsData = [...supervisorData.sales, ...supervisorData.history];
-                    populateSupervisors('stock-supervisor-filter', supervisorOptionsData);
+                    selectedStockSupervisors = updateSupervisorFilter(document.getElementById('stock-supervisor-filter-dropdown'), document.getElementById('stock-supervisor-filter-text'), selectedStockSupervisors, supervisorOptionsData);
                 }
 
                 updateStockSellerFilter(skipFilter === 'seller');
@@ -3916,33 +3838,66 @@
             const filteredData = getComparisonFilteredData();
             const { currentSales, historySales } = filteredData;
 
-            const historyMonthsCount = getUniqueMonthCount(historySales);
-
-            const currentTotalFat = currentSales.reduce((sum, item) => sum + item.VLVENDA, 0);
-            const currentTotalPeso = currentSales.reduce((sum, item) => sum + item.TOTPESOLIQ, 0);
-            const currentClients = getPositiveClientsWithNewLogic(currentSales);
-            const currentTicket = currentClients > 0 ? currentTotalFat / currentClients : 0;
             const pepsicoCodfors = ['707', '708'];
             const saltyCategories = ['CHEETOS', 'DORITOS', 'FANDANGOS', 'RUFFLES', 'TORCIDA'];
             const foodsCategories = ['TODDYNHO', 'TODDY', 'QUAKER', 'KEROCOCO'];
-            const currentMixPepsico = calculateAverageMixComDevolucao(currentSales, pepsicoCodfors);
-            const currentPositivacaoSalty = calculatePositivacaoPorCestaComDevolucao(currentSales, saltyCategories);
-            const currentPositivacaoFoods = calculatePositivacaoPorCestaComDevolucao(currentSales, foodsCategories);
 
+            // 1. Calculate Current Metrics (Unified Pass)
+            const currentKPIs = calculateUnifiedMetrics(currentSales, pepsicoCodfors, saltyCategories, foodsCategories);
+
+            const currentTotalFat = currentSales.reduce((sum, item) => sum + item.VLVENDA, 0);
+            const currentTotalPeso = currentSales.reduce((sum, item) => sum + item.TOTPESOLIQ, 0);
+
+            const currentClients = currentKPIs.positiveClients;
+            const currentTicket = currentClients > 0 ? currentTotalFat / currentClients : 0;
+            const currentMixPepsico = currentKPIs.avgMixPepsico;
+            const currentPositivacaoSalty = currentKPIs.positivacaoSalty;
+            const currentPositivacaoFoods = currentKPIs.positivacaoFoods;
+
+            // 2. Calculate History Metrics (Unified per Month)
             const historyTotalFat = historySales.reduce((sum, item) => sum + item.VLVENDA, 0);
             const historyTotalPeso = historySales.reduce((sum, item) => sum + item.TOTPESOLIQ, 0);
 
             const historyAvgFat = historyTotalFat / QUARTERLY_DIVISOR;
             const historyAvgPeso = historyTotalPeso / 1000 / QUARTERLY_DIVISOR;
 
-            // Group sales by month ONCE for optimization
             const groupedHistorySales = groupSalesByMonth(historySales);
+            let sortedMonths = Object.keys(groupedHistorySales).sort();
 
-            const historyClientsAverage = monthlyKpiAverage(groupedHistorySales, getPositiveClientsWithNewLogic, true);
+            // Handle partial first month logic (previously in monthlyKpiAverage)
+            if (sortedMonths.length > 0) {
+                const firstMonthKey = sortedMonths[0];
+                const firstSaleInFirstMonth = groupedHistorySales[firstMonthKey].reduce((earliest, sale) => {
+                    const saleDate = parseDate(sale.DTPED);
+                    return (!earliest || (saleDate && saleDate < earliest)) ? saleDate : earliest;
+                }, null);
+
+                if (firstSaleInFirstMonth && firstSaleInFirstMonth.getUTCDate() > 20) {
+                    sortedMonths.shift();
+                }
+            }
+
+            const monthsToAverage = sortedMonths.slice(-3);
+
+            let historySumClients = 0;
+            let historySumMixPepsico = 0;
+            let historySumSalty = 0;
+            let historySumFoods = 0;
+
+            monthsToAverage.forEach(monthKey => {
+                const sales = groupedHistorySales[monthKey];
+                const kpis = calculateUnifiedMetrics(sales, pepsicoCodfors, saltyCategories, foodsCategories);
+                historySumClients += kpis.positiveClients;
+                historySumMixPepsico += kpis.avgMixPepsico;
+                historySumSalty += kpis.positivacaoSalty;
+                historySumFoods += kpis.positivacaoFoods;
+            });
+
+            const historyClientsAverage = monthsToAverage.length > 0 ? historySumClients / QUARTERLY_DIVISOR : 0;
             const historyTicketAverage = historyClientsAverage > 0 ? historyAvgFat / historyClientsAverage : 0;
-            const historyMixPepsico = monthlyKpiAverage(groupedHistorySales, calculateAverageMixComDevolucao, true, pepsicoCodfors);
-            const historyPositivacaoSalty = monthlyKpiAverage(groupedHistorySales, calculatePositivacaoPorCestaComDevolucao, true, saltyCategories);
-            const historyPositivacaoFoods = monthlyKpiAverage(groupedHistorySales, calculatePositivacaoPorCestaComDevolucao, true, foodsCategories);
+            const historyMixPepsico = monthsToAverage.length > 0 ? historySumMixPepsico / QUARTERLY_DIVISOR : 0;
+            const historyPositivacaoSalty = monthsToAverage.length > 0 ? historySumSalty / QUARTERLY_DIVISOR : 0;
+            const historyPositivacaoFoods = monthsToAverage.length > 0 ? historySumFoods / QUARTERLY_DIVISOR : 0;
 
             renderKpiCards([
                 { title: 'Faturamento Total', current: currentTotalFat, history: historyAvgFat, format: 'currency' },
@@ -5653,7 +5608,7 @@
                             if (cityLoader) cityLoader.classList.add('hidden'); 
                             if (cityContent) cityContent.classList.remove('hidden'); 
 
-                            populateSupervisors('city-supervisor-filter', allSalesData); 
+                            selectedCitySupervisors = updateSupervisorFilter(document.getElementById('city-supervisor-filter-dropdown'), document.getElementById('city-supervisor-filter-text'), selectedCitySupervisors, allSalesData);
                             selectedCitySellers = updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData); 
                             selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData); 
                             updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData); 
@@ -5677,7 +5632,7 @@
                 case 'inovacoes-mes':
                     innovationsMonthView.classList.remove('hidden');
                     if (viewState.inovacoes.dirty) {
-                        populateSupervisors('innovations-month-supervisor-filter', allSalesData);
+                        selectedInnovationsSupervisors = updateSupervisorFilter(document.getElementById('innovations-month-supervisor-filter-dropdown'), document.getElementById('innovations-month-supervisor-filter-text'), selectedInnovationsSupervisors, allSalesData);
                         updateSellerFilter('', innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
                         selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
                         updateInnovationsMonthView();
@@ -5912,22 +5867,34 @@
             });
 
             document.addEventListener('click', (e) => {
+                if (!supervisorFilterBtn.contains(e.target) && !supervisorFilterDropdown.contains(e.target)) supervisorFilterDropdown.classList.add('hidden');
+                if (!fornecedorFilterBtn.contains(e.target) && !fornecedorFilterDropdown.contains(e.target)) fornecedorFilterDropdown.classList.add('hidden');
                 if (!vendedorFilterBtn.contains(e.target) && !vendedorFilterDropdown.contains(e.target)) vendedorFilterDropdown.classList.add('hidden');
                 if (!tipoVendaFilterBtn.contains(e.target) && !tipoVendaFilterDropdown.contains(e.target)) tipoVendaFilterDropdown.classList.add('hidden');
+
+                if (!citySupervisorFilterBtn.contains(e.target) && !citySupervisorFilterDropdown.contains(e.target)) citySupervisorFilterDropdown.classList.add('hidden');
                 if (!cityVendedorFilterBtn.contains(e.target) && !cityVendedorFilterDropdown.contains(e.target)) cityVendedorFilterDropdown.classList.add('hidden');
                 if (!cityTipoVendaFilterBtn.contains(e.target) && !cityTipoVendaFilterDropdown.contains(e.target)) cityTipoVendaFilterDropdown.classList.add('hidden');
                 if (!cityComRedeBtn.contains(e.target) && !cityRedeFilterDropdown.contains(e.target)) cityRedeFilterDropdown.classList.add('hidden');
                 if (!mainComRedeBtn.contains(e.target) && !mainRedeFilterDropdown.contains(e.target)) mainRedeFilterDropdown.classList.add('hidden');
+
+                if (!comparisonSupervisorFilterBtn.contains(e.target) && !comparisonSupervisorFilterDropdown.contains(e.target)) comparisonSupervisorFilterDropdown.classList.add('hidden');
                 if (!comparisonComRedeBtn.contains(e.target) && !comparisonRedeFilterDropdown.contains(e.target)) comparisonRedeFilterDropdown.classList.add('hidden');
                 if (!comparisonVendedorFilterBtn.contains(e.target) && !comparisonVendedorFilterDropdown.contains(e.target)) comparisonVendedorFilterDropdown.classList.add('hidden');
                 if (!comparisonTipoVendaFilterBtn.contains(e.target) && !comparisonTipoVendaFilterDropdown.contains(e.target)) comparisonTipoVendaFilterDropdown.classList.add('hidden');
                 if (!comparisonSupplierFilterBtn.contains(e.target) && !comparisonSupplierFilterDropdown.contains(e.target)) comparisonSupplierFilterDropdown.classList.add('hidden');
                 if (!comparisonProductFilterBtn.contains(e.target) && !comparisonProductFilterDropdown.contains(e.target)) comparisonProductFilterDropdown.classList.add('hidden');
+
+                if (!stockSupervisorFilterBtn.contains(e.target) && !stockSupervisorFilterDropdown.contains(e.target)) stockSupervisorFilterDropdown.classList.add('hidden');
                 if (!stockComRedeBtn.contains(e.target) && !stockRedeFilterDropdown.contains(e.target)) stockRedeFilterDropdown.classList.add('hidden');
                 if (!stockVendedorFilterBtn.contains(e.target) && !stockVendedorFilterDropdown.contains(e.target)) stockVendedorFilterDropdown.classList.add('hidden');
                 if (!stockSupplierFilterBtn.contains(e.target) && !stockSupplierFilterDropdown.contains(e.target)) stockSupplierFilterDropdown.classList.add('hidden');
                 if (!stockProductFilterBtn.contains(e.target) && !stockProductFilterDropdown.contains(e.target)) stockProductFilterDropdown.classList.add('hidden');
                 if (!stockTipoVendaFilterBtn.contains(e.target) && !stockTipoVendaFilterDropdown.contains(e.target)) stockTipoVendaFilterDropdown.classList.add('hidden');
+
+                if (!innovationsMonthSupervisorFilterBtn.contains(e.target) && !innovationsMonthSupervisorFilterDropdown.contains(e.target)) innovationsMonthSupervisorFilterDropdown.classList.add('hidden');
+                if (!coverageSupervisorFilterBtn.contains(e.target) && !coverageSupervisorFilterDropdown.contains(e.target)) coverageSupervisorFilterDropdown.classList.add('hidden');
+
                 if (e.target.closest('[data-pedido-id]')) { e.preventDefault(); openModal(e.target.closest('[data-pedido-id]').dataset.pedidoId); }
                 if (e.target.closest('[data-codcli]')) { e.preventDefault(); openClientModal(e.target.closest('[data-codcli]').dataset.codcli); }
                 if (e.target.closest('#city-suggestions > div')) { cityNameFilter.value = e.target.textContent; citySuggestions.classList.add('hidden'); updateCityView(); }
@@ -5941,9 +5908,9 @@
                 btn.addEventListener('click', () => { 
                     const fornecedor = btn.dataset.fornecedor; 
                     if (currentFornecedor === fornecedor) { currentFornecedor = ''; btn.classList.remove('active'); } else { currentFornecedor = fornecedor; fornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); } 
-                    populateSupervisors('supervisor-filter', allSalesData); 
+                    selectedMainSupervisors = updateSupervisorFilter(document.getElementById('supervisor-filter-dropdown'), document.getElementById('supervisor-filter-text'), selectedMainSupervisors, allSalesData);
                     selectedSellers = []; 
-                    updateSellerFilter(supervisorFilter.value, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData); 
+                    updateSellerFilter(selectedMainSupervisors, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData);
                     mainTableState.currentPage = 1; 
                     updateDashboard(); 
                 }); 
