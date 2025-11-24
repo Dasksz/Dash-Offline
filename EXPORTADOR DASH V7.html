@@ -1429,6 +1429,7 @@
         const coverageSelectionCoverageCountKpi = document.getElementById('coverage-selection-coverage-count-kpi');
         const coverageTopCoverageValueKpi = document.getElementById('coverage-top-coverage-value-kpi');
         const coverageTopCoverageProductKpi = document.getElementById('coverage-top-coverage-product-kpi');
+        const coverageTotalBoxesEl = document.getElementById('coverage-total-boxes');
 
         const coverageTableBody = document.getElementById('coverage-table-body');
 
@@ -1987,6 +1988,11 @@
                     if (coverageTrendFilter === 'good') return isFinite(trend) && trend >= 30;
                     return false;
                 });
+            }
+
+            const totalBoxesFiltered = filteredTableData.reduce((sum, item) => sum + item.boxesSoldCurrentMonth, 0);
+            if (coverageTotalBoxesEl) {
+                coverageTotalBoxesEl.textContent = totalBoxesFiltered.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
             }
 
             coverageTableDataForExport = filteredTableData;
@@ -3849,7 +3855,7 @@
 
             const filters = {
                 filial,
-                supervisor,
+                supervisor: supervisorSet,
                 pasta,
                 tipoVenda: tiposVendaSet,
                 seller: sellersSet,
@@ -7472,6 +7478,12 @@
                             </div>
                             <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm mb-6">
                                 <div class="flex justify-between items-center mb-4 relative">
+                                    <div class="absolute left-0 top-0 bottom-0 flex items-center">
+                                        <div class="text-left">
+                                            <p class="text-xs text-slate-400">Total Caixas</p>
+                                            <p id="coverage-total-boxes" class="text-lg font-bold text-white">0</p>
+                                        </div>
+                                    </div>
                                     <h2 id="coverage-chart-title" class="text-lg font-semibold text-white text-center w-full">Top 10 Cidades (Quantidade de Caixas)</h2>
                                     <div class="absolute right-0 top-0 bottom-0 flex items-center">
                                         <button id="coverage-chart-toggle-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-1 px-3 rounded shadow">Ver Vendedores</button>
