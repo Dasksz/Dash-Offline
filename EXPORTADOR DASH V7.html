@@ -1429,6 +1429,7 @@
         const coverageSelectionCoverageCountKpi = document.getElementById('coverage-selection-coverage-count-kpi');
         const coverageTopCoverageValueKpi = document.getElementById('coverage-top-coverage-value-kpi');
         const coverageTopCoverageProductKpi = document.getElementById('coverage-top-coverage-product-kpi');
+        const coverageTotalBoxesEl = document.getElementById('coverage-total-boxes');
 
         const coverageTableBody = document.getElementById('coverage-table-body');
 
@@ -1479,10 +1480,15 @@
         let activeClientsForExport = [];
         let inactiveClientsForExport = [];
         let selectedSellers = [];
+        let selectedMainSupervisors = [];
+        let selectedMainSuppliers = [];
         let selectedTiposVenda = [];
         let selectedCitySellers = [];
+        let selectedCitySupervisors = [];
         let selectedComparisonSellers = [];
+        let selectedComparisonSupervisors = [];
         let selectedStockSellers = [];
+        let selectedStockSupervisors = [];
         let selectedComparisonSuppliers = [];
         let selectedComparisonProducts = [];
         let selectedStockSuppliers = [];
@@ -1506,6 +1512,7 @@
         let stockRedeGroupFilter = '';
 
         let selectedInnovationsMonthSellers = [];
+        let selectedInnovationsSupervisors = [];
         let selectedInnovationsMonthTiposVenda = [];
 
         // let innovationsIncludeBonus = true; // REMOVED
@@ -1522,11 +1529,13 @@
 
         let selectedCoverageSellers = [];
         let selectedCoverageSuppliers = [];
+        let selectedCoverageSupervisors = [];
         let selectedCoverageProducts = [];
         let coverageUnitPriceFilter = null;
         let customWorkingDaysCoverage = 0;
         let coverageTrendFilter = 'all';
         let coverageTableDataForExport = [];
+        let currentCoverageChartMode = 'city';
 
         const coverageTipoVendaFilterBtn = document.getElementById('coverage-tipo-venda-filter-btn');
         const coverageTipoVendaFilterText = document.getElementById('coverage-tipo-venda-filter-text');
@@ -1592,12 +1601,12 @@
                 return excludeFilter === filterName;
             };
 
-            const supervisor = coverageSupervisorFilter.value;
             // Use Sets for O(1) lookups
             const sellersSet = new Set(selectedCoverageSellers);
             const suppliersSet = new Set(selectedCoverageSuppliers);
             const productsSet = new Set(selectedCoverageProducts);
             const tiposVendaSet = new Set(selectedCoverageTiposVenda);
+            const supervisorsSet = new Set(selectedCoverageSupervisors);
 
             const city = coverageCityFilter.value.trim().toLowerCase();
             const filial = coverageFilialFilter.value;
@@ -1610,8 +1619,11 @@
                 clients = clients.filter(c => clientLastBranch.get(c['Código']) === filial);
             }
 
-            if (!isExcluded('supervisor') && supervisor) {
-                const rcasOfSupervisor = new Set(optimizedData.rcasBySupervisor.get(supervisor) || []);
+            if (!isExcluded('supervisor') && selectedCoverageSupervisors.length > 0) {
+                const rcasOfSupervisor = new Set();
+                selectedCoverageSupervisors.forEach(sup => {
+                    (optimizedData.rcasBySupervisor.get(sup) || []).forEach(rca => rcasOfSupervisor.add(rca));
+                });
                 clients = clients.filter(c => c.rcas.some(rca => rcasOfSupervisor.has(rca)));
             }
             if (!isExcluded('seller') && sellersSet.size > 0) {
@@ -1635,7 +1647,7 @@
             }
             
             const salesFilter = s => 
-                (isExcluded('supervisor') || !supervisor || s.SUPERV === supervisor) &&
+                (isExcluded('supervisor') || selectedCoverageSupervisors.length === 0 || supervisorsSet.has(s.SUPERV)) &&
                 (isExcluded('seller') || sellersSet.size === 0 || sellersSet.has(s.NOME)) &&
                 (isExcluded('supplier') || suppliersSet.size === 0 || suppliersSet.has(s.CODFOR)) &&
                 (isExcluded('product') || productsSet.size === 0 || productsSet.has(s.PRODUTO)) &&
@@ -1660,17 +1672,11 @@
             if (skipFilter !== 'supervisor') {
                 const { sales: salesSup, history: historySup } = getCoverageFilteredData({ excludeFilter: 'supervisor' });
                 const combinedDataSup = [...salesSup, ...historySup];
-                const currentSupervisor = coverageSupervisorFilter.value;
-
-                const supervisors = [...new Set(combinedDataSup.map(item => item.SUPERV).filter(Boolean))].sort();
-                coverageSupervisorFilter.innerHTML = '<option value="">Todos</option>';
-                supervisors.forEach(sup => { coverageSupervisorFilter.innerHTML += `<option value="${sup}">${sup}</option>`; });
-                if (supervisors.includes(currentSupervisor)) coverageSupervisorFilter.value = currentSupervisor;
-                else coverageSupervisorFilter.value = '';
+                selectedCoverageSupervisors = updateSupervisorFilter(document.getElementById('coverage-supervisor-filter-dropdown'), document.getElementById('coverage-supervisor-filter-text'), selectedCoverageSupervisors, combinedDataSup);
             }
 
             const { sales: salesSeller, history: historySeller } = getCoverageFilteredData({ excludeFilter: 'seller' });
-            selectedCoverageSellers = updateSellerFilter(coverageSupervisorFilter.value, coverageVendedorFilterDropdown, coverageVendedorFilterText, selectedCoverageSellers, [...salesSeller, ...historySeller], skipFilter === 'seller');
+            selectedCoverageSellers = updateSellerFilter(selectedCoverageSupervisors, coverageVendedorFilterDropdown, coverageVendedorFilterText, selectedCoverageSellers, [...salesSeller, ...historySeller], skipFilter === 'seller');
 
             const { sales: salesSupplier, history: historySupplier } = getCoverageFilteredData({ excludeFilter: ['supplier', 'product'] });
             selectedCoverageSuppliers = updateSupplierFilter(coverageSupplierFilterDropdown, coverageSupplierFilterText, selectedCoverageSuppliers, [...salesSupplier, ...historySupplier], 'coverage', skipFilter === 'supplier');
@@ -1692,7 +1698,7 @@
         }
         
         function resetCoverageFilters() {
-            coverageSupervisorFilter.value = '';
+            selectedCoverageSupervisors = [];
             coverageCityFilter.value = '';
             coverageFilialFilter.value = 'ambas';
 
@@ -1715,7 +1721,6 @@
             const { clients, sales, history } = getCoverageFilteredData();
             const productsToAnalyze = [...new Set([...sales.map(s => s.PRODUTO), ...history.map(s => s.PRODUTO)])];
 
-            const supervisor = coverageSupervisorFilter.value;
             const sellers = selectedCoverageSellers;
             const sellerRcaCodes = new Set();
             if (sellers.length > 0) {
@@ -1723,8 +1728,10 @@
                     const rcaCode = optimizedData.rcaCodeByName.get(sellerName);
                     if (rcaCode) sellerRcaCodes.add(rcaCode);
                 });
-            } else if (supervisor) {
-                (optimizedData.rcasBySupervisor.get(supervisor) || []).forEach(rca => sellerRcaCodes.add(rca));
+            } else if (selectedCoverageSupervisors.length > 0) {
+                selectedCoverageSupervisors.forEach(sup => {
+                    (optimizedData.rcasBySupervisor.get(sup) || []).forEach(rca => sellerRcaCodes.add(rca));
+                });
             }
 
             const activeClientsForCoverage = clients.filter(c => {
@@ -1983,6 +1990,11 @@
                 });
             }
 
+            const totalBoxesFiltered = filteredTableData.reduce((sum, item) => sum + item.boxesSoldCurrentMonth, 0);
+            if (coverageTotalBoxesEl) {
+                coverageTotalBoxesEl.textContent = totalBoxesFiltered.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+            }
+
             coverageTableDataForExport = filteredTableData;
 
             coverageTableBody.innerHTML = filteredTableData.slice(0, 500).map(item => {
@@ -2022,44 +2034,81 @@
 
             // Render Top 10 Cities Chart
             const salesByCity = {};
+            const salesBySeller = {};
+
             sales.forEach(s => {
                 const city = s.CIDADE || 'N/A';
                 salesByCity[city] = (salesByCity[city] || 0) + s.QTVENDA_EMBALAGEM_MASTER;
+
+                const seller = s.NOME || 'N/A';
+                salesBySeller[seller] = (salesBySeller[seller] || 0) + s.QTVENDA_EMBALAGEM_MASTER;
             });
 
+            // 1. Chart Data for Cities
             const sortedCities = Object.entries(salesByCity)
                 .sort(([,a], [,b]) => b - a)
                 .slice(0, 10);
 
-            if (sortedCities.length > 0) {
-                createChart('coverageCityChart', 'bar', sortedCities.map(([city]) => city), sortedCities.map(([, qty]) => qty), {
-                    indexAxis: 'x',
-                    plugins: {
-                        datalabels: {
-                            align: 'end',
-                            anchor: 'end',
-                            color: '#cbd5e1',
-                            font: { weight: 'bold', size: 14 },
-                            formatter: (value) => value.toLocaleString('pt-BR', { maximumFractionDigits: 1 })
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    let label = context.dataset.label || '';
-                                    if (label) {
-                                        label += ': ';
-                                    }
-                                    if (context.parsed.y !== null) {
-                                        label += context.parsed.y.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + ' caixas';
-                                    }
-                                    return label;
+            // 2. Chart Data for Sellers
+            const sortedSellers = Object.entries(salesBySeller)
+                .sort(([,a], [,b]) => b - a)
+                .slice(0, 10);
+
+            const commonChartOptions = {
+                indexAxis: 'x',
+                plugins: {
+                    datalabels: {
+                        align: 'end',
+                        anchor: 'end',
+                        color: '#cbd5e1',
+                        font: { weight: 'bold', size: 14 },
+                        formatter: (value) => value.toLocaleString('pt-BR', { maximumFractionDigits: 1 })
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
                                 }
+                                if (context.parsed.y !== null) {
+                                    label += context.parsed.y.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + ' caixas';
+                                }
+                                return label;
                             }
                         }
                     }
-                });
+                }
+            };
+
+            if (sortedCities.length > 0) {
+                createChart('coverageCityChart', 'bar', sortedCities.map(([city]) => city), sortedCities.map(([, qty]) => qty), commonChartOptions);
             } else {
                 showNoDataMessage('coverageCityChart', 'Sem dados para exibir.');
+            }
+
+            if (sortedSellers.length > 0) {
+                createChart('coverageSellerChart', 'bar', sortedSellers.map(([seller]) => getFirstName(seller)), sortedSellers.map(([, qty]) => qty), commonChartOptions);
+            } else {
+                showNoDataMessage('coverageSellerChart', 'Sem dados para exibir.');
+            }
+
+            // Visibility Toggle Logic
+            const cityContainer = document.getElementById('coverageCityChartContainer');
+            const sellerContainer = document.getElementById('coverageSellerChartContainer');
+            const toggleBtn = document.getElementById('coverage-chart-toggle-btn');
+            const chartTitle = document.getElementById('coverage-chart-title');
+
+            if (currentCoverageChartMode === 'city') {
+                if (cityContainer) cityContainer.classList.remove('hidden');
+                if (sellerContainer) sellerContainer.classList.add('hidden');
+                if (toggleBtn) toggleBtn.textContent = 'Ver Vendedores';
+                if (chartTitle) chartTitle.textContent = 'Top 10 Cidades (Quantidade de Caixas)';
+            } else {
+                if (cityContainer) cityContainer.classList.add('hidden');
+                if (sellerContainer) sellerContainer.classList.remove('hidden');
+                if (toggleBtn) toggleBtn.textContent = 'Ver Cidades';
+                if (chartTitle) chartTitle.textContent = 'Top 10 Vendedores (Quantidade de Caixas)';
             }
         }
         
@@ -2351,10 +2400,8 @@
         }
 
         function updateAllVisuals() {
-            const supervisor = supervisorFilter.value;
             const posicao = posicaoFilter.value;
             const codcli = codcliFilter.value.trim();
-            const selectedFornecedor = fornecedorFilter.value;
 
             let clientBaseForCoverage = allClientsData.filter(c => {
                 const rca1 = String(c.rca1 || '').trim();
@@ -2396,13 +2443,15 @@
                         return []; 
                     }
                 } else {
-                    if (supervisor) {
+                    if (selectedMainSupervisors.length > 0) {
                         hasFilter = true;
-                        if (indices.bySupervisor.has(supervisor)) {
-                            setsToIntersect.push(indices.bySupervisor.get(supervisor));
-                        } else {
-                            return [];
-                        }
+                        const supIds = new Set();
+                        selectedMainSupervisors.forEach(sup => {
+                            if (indices.bySupervisor.has(sup)) {
+                                (indices.bySupervisor.get(sup) || []).forEach(id => supIds.add(id));
+                            }
+                        });
+                        setsToIntersect.push(supIds);
                     }
                     if (selectedSellers.length > 0) {
                         hasFilter = true;
@@ -2431,13 +2480,15 @@
                         return [];
                     }
                 }
-                if (selectedFornecedor) {
+                if (selectedMainSuppliers.length > 0) {
                     hasFilter = true;
-                    if (indices.bySupplier.has(selectedFornecedor)) {
-                        setsToIntersect.push(indices.bySupplier.get(selectedFornecedor));
-                    } else {
-                        return [];
-                    }
+                    const supplierIds = new Set();
+                    selectedMainSuppliers.forEach(sup => {
+                        if (indices.bySupplier.has(sup)) {
+                            (indices.bySupplier.get(sup) || []).forEach(id => supplierIds.add(id));
+                        }
+                    });
+                    setsToIntersect.push(supplierIds);
                 }
 
                 if (indices.byPosition && posicao) { 
@@ -2480,17 +2531,17 @@
                 }
                 if (codcli) matches = matches && order.CODCLI === codcli;
                 else {
-                    if (supervisor) matches = matches && order.SUPERV === supervisor;
+                    if (selectedMainSupervisors.length > 0) matches = matches && selectedMainSupervisors.includes(order.SUPERV);
                     if (selectedSellers.length > 0) matches = matches && selectedSellers.includes(order.NOME);
                 }
                 if (selectedTiposVenda.length > 0) matches = matches && selectedTiposVenda.includes(order.TIPOVENDA);
                 if (currentFornecedor) matches = matches && order.FORNECEDORES_LIST.includes(currentFornecedor);
-                if (selectedFornecedor) matches = matches && order.CODFORS_LIST && order.CODFORS_LIST.includes(selectedFornecedor);
+                if (selectedMainSuppliers.length > 0) matches = matches && order.CODFORS_LIST && order.CODFORS_LIST.some(c => selectedMainSuppliers.includes(c));
                 if (posicao) matches = matches && order.POSICAO === posicao;
                 return matches;
             });
 
-            const isFiltered = !!supervisor || selectedSellers.length > 0 || !!codcli || !!currentFornecedor || !!mainRedeGroupFilter || !!selectedFornecedor || !!posicao || selectedTiposVenda.length > 0;
+            const isFiltered = selectedMainSupervisors.length > 0 || selectedSellers.length > 0 || !!codcli || !!currentFornecedor || !!mainRedeGroupFilter || selectedMainSuppliers.length > 0 || !!posicao || selectedTiposVenda.length > 0;
 
             const summary = calculateSummaryFromData(filteredSalesData, isFiltered, clientBaseForCoverage);
 
@@ -2507,9 +2558,9 @@
 
             if (!chartView.classList.contains('hidden')) {
                 updateTrendChart(filteredSalesData, filteredHistoryData);
-                const totalForPercentage = supervisor ? Object.values(summary.vendasPorVendedor).reduce((a, b) => a + b, 0) : Object.values(summary.vendasPorSupervisor).reduce((a, b) => a + b, 0);
+                const totalForPercentage = selectedMainSupervisors.length > 0 ? Object.values(summary.vendasPorVendedor).reduce((a, b) => a + b, 0) : Object.values(summary.vendasPorSupervisor).reduce((a, b) => a + b, 0);
                 const personChartTooltipOptions = { plugins: { tooltip: { callbacks: { label: function(context) { let label = context.dataset.label || ''; if (label) label += ': '; const value = context.parsed.y; if (value !== null) { label += new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value); if (totalForPercentage > 0) { const percentage = ((value / totalForPercentage) * 100).toFixed(2); label += ` (${percentage}%)`; } } return label; } } } } };
-                if (supervisor) {
+                if (selectedMainSupervisors.length > 0) {
                     salesByPersonTitle.textContent = 'Vendas por Vendedor';
                     createChart('salesByPersonChart', 'bar', Object.keys(summary.vendasPorVendedor).map(getFirstName), Object.values(summary.vendasPorVendedor), personChartTooltipOptions);
                 } else {
@@ -2528,42 +2579,37 @@
             }
         }
 
-        function populateSupervisors(filterElementId, dataSource) {
-            const supervisorFilterEl = document.getElementById(filterElementId);
-            if (!supervisorFilterEl) return;
+        function updateSupervisorFilter(dropdown, filterText, selectedArray, dataSource, skipRender = false) {
+            if (!dropdown || !filterText) return selectedArray;
             const supervisors = [...new Set(dataSource.map(item => item.SUPERV).filter(Boolean))].sort();
-            const currentSupervisorValue = supervisorFilterEl.value;
 
-            const options = ['<option value="">Todos</option>'];
-            for (let i = 0; i < supervisors.length; i++) {
-                options.push(`<option value="${supervisors[i]}">${supervisors[i]}</option>`);
-            }
-            supervisorFilterEl.innerHTML = options.join('');
+            selectedArray = selectedArray.filter(sup => supervisors.includes(sup));
 
-            if (supervisors.includes(currentSupervisorValue)) supervisorFilterEl.value = currentSupervisorValue;
-            else supervisorFilterEl.value = '';
-        }
-
-        function populateMainSupplierFilter(filterElementId, dataSource) {
-            const filterEl = document.getElementById(filterElementId);
-            if (!filterEl) return;
-            const suppliers = new Map();
-            dataSource.forEach(s => {
-                if (s.CODFOR && s.FORNECEDOR) {
-                    suppliers.set(s.CODFOR, s.FORNECEDOR);
+            if (!skipRender) {
+                const htmlParts = [];
+                for (let i = 0; i < supervisors.length; i++) {
+                    const sup = supervisors[i];
+                    const isChecked = selectedArray.includes(sup);
+                    htmlParts.push(`<label class="flex items-center p-2 hover:bg-slate-600 cursor-pointer"><input type="checkbox" class="form-checkbox h-4 w-4 bg-slate-800 border-slate-500 rounded text-teal-500 focus:ring-teal-500" value="${sup}" ${isChecked ? 'checked' : ''}><span class="ml-2">${sup}</span></label>`);
                 }
-            });
-            const sortedSuppliers = [...suppliers.entries()].sort((a, b) => a[1].localeCompare(b[1]));
-
-            const options = ['<option value="">Todos</option>'];
-            for (let i = 0; i < sortedSuppliers.length; i++) {
-                options.push(`<option value="${sortedSuppliers[i][0]}">${sortedSuppliers[i][0]} - ${sortedSuppliers[i][1]}</option>`);
+                dropdown.innerHTML = htmlParts.join('');
             }
-            filterEl.innerHTML = options.join('');
+
+            if (selectedArray.length === 0 || selectedArray.length === supervisors.length) filterText.textContent = 'Todos';
+            else if (selectedArray.length === 1) filterText.textContent = selectedArray[0];
+            else filterText.textContent = `${selectedArray.length} selecionados`;
+            return selectedArray;
         }
 
-        function updateSellerFilter(supervisor, dropdown, filterText, selectedArray, dataSource, skipRender = false) {
-            const sellersToShow = supervisor ? [...new Set(dataSource.filter(s => s.SUPERV === supervisor).map(s => s.NOME))].sort() : [...new Set(dataSource.map(item => item.NOME).filter(Boolean))].sort();
+        function updateSellerFilter(supervisors, dropdown, filterText, selectedArray, dataSource, skipRender = false) {
+            let sellersToShow;
+            if (supervisors && supervisors.length > 0) {
+                const supSet = new Set(supervisors);
+                sellersToShow = [...new Set(dataSource.filter(s => supSet.has(s.SUPERV)).map(s => s.NOME))].sort();
+            } else {
+                sellersToShow = [...new Set(dataSource.map(item => item.NOME).filter(Boolean))].sort();
+            }
+
             selectedArray = selectedArray.filter(seller => sellersToShow.includes(seller));
 
             if (!skipRender) {
@@ -2623,8 +2669,8 @@
         }
 
         function resetMainFilters() {
-            supervisorFilter.value = '';
-            fornecedorFilter.value = '';
+            selectedMainSupervisors = [];
+            selectedMainSuppliers = [];
             posicaoFilter.value = '';
             codcliFilter.value = '';
             currentFornecedor = '';
@@ -2639,14 +2685,15 @@
             updateRedeFilter(mainRedeFilterDropdown, mainComRedeBtnText, selectedMainRedes, allClientsData);
 
             document.querySelectorAll('#fornecedor-toggle-container .fornecedor-btn').forEach(b => b.classList.remove('active'));
-            populateSupervisors('supervisor-filter', allSalesData);
-            selectedSellers = updateSellerFilter('', vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData);
+            selectedMainSupervisors = updateSupervisorFilter(document.getElementById('supervisor-filter-dropdown'), document.getElementById('supervisor-filter-text'), selectedMainSupervisors, allSalesData);
+            selectedMainSuppliers = updateSupplierFilter(document.getElementById('fornecedor-filter-dropdown'), document.getElementById('fornecedor-filter-text'), selectedMainSuppliers, [...allSalesData, ...allHistoryData], 'main');
+            selectedSellers = updateSellerFilter(selectedMainSupervisors, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData);
             selectedTiposVenda = updateTipoVendaFilter(tipoVendaFilterDropdown, tipoVendaFilterText, selectedTiposVenda, allSalesData);
             updateAllVisuals();
         }
 
         function resetCityFilters() {
-            citySupervisorFilter.value = '';
+            selectedCitySupervisors = [];
             cityNameFilter.value = '';
             cityCodCliFilter.value = '';
             selectedCitySellers = [];
@@ -2654,7 +2701,8 @@
             cityRedeGroupFilter = '';
             selectedCityTiposVenda = [];
 
-            selectedCitySellers = updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData);
+            selectedCitySupervisors = updateSupervisorFilter(document.getElementById('city-supervisor-filter-dropdown'), document.getElementById('city-supervisor-filter-text'), selectedCitySupervisors, allSalesData);
+            selectedCitySellers = updateSellerFilter(selectedCitySupervisors, cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData);
             selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData);
 
             cityRedeGroupContainer.querySelectorAll('button').forEach(b => b.classList.remove('active'));
@@ -2672,7 +2720,7 @@
         }
 
         function resetComparisonFilters() {
-            comparisonSupervisorFilter.value = '';
+            selectedComparisonSupervisors = [];
             comparisonFilialFilter.value = 'ambas';
             currentComparisonFornecedor = '';
             comparisonCityFilter.value = '';
@@ -2696,7 +2744,7 @@
         function resetStockFilters() {
             stockFilialFilter.value = 'ambas';
             currentStockFornecedor = '';
-            stockSupervisorFilter.value = '';
+            selectedStockSupervisors = [];
             stockCityFilter.value = '';
             selectedStockSellers = [];
             selectedStockSuppliers = [];
@@ -2726,7 +2774,6 @@
         function getCityFilteredData(options = {}) {
             const { excludeFilter = null } = options;
 
-            const supervisor = citySupervisorFilter.value;
             const sellersSet = new Set(selectedCitySellers);
             const cityInput = cityNameFilter.value.trim().toLowerCase();
             const codCli = cityCodCliFilter.value.trim();
@@ -2746,9 +2793,11 @@
                 }
             }
 
-            if (excludeFilter !== 'supervisor' && supervisor) {
-                const rcas = optimizedData.rcasBySupervisor.get(supervisor) || [];
-                const rcasSet = new Set(rcas);
+            if (excludeFilter !== 'supervisor' && selectedCitySupervisors.length > 0) {
+                const rcasSet = new Set();
+                selectedCitySupervisors.forEach(sup => {
+                    (optimizedData.rcasBySupervisor.get(sup) || []).forEach(rca => rcasSet.add(rca));
+                });
                 clients = clients.filter(c => c.rcas.some(r => rcasSet.has(r)));
             }
 
@@ -2771,8 +2820,10 @@
 
             const clientCodes = new Set(clients.map(c => c['Código']));
             
+            const supervisorSet = new Set(selectedCitySupervisors);
+
             const filters = {
-                supervisor: supervisor,
+                supervisor: supervisorSet,
                 seller: sellersSet,
                 city: cityInput,
                 tipoVenda: tiposVendaSet,
@@ -2789,11 +2840,11 @@
 
             if (skipFilter !== 'supervisor') {
                 const { sales } = getCityFilteredData({ excludeFilter: 'supervisor' });
-                populateSupervisors('city-supervisor-filter', sales);
+                selectedCitySupervisors = updateSupervisorFilter(document.getElementById('city-supervisor-filter-dropdown'), document.getElementById('city-supervisor-filter-text'), selectedCitySupervisors, sales);
             }
             
             const { sales: salesSeller } = getCityFilteredData({ excludeFilter: 'seller' });
-            selectedCitySellers = updateSellerFilter(citySupervisorFilter.value, cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, salesSeller, skipFilter === 'seller');
+            selectedCitySellers = updateSellerFilter(selectedCitySupervisors, cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, salesSeller, skipFilter === 'seller');
 
             const { sales: salesTV } = getCityFilteredData({ excludeFilter: 'tipoVenda' });
             selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, salesTV, skipFilter === 'tipoVenda');
@@ -3472,11 +3523,25 @@
             }
 
             if (excludeFilter !== 'supervisor' && filters.supervisor) {
-                hasFilter = true;
-                if (indices.bySupervisor && indices.bySupervisor.has(filters.supervisor)) {
-                    setsToIntersect.push(indices.bySupervisor.get(filters.supervisor));
-                } else {
-                    return [];
+                if (typeof filters.supervisor === 'string') {
+                    hasFilter = true;
+                    if (indices.bySupervisor && indices.bySupervisor.has(filters.supervisor)) {
+                        setsToIntersect.push(indices.bySupervisor.get(filters.supervisor));
+                    } else {
+                        return [];
+                    }
+                } else if (filters.supervisor.size > 0) {
+                    hasFilter = true;
+                    const unionIds = new Set();
+                    let foundAny = false;
+                    filters.supervisor.forEach(sup => {
+                        if (indices.bySupervisor && indices.bySupervisor.has(sup)) {
+                            indices.bySupervisor.get(sup).forEach(id => unionIds.add(id));
+                            foundAny = true;
+                        }
+                    });
+                    if (foundAny) setsToIntersect.push(unionIds);
+                    else return [];
                 }
             }
 
@@ -3596,8 +3661,8 @@
             const productsSet = new Set(selectedComparisonProducts);
             const tiposVendaSet = new Set(selectedComparisonTiposVenda);
             const redeSet = new Set(selectedComparisonRedes);
+            const supervisorSet = new Set(selectedComparisonSupervisors);
 
-            const supervisor = comparisonSupervisorFilter.value;
             const pasta = currentComparisonFornecedor;
             const city = comparisonCityFilter.value.trim().toLowerCase();
             const filial = comparisonFilialFilter.value;
@@ -3618,7 +3683,7 @@
 
             const filters = {
                 filial,
-                supervisor,
+                supervisor: supervisorSet,
                 pasta,
                 tipoVenda: tiposVendaSet,
                 seller: sellersSet,
@@ -3638,15 +3703,11 @@
         function updateAllComparisonFilters() {
             const { currentSales: supervisorCurrent, historySales: supervisorHistory } = getComparisonFilteredData({ excludeFilter: 'supervisor' });
             const supervisorOptionsData = [...supervisorCurrent, ...supervisorHistory];
-            const currentSupervisor = comparisonSupervisorFilter.value;
-            populateSupervisors('comparison-supervisor-filter', supervisorOptionsData);
-            if ([...comparisonSupervisorFilter.options].some(o => o.value === currentSupervisor)) {
-                comparisonSupervisorFilter.value = currentSupervisor;
-            }
+            selectedComparisonSupervisors = updateSupervisorFilter(document.getElementById('comparison-supervisor-filter-dropdown'), document.getElementById('comparison-supervisor-filter-text'), selectedComparisonSupervisors, supervisorOptionsData);
 
             const { currentSales: sellerCurrent, historySales: sellerHistory } = getComparisonFilteredData({ excludeFilter: 'seller' });
             const sellerOptionsData = [...sellerCurrent, ...sellerHistory];
-            selectedComparisonSellers = updateSellerFilter(comparisonSupervisorFilter.value, comparisonVendedorFilterDropdown, comparisonVendedorFilterText, selectedComparisonSellers, sellerOptionsData);
+            selectedComparisonSellers = updateSellerFilter(selectedComparisonSupervisors, comparisonVendedorFilterDropdown, comparisonVendedorFilterText, selectedComparisonSellers, sellerOptionsData);
 
             const { currentSales: supplierCurrent, historySales: supplierHistory } = getComparisonFilteredData({ excludeFilter: 'supplier' });
             const supplierOptionsData = [...supplierCurrent, ...supplierHistory];
@@ -3732,7 +3793,7 @@
 
         function updateStockSellerFilter(skipRender = false) {
             const data = getStockFilteredData({excludeFilter: 'seller'});
-            selectedStockSellers = updateSellerFilter(stockSupervisorFilter.value, stockVendedorFilterDropdown, stockVendedorFilterText, selectedStockSellers, [...data.sales, ...data.history], skipRender);
+            selectedStockSellers = updateSellerFilter(selectedStockSupervisors, stockVendedorFilterDropdown, stockVendedorFilterText, selectedStockSellers, [...data.sales, ...data.history], skipRender);
         }
 
         function updateStockCitySuggestions(dataSource) {
@@ -3770,8 +3831,8 @@
             const productsSet = new Set(selectedStockProducts);
             const tiposVendaSet = new Set(selectedStockTiposVenda);
             const redeSet = new Set(selectedStockRedes);
+            const supervisorSet = new Set(selectedStockSupervisors);
 
-            const supervisor = stockSupervisorFilter.value;
             const pasta = currentStockFornecedor;
             const city = stockCityFilter.value.trim().toLowerCase();
             const filial = stockFilialFilter.value;
@@ -4540,7 +4601,6 @@
         function getInnovationsMonthFilteredData(options = {}) {
             const { excludeFilter = null } = options;
 
-            const supervisor = innovationsMonthSupervisorFilter.value;
             const sellers = selectedInnovationsMonthSellers;
             const city = innovationsMonthCityFilter.value.trim().toLowerCase();
             const filial = innovationsMonthFilialFilter.value;
@@ -4551,9 +4611,12 @@
                 clients = clients.filter(c => clientLastBranch.get(c['Código']) === filial);
             }
 
-            if (excludeFilter !== 'supervisor' && supervisor) {
-                const rcasOfSupervisor = new Set(optimizedData.rcasBySupervisor.get(supervisor) || []);
-                clients = clients.filter(c => c.rcas.some(rca => rcasOfSupervisor.has(rca)));
+            if (excludeFilter !== 'supervisor' && selectedInnovationsSupervisors.length > 0) {
+                const rcasSet = new Set();
+                selectedInnovationsSupervisors.forEach(sup => {
+                    (optimizedData.rcasBySupervisor.get(sup) || []).forEach(rca => rcasSet.add(rca));
+                });
+                clients = clients.filter(c => c.rcas.some(rca => rcasSet.has(rca)));
             }
             if (excludeFilter !== 'seller' && sellers.length > 0) {
                 const rcasOfSellers = new Set();
@@ -4571,13 +4634,15 @@
         }
 
         function resetInnovationsMonthFilters() {
-            innovationsMonthSupervisorFilter.value = '';
+            selectedInnovationsSupervisors = [];
             innovationsMonthCityFilter.value = '';
             innovationsMonthFilialFilter.value = 'ambas';
             innovationsMonthCategoryFilter.value = '';
             selectedInnovationsMonthSellers = [];
             selectedInnovationsMonthTiposVenda = [];
-            updateSellerFilter('', innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
+
+            selectedInnovationsSupervisors = updateSupervisorFilter(document.getElementById('innovations-month-supervisor-filter-dropdown'), document.getElementById('innovations-month-supervisor-filter-text'), selectedInnovationsSupervisors, allSalesData);
+            updateSellerFilter(selectedInnovationsSupervisors, innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
             selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
             updateInnovationsMonthView();
         }
@@ -4619,7 +4684,6 @@
 
             const { clients: filteredClients } = getInnovationsMonthFilteredData();
 
-            const supervisor = innovationsMonthSupervisorFilter.value;
             const sellers = selectedInnovationsMonthSellers;
             const sellerRcaCodes = new Set();
             if (sellers.length > 0) {
@@ -4627,8 +4691,10 @@
                     const rcaCode = optimizedData.rcaCodeByName.get(sellerName);
                     if (rcaCode) sellerRcaCodes.add(rcaCode);
                 });
-            } else if (supervisor) {
-                (optimizedData.rcasBySupervisor.get(supervisor) || []).forEach(rca => sellerRcaCodes.add(rca));
+            } else if (selectedInnovationsSupervisors.length > 0) {
+                selectedInnovationsSupervisors.forEach(sup => {
+                    (optimizedData.rcasBySupervisor.get(sup) || []).forEach(rca => sellerRcaCodes.add(rca));
+                });
             }
 
             const activeClients = filteredClients.filter(c => {
@@ -5273,10 +5339,11 @@
             doc.text(splitFilters, 14, 36);
 
             // Add Chart if available
-            const chartCanvas = document.getElementById('coverageCityChart');
-            if (chartCanvas && charts['coverageCityChart']) {
+            const chartId = currentCoverageChartMode === 'city' ? 'coverageCityChart' : 'coverageSellerChart';
+            const chartCanvas = document.getElementById(chartId);
+            if (chartCanvas && charts[chartId]) {
                 try {
-                    const chartInstance = charts['coverageCityChart'];
+                    const chartInstance = charts[chartId];
                     const originalDatalabelsColor = chartInstance.options.plugins.datalabels.color;
                     const originalXColor = chartInstance.options.scales.x.ticks.color;
                     const originalYColor = chartInstance.options.scales.y.ticks.color;
@@ -5645,19 +5712,45 @@
                 updateAllVisuals();
             };
 
-            supervisorFilter.addEventListener('change', () => { 
-                selectedSellers = []; 
-                updateSellerFilter(supervisorFilter.value, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData); 
-                mainTableState.currentPage = 1; 
-                updateDashboard(); 
+            const supervisorFilterBtn = document.getElementById('supervisor-filter-btn');
+            const supervisorFilterDropdown = document.getElementById('supervisor-filter-dropdown');
+            supervisorFilterBtn.addEventListener('click', () => supervisorFilterDropdown.classList.toggle('hidden'));
+            supervisorFilterDropdown.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox') {
+                    const { value, checked } = e.target;
+                    if (checked) selectedMainSupervisors.push(value);
+                    else selectedMainSupervisors = selectedMainSupervisors.filter(s => s !== value);
+
+                    selectedSellers = []; // Reset sellers when supervisor changes to avoid inconsistent state? Or keep valid intersection?
+                    // Better: Re-run updateSellerFilter which filters 'selectedSellers' to only keep valid ones.
+                    selectedMainSupervisors = updateSupervisorFilter(supervisorFilterDropdown, document.getElementById('supervisor-filter-text'), selectedMainSupervisors, allSalesData);
+                    selectedSellers = updateSellerFilter(selectedMainSupervisors, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData);
+                    mainTableState.currentPage = 1;
+                    updateDashboard();
+                }
             });
-            fornecedorFilter.addEventListener('change', () => { mainTableState.currentPage = 1; updateDashboard(); });
+
+            const fornecedorFilterBtn = document.getElementById('fornecedor-filter-btn');
+            const fornecedorFilterDropdown = document.getElementById('fornecedor-filter-dropdown');
+            fornecedorFilterBtn.addEventListener('click', () => fornecedorFilterDropdown.classList.toggle('hidden'));
+            fornecedorFilterDropdown.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox') {
+                    const { value, checked } = e.target;
+                    if (checked) selectedMainSuppliers.push(value);
+                    else selectedMainSuppliers = selectedMainSuppliers.filter(s => s !== value);
+
+                    selectedMainSuppliers = updateSupplierFilter(fornecedorFilterDropdown, document.getElementById('fornecedor-filter-text'), selectedMainSuppliers, [...allSalesData, ...allHistoryData], 'main');
+                    mainTableState.currentPage = 1;
+                    updateDashboard();
+                }
+            });
+
             vendedorFilterBtn.addEventListener('click', () => vendedorFilterDropdown.classList.toggle('hidden'));
             vendedorFilterDropdown.addEventListener('change', (e) => { 
                 if (e.target.type === 'checkbox') { 
                     const { value, checked } = e.target; 
                     if (checked) selectedSellers.push(value); else selectedSellers = selectedSellers.filter(s => s !== value); 
-                    selectedSellers = updateSellerFilter(supervisorFilter.value, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData); 
+                    selectedSellers = updateSellerFilter(selectedMainSupervisors, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData);
                     mainTableState.currentPage = 1; 
                     updateDashboard(); 
                 } 
@@ -5726,9 +5819,18 @@
                 handleCityFilterChange();
             };
 
-            citySupervisorFilter.addEventListener('change', () => { 
-                selectedCitySellers = []; 
-                handleCityFilterChange();
+            const citySupervisorFilterBtn = document.getElementById('city-supervisor-filter-btn');
+            const citySupervisorFilterDropdown = document.getElementById('city-supervisor-filter-dropdown');
+            citySupervisorFilterBtn.addEventListener('click', () => citySupervisorFilterDropdown.classList.toggle('hidden'));
+            citySupervisorFilterDropdown.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox') {
+                    const { value, checked } = e.target;
+                    if (checked) selectedCitySupervisors.push(value);
+                    else selectedCitySupervisors = selectedCitySupervisors.filter(s => s !== value);
+
+                    selectedCitySellers = [];
+                    handleCityFilterChange();
+                }
             });
 
             cityVendedorFilterBtn.addEventListener('click', () => cityVendedorFilterDropdown.classList.toggle('hidden'));
@@ -5871,7 +5973,19 @@
 
             const handleComparisonFilterChange = updateComparison;
 
-            comparisonSupervisorFilter.addEventListener('change', handleComparisonFilterChange);
+            const comparisonSupervisorFilterBtn = document.getElementById('comparison-supervisor-filter-btn');
+            const comparisonSupervisorFilterDropdown = document.getElementById('comparison-supervisor-filter-dropdown');
+            comparisonSupervisorFilterBtn.addEventListener('click', () => comparisonSupervisorFilterDropdown.classList.toggle('hidden'));
+            comparisonSupervisorFilterDropdown.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox') {
+                    const { value, checked } = e.target;
+                    if (checked) selectedComparisonSupervisors.push(value);
+                    else selectedComparisonSupervisors = selectedComparisonSupervisors.filter(s => s !== value);
+                    selectedComparisonSellers = [];
+                    handleComparisonFilterChange();
+                }
+            });
+
             comparisonFilialFilter.addEventListener('change', handleComparisonFilterChange);
             comparisonVendedorFilterBtn.addEventListener('click', () => comparisonVendedorFilterDropdown.classList.toggle('hidden'));
             comparisonVendedorFilterDropdown.addEventListener('change', (e) => { if (e.target.type === 'checkbox') { const { value, checked } = e.target; if (checked) selectedComparisonSellers.push(value); else selectedComparisonSellers = selectedComparisonSellers.filter(s => s !== value); handleComparisonFilterChange(); } });
@@ -6004,7 +6118,21 @@
             stockFilialFilter.addEventListener('change', handleStockFilterChange);
             clearStockFiltersBtn.addEventListener('click', resetStockFilters);
             stockFornecedorToggleContainer.addEventListener('click', (e) => { if (e.target.tagName === 'BUTTON') { const fornecedor = e.target.dataset.fornecedor; if (currentStockFornecedor === fornecedor) { currentStockFornecedor = ''; e.target.classList.remove('active'); } else { currentStockFornecedor = fornecedor; stockFornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(b => b.classList.remove('active')); e.target.classList.add('active'); } handleStockFilterChange(); } });
-            stockSupervisorFilter.addEventListener('change', handleStockFilterChange);
+
+            const stockSupervisorFilterBtn = document.getElementById('stock-supervisor-filter-btn');
+            const stockSupervisorFilterDropdown = document.getElementById('stock-supervisor-filter-dropdown');
+            stockSupervisorFilterBtn.addEventListener('click', () => stockSupervisorFilterDropdown.classList.toggle('hidden'));
+            stockSupervisorFilterDropdown.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox') {
+                    const { value, checked } = e.target;
+                    if (checked) selectedStockSupervisors.push(value);
+                    else selectedStockSupervisors = selectedStockSupervisors.filter(s => s !== value);
+
+                    selectedStockSellers = [];
+                    handleStockFilterChange();
+                }
+            });
+
             stockVendedorFilterBtn.addEventListener('click', () => stockVendedorFilterDropdown.classList.toggle('hidden'));
             stockVendedorFilterDropdown.addEventListener('change', (e) => { if (e.target.type === 'checkbox') { const { value, checked } = e.target; if (checked) selectedStockSellers.push(value); else selectedStockSellers = selectedStockSellers.filter(s => s !== value); handleStockFilterChange({ skipFilter: 'seller' }); } });
             stockSupplierFilterBtn.addEventListener('click', () => stockSupplierFilterDropdown.classList.toggle('hidden'));
@@ -6163,10 +6291,19 @@
 
             const debouncedUpdateInnovationsMonth = debounce(updateInnovations, 400);
 
-            innovationsMonthSupervisorFilter.addEventListener('change', () => {
-                selectedInnovationsMonthSellers = [];
-                updateSellerFilter(innovationsMonthSupervisorFilter.value, innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, selectedInnovationsMonthSellers, allSalesData);
-                debouncedUpdateInnovationsMonth();
+            const innovationsMonthSupervisorFilterBtn = document.getElementById('innovations-month-supervisor-filter-btn');
+            const innovationsMonthSupervisorFilterDropdown = document.getElementById('innovations-month-supervisor-filter-dropdown');
+            innovationsMonthSupervisorFilterBtn.addEventListener('click', () => innovationsMonthSupervisorFilterDropdown.classList.toggle('hidden'));
+            innovationsMonthSupervisorFilterDropdown.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox') {
+                    const { value, checked } = e.target;
+                    if (checked) selectedInnovationsSupervisors.push(value);
+                    else selectedInnovationsSupervisors = selectedInnovationsSupervisors.filter(s => s !== value);
+
+                    selectedInnovationsMonthSellers = [];
+                    updateSellerFilter(selectedInnovationsSupervisors, innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, selectedInnovationsMonthSellers, allSalesData);
+                    debouncedUpdateInnovationsMonth();
+                }
             });
 
             innovationsMonthVendedorFilterBtn.addEventListener('click', () => innovationsMonthVendedorFilterDropdown.classList.toggle('hidden'));
@@ -6178,7 +6315,7 @@
                     } else {
                         selectedInnovationsMonthSellers = selectedInnovationsMonthSellers.filter(s => s !== value);
                     }
-                    updateSellerFilter(innovationsMonthSupervisorFilter.value, innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, selectedInnovationsMonthSellers, allSalesData);
+                    updateSellerFilter(selectedInnovationsSupervisors, innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, selectedInnovationsMonthSellers, allSalesData);
                     debouncedUpdateInnovationsMonth();
                 }
             });
@@ -6231,6 +6368,14 @@
 
             document.getElementById('export-coverage-pdf-btn').addEventListener('click', exportCoveragePDF);
 
+            const coverageChartToggleBtn = document.getElementById('coverage-chart-toggle-btn');
+            if (coverageChartToggleBtn) {
+                coverageChartToggleBtn.addEventListener('click', () => {
+                    currentCoverageChartMode = currentCoverageChartMode === 'city' ? 'seller' : 'city';
+                    updateCoverageView();
+                });
+            }
+
             // --- Coverage View Filters ---
             const updateCoverage = () => {
                 markDirty('cobertura');
@@ -6240,9 +6385,19 @@
             const debouncedHandleCoverageChange = debounce(updateCoverage, 400);
 
             coverageFilialFilter.addEventListener('change', updateCoverage);
-            coverageSupervisorFilter.addEventListener('change', () => {
-                selectedCoverageSellers = [];
-                updateCoverage();
+
+            const coverageSupervisorFilterBtn = document.getElementById('coverage-supervisor-filter-btn');
+            const coverageSupervisorFilterDropdown = document.getElementById('coverage-supervisor-filter-dropdown');
+            coverageSupervisorFilterBtn.addEventListener('click', () => coverageSupervisorFilterDropdown.classList.toggle('hidden'));
+            coverageSupervisorFilterDropdown.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox') {
+                    const { value, checked } = e.target;
+                    if (checked) selectedCoverageSupervisors.push(value);
+                    else selectedCoverageSupervisors = selectedCoverageSupervisors.filter(s => s !== value);
+
+                    selectedCoverageSellers = [];
+                    updateCoverage();
+                }
             });
 
             coverageCityFilter.addEventListener('input', (e) => {
@@ -6400,13 +6555,14 @@
 
         initializeOptimizedDataStructures();
         calculateHistoricalBests(); // <-- MOVIDA PARA CIMA
-        populateSupervisors('supervisor-filter', allSalesData);
-        populateMainSupplierFilter('fornecedor-filter', [...allSalesData, ...allHistoryData]);
-        populateSupervisors('city-supervisor-filter', allSalesData);
-        populateSupervisors('stock-supervisor-filter', [...allSalesData, ...allHistoryData]);
-        updateSellerFilter('', vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData);
+        selectedMainSupervisors = updateSupervisorFilter(document.getElementById('supervisor-filter-dropdown'), document.getElementById('supervisor-filter-text'), selectedMainSupervisors, allSalesData);
+        selectedMainSuppliers = updateSupplierFilter(document.getElementById('fornecedor-filter-dropdown'), document.getElementById('fornecedor-filter-text'), selectedMainSuppliers, [...allSalesData, ...allHistoryData], 'main');
+        selectedCitySupervisors = updateSupervisorFilter(document.getElementById('city-supervisor-filter-dropdown'), document.getElementById('city-supervisor-filter-text'), selectedCitySupervisors, allSalesData);
+        selectedStockSupervisors = updateSupervisorFilter(document.getElementById('stock-supervisor-filter-dropdown'), document.getElementById('stock-supervisor-filter-text'), selectedStockSupervisors, [...allSalesData, ...allHistoryData]);
+
+        updateSellerFilter(selectedMainSupervisors, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData);
         updateTipoVendaFilter(tipoVendaFilterDropdown, tipoVendaFilterText, selectedTiposVenda, allSalesData);
-        updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData);
+        updateSellerFilter(selectedCitySupervisors, cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData);
 
         updateRedeFilter(mainRedeFilterDropdown, mainComRedeBtnText, selectedMainRedes, allClientsData);
         updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData);
@@ -6739,10 +6895,24 @@
                                             <div id="main-rede-filter-dropdown" class="hidden absolute z-20 w-56 mt-1 top-full left-0 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-left text-white"></div>
                                         </div>
                                         <!-- Outros Filtros -->
-                                        <div><label for="supervisor-filter" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label><select id="supervisor-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="">Todos</option></select></div>
+                                         <div class="relative">
+                                            <label for="supervisor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label>
+                                            <button id="supervisor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
+                                                <span id="supervisor-filter-text">Todos</span>
+                                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
+                                            </button>
+                                            <div id="supervisor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
+                                         </div>
                                         <div class="relative"><label for="vendedor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Vendedor</label><button id="vendedor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="vendedor-filter-text">Todos Vendedores</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></button><div id="vendedor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
                                         <div class="relative"><label for="tipo-venda-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Tipo Venda</label><button id="tipo-venda-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="tipo-venda-filter-text">Todos os Tipos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button><div id="tipo-venda-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
-                                        <div><label for="fornecedor-filter" class="block mb-2 text-sm font-medium text-slate-400">Fornecedor</label><select id="fornecedor-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="">Todos</option></select></div>
+                                         <div class="relative">
+                                            <label for="fornecedor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Fornecedor</label>
+                                            <button id="fornecedor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
+                                                <span id="fornecedor-filter-text">Todos</span>
+                                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
+                                            </button>
+                                            <div id="fornecedor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
+                                         </div>
                                         <div><label for="codcli-filter" class="block mb-2 text-sm font-medium text-slate-400">Cód. Cliente</label><input type="text" id="codcli-filter" placeholder="Digite o código..." class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"></div>
                                         <div><label for="posicao-filter" class="block mb-2 text-sm font-medium text-slate-400">Posição</label><select id="posicao-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="">Todas</option><option value="L">Liberado</option><option value="M">Montado</option><option value="F">Faturado</option></select></div>
                                         <div class="md:col-start-6"><button id="clear-filters-btn" class="w-full bg-slate-600 hover:bg-slate-500 text-white font-bold py-2.5 px-4 rounded-lg">Limpar Filtros</button></div>
@@ -6831,7 +7001,14 @@
                                             </div>
                                         </div>
                                         <!-- Outros Filtros (Cidades) -->
-                                        <div><label for="city-supervisor-filter" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label><select id="city-supervisor-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="">Todos</option></select></div>
+                                        <div class="relative">
+                                            <label for="city-supervisor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label>
+                                            <button id="city-supervisor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
+                                                <span id="city-supervisor-filter-text">Todos</span>
+                                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
+                                            </button>
+                                            <div id="city-supervisor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
+                                        </div>
                                         <div class="relative"><label for="city-vendedor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Vendedor</label><button id="city-vendedor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="city-vendedor-filter-text">Todos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button><div id="city-vendedor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
                                         <div class="relative"><label for="city-name-filter" class="block mb-2 text-sm font-medium text-slate-400">Cidade</label><input type="text" id="city-name-filter" placeholder="Digite a cidade..." class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5" autocomplete="off"><div id="city-suggestions" class="absolute z-10 w-full bg-slate-800 border border-slate-600 rounded-lg mt-1 hidden max-h-48 overflow-y-auto custom-scrollbar text-white"></div></div>
                                         <div><label for="city-codcli-filter" class="block mb-2 text-sm font-medium text-slate-400">Cód. Cliente</label><input type="text" id="city-codcli-filter" placeholder="Digite o código..." class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"></div>
@@ -6936,7 +7113,14 @@
                                     </div>
                                 </div>
                                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                                    <div><label for="comparison-supervisor-filter" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label><select id="comparison-supervisor-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="">Todos</option></select></div>
+                                    <div class="relative">
+                                        <label for="comparison-supervisor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label>
+                                        <button id="comparison-supervisor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
+                                            <span id="comparison-supervisor-filter-text">Todos</span>
+                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
+                                        </button>
+                                        <div id="comparison-supervisor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
+                                    </div>
                                     <div class="relative"><label for="comparison-vendedor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Vendedor</label><button id="comparison-vendedor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="comparison-vendedor-filter-text">Todos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button><div id="comparison-vendedor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
                                     <div class="relative"><label for="comparison-supplier-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Fornecedor</label><button id="comparison-supplier-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="comparison-supplier-filter-text">Todos Fornecedores</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button><div id="comparison-supplier-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
                                     <div class="relative"><label for="comparison-city-filter" class="block mb-2 text-sm font-medium text-slate-400">Cidade</label><input type="text" id="comparison-city-filter" placeholder="Digite a cidade..." class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5" autocomplete="off"><div id="comparison-city-suggestions" class="absolute z-10 w-full bg-slate-800 border border-slate-600 rounded-lg mt-1 hidden max-h-48 overflow-y-auto custom-scrollbar text-white"></div></div>
@@ -7031,7 +7215,14 @@
                                     </div>
                                 </div>
                                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                                    <div><label for="stock-supervisor-filter" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label><select id="stock-supervisor-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="">Todos</option></select></div>
+                                    <div class="relative">
+                                        <label for="stock-supervisor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label>
+                                        <button id="stock-supervisor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
+                                            <span id="stock-supervisor-filter-text">Todos</span>
+                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
+                                        </button>
+                                        <div id="stock-supervisor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
+                                    </div>
                                     <div class="relative"><label for="stock-vendedor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Vendedor</label><button id="stock-vendedor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="stock-vendedor-filter-text">Todos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button><div id="stock-vendedor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
                                     <div class="relative"><label for="stock-supplier-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Fornecedor</label><button id="stock-supplier-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="stock-supplier-filter-text">Todos Fornecedores</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button><div id="stock-supplier-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
                                     <div class="relative"><label for="stock-city-filter" class="block mb-2 text-sm font-medium text-slate-400">Cidade</label><input type="text" id="stock-city-filter" placeholder="Digite a cidade..." class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5" autocomplete="off"><div id="stock-city-suggestions" class="absolute z-10 w-full bg-slate-800 border border-slate-600 rounded-lg mt-1 hidden max-h-48 overflow-y-auto custom-scrollbar text-white"></div></div>
@@ -7153,7 +7344,14 @@
                             </div>
                             <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
                                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
-                                    <div><label for="innovations-month-supervisor-filter" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label><select id="innovations-month-supervisor-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="">Todos</option></select></div>
+                                    <div class="relative">
+                                        <label for="innovations-month-supervisor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label>
+                                        <button id="innovations-month-supervisor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
+                                            <span id="innovations-month-supervisor-filter-text">Todos</span>
+                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
+                                        </button>
+                                        <div id="innovations-month-supervisor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
+                                    </div>
                                     <div class="relative"><label for="innovations-month-vendedor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Vendedor</label><button id="innovations-month-vendedor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="innovations-month-vendedor-filter-text">Todos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button><div id="innovations-month-vendedor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
                                     <div class="relative"><label for="innovations-month-city-filter" class="block mb-2 text-sm font-medium text-slate-400">Cidade</label><input type="text" id="innovations-month-city-filter" placeholder="Digite a cidade..." class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5" autocomplete="off"><div id="innovations-month-city-suggestions" class="absolute z-10 w-full bg-slate-800 border border-slate-600 rounded-lg mt-1 hidden max-h-48 overflow-y-auto custom-scrollbar text-white"></div></div>
                                     <div><label for="innovations-month-filial-filter" class="block mb-2 text-sm font-medium text-slate-400">Filial</label><select id="innovations-month-filial-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="ambas" selected>Ambas</option><option value="05">Filial 05</option><option value="08">Filial 08</option></select></div>
@@ -7241,7 +7439,14 @@
                             <!-- Filtros (Cobertura) -->
                             <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
                                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
-                                    <div><label for="coverage-supervisor-filter" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label><select id="coverage-supervisor-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="">Todos</option></select></div>
+                                    <div class="relative">
+                                        <label for="coverage-supervisor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label>
+                                        <button id="coverage-supervisor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
+                                            <span id="coverage-supervisor-filter-text">Todos</span>
+                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
+                                        </button>
+                                        <div id="coverage-supervisor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
+                                    </div>
                                     <div class="relative"><label for="coverage-vendedor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Vendedor</label><button id="coverage-vendedor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="coverage-vendedor-filter-text">Todos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button><div id="coverage-vendedor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
                                     <div class="relative"><label for="coverage-supplier-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Fornecedor</LabeL><button id="coverage-supplier-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="coverage-supplier-filter-text">Todos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button><div id="coverage-supplier-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
                                     <div class="relative"><label for="coverage-city-filter" class="block mb-2 text-sm font-medium text-slate-400">Cidade</label><input type="text" id="coverage-city-filter" placeholder="Digite a cidade..." class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5" autocomplete="off"><div id="coverage-city-suggestions" class="absolute z-10 w-full bg-slate-800 border border-slate-600 rounded-lg mt-1 hidden max-h-48 overflow-y-auto custom-scrollbar text-white"></div></div>
@@ -7272,8 +7477,20 @@
                                 </div>
                             </div>
                             <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm mb-6">
-                                <h2 class="text-lg font-semibold text-white text-center mb-4">Top 10 Cidades (Quantidade de Caixas)</h2>
+                                <div class="flex justify-between items-center mb-4 relative">
+                                    <div class="absolute left-0 top-0 bottom-0 flex items-center">
+                                        <div class="text-left">
+                                            <p class="text-xs text-slate-400">Total Caixas</p>
+                                            <p id="coverage-total-boxes" class="text-lg font-bold text-white">0</p>
+                                        </div>
+                                    </div>
+                                    <h2 id="coverage-chart-title" class="text-lg font-semibold text-white text-center w-full">Top 10 Cidades (Quantidade de Caixas)</h2>
+                                    <div class="absolute right-0 top-0 bottom-0 flex items-center">
+                                        <button id="coverage-chart-toggle-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-1 px-3 rounded shadow">Ver Vendedores</button>
+                                    </div>
+                                </div>
                                 <div id="coverageCityChartContainer" class="relative h-80"></div>
+                                <div id="coverageSellerChartContainer" class="relative h-80 hidden"></div>
                             </div>
                             <!-- Tabela (Cobertura) -->
                             <div id="coverage-table-container" class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
