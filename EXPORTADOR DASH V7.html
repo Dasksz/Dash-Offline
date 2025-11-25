@@ -1526,6 +1526,7 @@
         let mixRedeGroupFilter = '';
         let selectedMixTiposVenda = [];
         let mixTableDataForExport = [];
+        let mixKpiMode = 'total'; // 'total' ou 'atendidos'
 
         // let innovationsIncludeBonus = true; // REMOVED
         // let innovationsMonthIncludeBonus = true; // REMOVED
@@ -1825,13 +1826,25 @@
                 tableData.push(rowData);
             });
 
-            const totalClients = clients.length;
-            const saltyPct = totalClients > 0 ? (positivadosSalty / totalClients) * 100 : 0;
-            const foodsPct = totalClients > 0 ? (positivadosFoods / totalClients) * 100 : 0;
-            const bothPct = totalClients > 0 ? (positivadosBoth / totalClients) * 100 : 0;
+            // --- INÍCIO DA MODIFICAÇÃO: Lógica do Toggle ---
+            let baseClientCount;
+            const kpiTitleEl = document.getElementById('mix-kpi-title');
+
+            if (mixKpiMode === 'atendidos') {
+                baseClientCount = getPositiveClientsWithNewLogic(sales);
+                if (kpiTitleEl) kpiTitleEl.textContent = 'Clientes Atendidos';
+            } else {
+                baseClientCount = clients.length;
+                if (kpiTitleEl) kpiTitleEl.textContent = 'Total Clientes (Filtro)';
+            }
+
+            const saltyPct = baseClientCount > 0 ? (positivadosSalty / baseClientCount) * 100 : 0;
+            const foodsPct = baseClientCount > 0 ? (positivadosFoods / baseClientCount) * 100 : 0;
+            const bothPct = baseClientCount > 0 ? (positivadosBoth / baseClientCount) * 100 : 0;
+            // --- FIM DA MODIFICAÇÃO ---
 
             // Update KPIs
-            document.getElementById('mix-total-clients-kpi').textContent = totalClients.toLocaleString('pt-BR');
+            document.getElementById('mix-total-clients-kpi').textContent = baseClientCount.toLocaleString('pt-BR');
             document.getElementById('mix-salty-kpi').textContent = `${saltyPct.toFixed(1)}%`;
             document.getElementById('mix-salty-count-kpi').textContent = `${positivadosSalty} clientes`;
             document.getElementById('mix-foods-kpi').textContent = `${foodsPct.toFixed(1)}%`;
@@ -1844,7 +1857,7 @@
                 positivadosBoth, 
                 positivadosSalty - positivadosBoth, 
                 positivadosFoods - positivadosBoth, 
-                totalClients - (positivadosSalty + positivadosFoods - positivadosBoth)
+                baseClientCount - (positivadosSalty + positivadosFoods - positivadosBoth)
             ];
             
             createChart('mixDistributionChart', 'doughnut', ['Mix Ideal (Ambos)', 'Só Salty', 'Só Foods', 'Nenhum'], distributionData, {
@@ -6915,6 +6928,12 @@
             document.getElementById('clear-mix-filters-btn').addEventListener('click', () => { resetMixFilters(); markDirty('mix'); });
             document.getElementById('export-mix-pdf-btn').addEventListener('click', exportMixPDF);
 
+            document.getElementById('mix-kpi-toggle').addEventListener('change', (e) => {
+                mixKpiMode = e.target.checked ? 'atendidos' : 'total';
+                markDirty('mix');
+                updateMixView();
+            });
+
             document.addEventListener('click', (e) => {
                 // Close Mix Dropdowns
                 if (!document.getElementById('mix-supervisor-filter-btn').contains(e.target) && !document.getElementById('mix-supervisor-filter-dropdown').contains(e.target)) document.getElementById('mix-supervisor-filter-dropdown').classList.add('hidden');
@@ -7989,7 +8008,16 @@
                             <!-- KPIs -->
                             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
                                 <div class="kpi-card">
-                                    <p class="text-slate-400 text-sm font-medium">Total Clientes (Filtro)</p>
+                                    <div class="flex justify-center items-center gap-2 mb-1">
+                                        <span id="mix-kpi-title" class="text-slate-400 text-sm font-medium">Total Clientes (Filtro)</span>
+                                        <label for="mix-kpi-toggle" class="flex items-center cursor-pointer" title="Alternar base de cálculo">
+                                            <div class="relative">
+                                                <input type="checkbox" id="mix-kpi-toggle" class="sr-only peer">
+                                                <div class="w-10 h-5 bg-slate-600 rounded-full peer-checked:bg-teal-800 transition-colors"></div>
+                                                <div class="absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full transition-transform peer-checked:translate-x-full peer-checked:bg-teal-300"></div>
+                                            </div>
+                                        </label>
+                                    </div>
                                     <p id="mix-total-clients-kpi" class="text-3xl font-bold text-white my-1">0</p>
                                     <p class="text-xs text-slate-500">Base para análise</p>
                                 </div>
