@@ -5790,14 +5790,67 @@
         function navigateTo(view) {
             const sideMenu = document.getElementById('side-menu');
             const sidebarOverlay = document.getElementById('sidebar-overlay');
-            
+            const loader = document.getElementById('page-loader');
+
+            const viewMap = {
+                'dashboard': mainDashboard,
+                'pedidos': mainDashboard,
+                'comparativo': comparisonView,
+                'estoque': stockView,
+                'cobertura': coverageView,
+                'cidades': cityView,
+                'semanal': weeklyView,
+                'inovacoes-mes': innovationsMonthView,
+                'mix': document.getElementById('mix-view')
+            };
+
+            // Fecha a barra lateral ao navegar
             if (sideMenu) sideMenu.classList.add('-translate-x-full');
             if (sidebarOverlay) sidebarOverlay.classList.add('hidden');
 
-                        [mainDashboard, cityView, weeklyView, comparisonView, stockView, innovationsMonthView, coverageView, document.getElementById('mix-view')].forEach(el => {
-                if(el) el.classList.add('hidden');
-            });
+            const allViewElements = Object.values(viewMap);
+            const currentViewEl = allViewElements.find(el => el && !el.classList.contains('hidden'));
+            const targetViewEl = viewMap[view];
 
+            const isDashboardOrPedidos = view === 'dashboard' || view === 'pedidos';
+
+            // Se já estamos na visão correta (e não é uma simples troca de aba interna do dashboard), não faz nada.
+            if (currentViewEl === targetViewEl && !isDashboardOrPedidos) return;
+
+            // Lógica para a troca rápida entre Dashboard e Pedidos (sem transição de página)
+            if (currentViewEl === targetViewEl && isDashboardOrPedidos) {
+                document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('bg-slate-700', 'text-white'));
+                const activeLink = document.querySelector(`.nav-link[data-target="${view}"]`);
+                if (activeLink) activeLink.classList.add('bg-slate-700', 'text-white');
+
+                if (view === 'pedidos') {
+                    if (chartView) chartView.classList.add('hidden');
+                    if (tableView) tableView.classList.remove('hidden');
+                    if (viewState.pedidos.dirty) {
+                        updateAllVisuals();
+                        viewState.pedidos.dirty = false;
+                    }
+                } else { // dashboard
+                    if (chartView) chartView.classList.remove('hidden');
+                    if (tableView) tableView.classList.add('hidden');
+                    if (viewState.dashboard.dirty) {
+                        updateAllVisuals();
+                        viewState.dashboard.dirty = false;
+                    }
+                }
+                return;
+            }
+
+            // Inicia a transição
+            if (loader) {
+                loader.classList.remove('hidden');
+                requestAnimationFrame(() => loader.classList.remove('opacity-0'));
+            }
+            if (currentViewEl) {
+                currentViewEl.classList.add('blurred');
+            }
+
+            // Atualiza o link ativo da barra lateral
             document.querySelectorAll('.nav-link').forEach(link => {
                 link.classList.remove('bg-slate-700', 'text-white');
                 const icon = link.querySelector('svg');
@@ -5810,11 +5863,22 @@
                 if(icon) icon.classList.add('text-white');
             }
 
-            switch(view) {
-                case 'dashboard':
-                    mainDashboard.classList.remove('hidden');
-                    if (chartView) chartView.classList.remove('hidden');
-                    if (tableView) tableView.classList.add('hidden');
+            // Aguarda um tempo para o blur ser aplicado antes de trocar o conteúdo
+            setTimeout(() => {
+                if (currentViewEl) {
+                    currentViewEl.classList.add('hidden');
+                    currentViewEl.classList.remove('blurred');
+                }
+
+                if (targetViewEl) {
+                    targetViewEl.classList.remove('hidden');
+                }
+
+                // Lógica de atualização de cada view
+                switch(view) {
+                    case 'dashboard':
+                        if (chartView) chartView.classList.remove('hidden');
+                        if (tableView) tableView.classList.add('hidden');
                     if (tablePaginationControls) tablePaginationControls.classList.add('hidden');
                     if (viewState.dashboard.dirty) {
                         updateAllVisuals();
@@ -5916,7 +5980,14 @@
                         viewState.mix.dirty = false;
                     }
                     break;
-            }
+                }
+
+                // Esconde o loader
+                if (loader) {
+                    loader.classList.add('opacity-0');
+                    setTimeout(() => loader.classList.add('hidden'), 300);
+                }
+            }, 300); // Duração deve ser suficiente para o efeito de blur
         }
 
         function setupEventListeners() {
@@ -7133,9 +7204,19 @@
                             input[type=number]::-webkit-inner-spin-button, 
                             input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
                             input[type=number] { -moz-appearance: textfield; }
+
+                            .view-container { transition: filter 0.3s ease-in-out; }
+                            .blurred { filter: blur(4px); }
                         </style>
                     </head>
                     <body class="bg-[#0d1126] text-slate-300 antialiased">
+                        <div id="page-loader" class="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center hidden transition-opacity duration-300 opacity-0">
+                            <svg class="animate-spin h-10 w-10 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        </div>
+
                         <aside id="side-menu" class="fixed top-0 left-0 z-50 w-64 h-screen transition-transform -translate-x-full bg-[#1d2347] border-r border-slate-700 flex flex-col">
                             <div class="flex items-center justify-between p-4 border-b border-slate-700">
                                 <span class="text-xl font-bold text-white">Menu</span>
@@ -7146,55 +7227,55 @@
                             <div class="flex-1 overflow-y-auto custom-scrollbar py-4 px-3">
                                 <ul class="space-y-2 font-medium">
                                     <li>
-                                        <button data-target="dashboard" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                        <button data-target="dashboard" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left transition-all duration-200 ease-in-out hover:scale-105">
                                             <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
                                             <span class="ml-3">Dashboard</span>
                                         </button>
                                     </li>
                                     <li>
-                                        <button data-target="pedidos" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                        <button data-target="pedidos" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left transition-all duration-200 ease-in-out hover:scale-105">
                                             <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
                                             <span class="ml-3">Pedidos</span>
                                         </button>
                                     </li>
                                     <li>
-                                        <button data-target="comparativo" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                        <button data-target="comparativo" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left transition-all duration-200 ease-in-out hover:scale-105">
                                             <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
                                             <span class="ml-3">Comparativo</span>
                                         </button>
                                     </li>
                                     <li>
-                                        <button data-target="estoque" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                        <button data-target="estoque" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left transition-all duration-200 ease-in-out hover:scale-105">
                                             <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
                                             <span class="ml-3">Estoque</span>
                                         </button>
                                     </li>
                                     <li>
-                                        <button data-target="cobertura" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                        <button data-target="cobertura" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left transition-all duration-200 ease-in-out hover:scale-105">
                                             <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
                                             <span class="ml-3">Cobertura</span>
                                         </button>
                                     </li>
                                     <li>
-                                        <button data-target="cidades" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                        <button data-target="cidades" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left transition-all duration-200 ease-in-out hover:scale-105">
                                             <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                                             <span class="ml-3">Cidades</span>
                                         </button>
                                     </li>
                                     <li>
-                                        <button data-target="semanal" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                        <button data-target="semanal" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left transition-all duration-200 ease-in-out hover:scale-105">
                                             <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                                             <span class="ml-3">Semanal</span>
                                         </button>
                                     </li>
                                     <li>
-                                        <button data-target="inovacoes-mes" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                        <button data-target="inovacoes-mes" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left transition-all duration-200 ease-in-out hover:scale-105">
                                             <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                                             <span class="ml-3">Inovações</span>
                                         </button>
                                     </li>
                                     <li>
-                                        <button data-target="mix" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                        <button data-target="mix" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left transition-all duration-200 ease-in-out hover:scale-105">
                                             <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"></path></svg>
                                             <span class="ml-3">Mix Salty & Foods</span>
                                         </button>
@@ -7205,7 +7286,7 @@
                         <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-40 hidden glass-effect"></div>
                         
                         <div id="content-wrapper" class="min-h-screen transition-all duration-300">
-                            <div id="main-dashboard">
+                            <div id="main-dashboard" class="view-container">
                                 <div class="container mx-auto p-4 sm:p-6 lg:p-8">
                                     <!-- Cabeçalho com gradiente escuro -->
                                     <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
@@ -7246,8 +7327,8 @@
                                 <div class="mb-6 flex flex-col sm:flex-row justify-between items-center gap-4">
                                     <!-- Botões de Categoria (Pepsico/Multimarcas) -->
                                     <div id="fornecedor-toggle-container" class="w-full sm:w-auto rounded-lg p-1 flex justify-center sm:justify-start gap-2">
-                                        <button data-fornecedor="PEPSICO" class="fornecedor-btn bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg flex-1 sm:flex-none">PEPSICO</button>
-                                        <button data-fornecedor="MULTIMARCAS" class="fornecedor-btn bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg flex-1 sm:flex-none">MULTIMARCAS</button>
+                                        <button data-fornecedor="PEPSICO" class="fornecedor-btn bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg flex-1 sm:flex-none transition-transform duration-200 hover:scale-105">PEPSICO</button>
+                                        <button data-fornecedor="MULTIMARCAS" class="fornecedor-btn bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg flex-1 sm:flex-none transition-transform duration-200 hover:scale-105">MULTIMARCAS</button>
                                     </div>
                                     <!-- Botões de Navegação removidos (movidos para sidebar) -->
                                 </div>
@@ -7289,13 +7370,13 @@
                                          </div>
                                         <div><label for="codcli-filter" class="block mb-2 text-sm font-medium text-slate-400">Cód. Cliente</label><input type="text" id="codcli-filter" placeholder="Digite o código..." class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"></div>
                                         <div><label for="posicao-filter" class="block mb-2 text-sm font-medium text-slate-400">Posição</label><select id="posicao-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="">Todas</option><option value="L">Liberado</option><option value="M">Montado</option><option value="F">Faturado</option></select></div>
-                                        <div class="md:col-start-6"><button id="clear-filters-btn" class="w-full bg-slate-600 hover:bg-slate-500 text-white font-bold py-2.5 px-4 rounded-lg">Limpar Filtros</button></div>
+                                        <div class="md:col-start-6"><button id="clear-filters-btn" class="w-full bg-slate-600 hover:bg-slate-500 text-white font-bold py-2.5 px-4 rounded-lg transition-transform duration-200 hover:scale-105">Limpar Filtros</button></div>
                                     </div>
                                 </div>
                                 <main id="app-container">
                                     <div id="chartView" class="">
                                         <!-- Gráfico de Tendência -->
-                                        <div class="mb-6 bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
+                                        <div class="mb-6 bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]">
                                             <div class="flex justify-between items-center mb-4">
                                                 <div class="w-1/3">
                                                     <label for="main-holiday-picker-btn" class="block mb-2 text-sm font-medium text-slate-400">Feriados do Mês</label>
@@ -7310,11 +7391,11 @@
                                         </div>
                                         <!-- Gráficos menores -->
                                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 id="sales-by-person-title" class="text-lg font-semibold text-white mb-4 text-center">Vendas por Supervisor</h2><div id="salesByPersonChartContainer" class="relative h-80"></div></div>
-                                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 id="faturamentoPorFornecedorTitle" class="text-lg font-semibold text-white mb-4 text-center">Faturamento por Categoria</h2><div id="faturamentoPorFornecedorChartContainer" class="relative h-80"></div></div>
+                                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]"><h2 id="sales-by-person-title" class="text-lg font-semibold text-white mb-4 text-center">Vendas por Supervisor</h2><div id="salesByPersonChartContainer" class="relative h-80"></div></div>
+                                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]"><h2 id="faturamentoPorFornecedorTitle" class="text-lg font-semibold text-white mb-4 text-center">Faturamento por Categoria</h2><div id="faturamentoPorFornecedorChartContainer" class="relative h-80"></div></div>
                                         </div>
                                         <!-- Gráfico de Produtos -->
-                                        <div class="mt-6 bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
+                                        <div class="mt-6 bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]">
                                             <div class="flex justify-between items-center mb-4"><h2 class="text-lg font-semibold text-white">Vendas por Produto</h2>
                                                 <div class="bg-slate-700 rounded-lg p-1 flex">
                                                     <button id="faturamentoBtn" class="metric-btn active px-3 py-1 text-sm rounded-md text-white">Faturamento</button>
@@ -7346,7 +7427,7 @@
                         </div>
                         
                         <!-- Ecrã de Cidades -->
-                        <div id="city-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
+                        <div id="city-view" class="hidden view-container container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
                                 <div class="flex items-center gap-4">
                                     <button class="sidebar-toggle text-white focus:outline-none">
@@ -7428,7 +7509,7 @@
                         </div>
                         
                         <!-- Ecrã Semanal -->
-                        <div id="weekly-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
+                        <div id="weekly-view" class="hidden view-container container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
                                 <div class="flex items-center gap-4">
                                     <button class="sidebar-toggle text-white focus:outline-none">
@@ -7454,7 +7535,7 @@
                         </div>
                         
                         <!-- Ecrã Comparativo -->
-                        <div id="comparison-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
+                        <div id="comparison-view" class="hidden view-container container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
                                 <div class="flex items-center gap-4">
                                     <button class="sidebar-toggle text-white focus:outline-none">
@@ -7556,7 +7637,7 @@
                         </div>
                         
                         <!-- Ecrã Estoque -->
-                        <div id="stock-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
+                        <div id="stock-view" class="hidden view-container container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
                                 <div class="flex items-center gap-4">
                                     <button class="sidebar-toggle text-white focus:outline-none">
@@ -7696,7 +7777,7 @@
 
 
                         <!-- Ecrã Inovações Mês -->
-                        <div id="innovations-month-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
+                        <div id="innovations-month-view" class="hidden view-container container mx-auto p-4 sm-p-6 lg:p-8">
                              <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
                                 <div class="flex items-center gap-4">
                                     <button class="sidebar-toggle text-white focus:outline-none">
@@ -7704,7 +7785,7 @@
                                     </button>
                                     <div class="flex-1 flex flex-col sm:flex-row justify-between items-center gap-4">
                                         <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Gráfico de Cobertura por Categoria de Inovação</p></div>
-                                        <button id="export-innovations-month-pdf-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Exportar PDF</button>
+                                        <button id="export-innovations-month-pdf-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-transform duration-200 hover:scale-105">Exportar PDF</button>
                                     </div>
                                 </div>
                             </header>
@@ -7775,7 +7856,7 @@
                         </div>
 
                         <!-- Ecrã Mix (Novo) -->
-                        <div id="mix-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
+                        <div id="mix-view" class="hidden view-container container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
                                 <div class="flex items-center gap-4">
                                     <button class="sidebar-toggle text-white focus:outline-none">
@@ -7952,7 +8033,7 @@
                         </div>
 
                         <!-- Ecrã Cobertura (Novo) -->
-                        <div id="coverage-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
+                        <div id="coverage-view" class="hidden view-container container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
                                 <div class="flex items-center gap-4">
                                     <button class="sidebar-toggle text-white focus:outline-none">
