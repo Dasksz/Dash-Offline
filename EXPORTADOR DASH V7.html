@@ -1984,8 +1984,6 @@
             
             body.push(footerRow);
 
-            body.push(footerRow);
-
             doc.autoTable({
                 head: head,
                 body: body,
@@ -8009,16 +8007,21 @@
 
                             <!-- KPIs -->
                             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                                <div class="kpi-card relative">
-                                    <div class="flex justify-between items-start">
-                                        <span id="mix-kpi-title" class="text-slate-400 text-sm font-medium">Total Clientes (Filtro)</span>
-                                        <label for="mix-kpi-toggle" class="flex items-center cursor-pointer" title="Alternar base de cálculo">
-                                            <div class="relative">
-                                                <input type="checkbox" id="mix-kpi-toggle" class="sr-only peer">
-                                                <div class="w-10 h-5 bg-slate-600 rounded-full peer-checked:bg-teal-800 transition-colors"></div>
-                                                <div class="absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full transition-transform peer-checked:translate-x-full peer-checked:bg-teal-300"></div>
-                                            </div>
-                                        </label>
+                                <div class="kpi-card">
+                                    <div class="grid grid-cols-3 items-center mb-1">
+                                        <div class="col-span-1"></div> <!-- Spacer -->
+                                        <div class="col-span-1 text-center">
+                                            <span id="mix-kpi-title" class="text-slate-400 text-sm font-medium">Total Clientes (Filtro)</span>
+                                        </div>
+                                        <div class="col-span-1 flex justify-end">
+                                            <label for="mix-kpi-toggle" class="flex items-center cursor-pointer" title="Alternar base de cálculo">
+                                                <div class="relative">
+                                                    <input type="checkbox" id="mix-kpi-toggle" class="sr-only peer">
+                                                    <div class="w-10 h-5 bg-slate-600 rounded-full peer-checked:bg-teal-800 transition-colors"></div>
+                                                    <div class="absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full transition-transform peer-checked:translate-x-full peer-checked:bg-teal-300"></div>
+                                                </div>
+                                            </label>
+                                        </div>
                                     </div>
                                     <p id="mix-total-clients-kpi" class="text-3xl font-bold text-white my-1">0</p>
                                     <p class="text-xs text-slate-500">Base para análise</p>
