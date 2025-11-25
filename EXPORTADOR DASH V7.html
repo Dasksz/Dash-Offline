@@ -3563,7 +3563,7 @@
                     displayValue = formatValue(kpi.current, kpi.format);
                 }
 
-                return `<div class="bg-[#1d2347] p-4 rounded-lg text-center border border-slate-700">
+                return `<div class="bg-[#1d2347] p-4 rounded-lg text-center border border-slate-700 transition transform hover:-translate-y-1 duration-200">
                             <p class="text-slate-400 text-sm">${kpi.title}</p>
                             <p class="text-2xl font-bold text-white my-2">${displayValue}</p>
                             <p class="text-sm ${colorClass}">${variation.toFixed(2)}% vs Média do Trimestre</p>
@@ -5791,13 +5791,80 @@
             const sideMenu = document.getElementById('side-menu');
             const sidebarOverlay = document.getElementById('sidebar-overlay');
             
+            // Close sidebar on navigation
             if (sideMenu) sideMenu.classList.add('-translate-x-full');
             if (sidebarOverlay) sidebarOverlay.classList.add('hidden');
 
-                        [mainDashboard, cityView, weeklyView, comparisonView, stockView, innovationsMonthView, coverageView, document.getElementById('mix-view')].forEach(el => {
-                if(el) el.classList.add('hidden');
-            });
+            const allViewElements = [mainDashboard, cityView, weeklyView, comparisonView, stockView, innovationsMonthView, coverageView, document.getElementById('mix-view')];
+            const currentView = allViewElements.find(el => el && !el.classList.contains('hidden'));
 
+            let targetViewElement;
+            switch(view) {
+                case 'dashboard':
+                case 'pedidos':
+                    targetViewElement = mainDashboard;
+                    break;
+                case 'comparativo':
+                    targetViewElement = comparisonView;
+                    break;
+                case 'estoque':
+                    targetViewElement = stockView;
+                    break;
+                case 'cobertura':
+                    targetViewElement = coverageView;
+                    break;
+                case 'cidades':
+                    targetViewElement = cityView;
+                    break;
+                case 'semanal':
+                    targetViewElement = weeklyView;
+                    break;
+                case 'inovacoes-mes':
+                    targetViewElement = innovationsMonthView;
+                    break;
+                case 'mix':
+                    targetViewElement = document.getElementById('mix-view');
+                    break;
+            }
+            
+            // Handle the special case of switching between 'dashboard' and 'pedidos' which share a container
+            if (targetViewElement === currentView && (view === 'dashboard' || view === 'pedidos')) {
+                // Update active link style
+                document.querySelectorAll('.nav-link').forEach(link => {
+                    link.classList.remove('bg-slate-700', 'text-white');
+                    const icon = link.querySelector('svg');
+                    if(icon) icon.classList.remove('text-white');
+                });
+                const activeLink = document.querySelector(`.nav-link[data-target="${view}"]`);
+                if (activeLink) {
+                    activeLink.classList.add('bg-slate-700', 'text-white');
+                    const icon = activeLink.querySelector('svg');
+                    if(icon) icon.classList.add('text-white');
+                }
+
+                if (view === 'pedidos') {
+                    if (chartView) chartView.classList.add('hidden');
+                    if (tableView) tableView.classList.remove('hidden');
+                    if (tablePaginationControls) tablePaginationControls.classList.remove('hidden');
+                    if (viewState.pedidos.dirty) {
+                        updateAllVisuals();
+                        viewState.pedidos.dirty = false;
+                    }
+                } else { // dashboard
+                    if (chartView) chartView.classList.remove('hidden');
+                    if (tableView) tableView.classList.add('hidden');
+                    if (tablePaginationControls) tablePaginationControls.classList.add('hidden');
+                    if (viewState.dashboard.dirty) {
+                        updateAllVisuals();
+                        viewState.dashboard.dirty = false;
+                    }
+                }
+                return; // Exit here as no fade transition is needed
+            }
+
+            if (currentView === targetViewElement) return; // Already on the correct view
+
+            // Update active link style
             document.querySelectorAll('.nav-link').forEach(link => {
                 link.classList.remove('bg-slate-700', 'text-white');
                 const icon = link.querySelector('svg');
@@ -5810,112 +5877,129 @@
                 if(icon) icon.classList.add('text-white');
             }
 
-            switch(view) {
-                case 'dashboard':
-                    mainDashboard.classList.remove('hidden');
-                    if (chartView) chartView.classList.remove('hidden');
-                    if (tableView) tableView.classList.add('hidden');
-                    if (tablePaginationControls) tablePaginationControls.classList.add('hidden');
-                    if (viewState.dashboard.dirty) {
-                        updateAllVisuals();
-                        viewState.dashboard.dirty = false;
-                    }
-                    break;
-                case 'pedidos':
-                    mainDashboard.classList.remove('hidden');
-                    if (chartView) chartView.classList.add('hidden');
-                    if (tableView) tableView.classList.remove('hidden');
-                    if (tablePaginationControls) tablePaginationControls.classList.remove('hidden');
-                    if (viewState.pedidos.dirty) {
-                        updateAllVisuals(); // Uses same visual update but switches DOM visibility
-                        viewState.pedidos.dirty = false;
-                    }
-                    break;
-                case 'comparativo':
-                    comparisonView.classList.remove('hidden');
-                    if (viewState.comparativo.dirty) {
-                        updateAllComparisonFilters();
-                        updateComparisonView();
-                        viewState.comparativo.dirty = false;
-                    }
-                    break;
-                case 'estoque':
-                    stockView.classList.remove('hidden');
-                    const maxDaysLabel = document.getElementById('max-working-days-label');
-                    if (maxDaysLabel) maxDaysLabel.textContent = `(Máx: ${maxWorkingDaysStock})`;
-                    const daysInput = document.getElementById('stock-working-days-input');
-                    if(daysInput && parseInt(daysInput.value) === 0) daysInput.value = customWorkingDaysStock;
-                    
-                    if (viewState.estoque.dirty) {
-                        handleStockFilterChange(); 
-                        viewState.estoque.dirty = false;
-                    }
-                    break;
-                case 'cobertura':
-                    coverageView.classList.remove('hidden');
-                    customWorkingDaysCoverage = maxWorkingDaysStock;
-                    const workingDaysInputCov = document.getElementById('coverage-working-days-input');
-                    if(workingDaysInputCov) workingDaysInputCov.value = customWorkingDaysCoverage;
-                    
-                    if (viewState.cobertura.dirty) {
-                        updateAllCoverageFilters();
-                        updateCoverageView();
-                        viewState.cobertura.dirty = false;
-                    }
-                    break;
-                case 'cidades':
-                    cityView.classList.remove('hidden');
-                    const cityContent = document.getElementById('city-view-content');
-                    const cityLoader = document.getElementById('city-view-loader');
-                    
-                    if (viewState.cidades.dirty) {
-                        // Show loader only if dirty (first load or forced refresh)
-                        if (cityContent) cityContent.classList.add('hidden'); 
-                        if (cityLoader) cityLoader.classList.remove('hidden'); 
-                        
-                        setTimeout(() => { 
-                            if (cityLoader) cityLoader.classList.add('hidden'); 
-                            if (cityContent) cityContent.classList.remove('hidden'); 
+            const transitionDuration = 300;
 
-                            selectedCitySupervisors = updateSupervisorFilter(document.getElementById('city-supervisor-filter-dropdown'), document.getElementById('city-supervisor-filter-text'), selectedCitySupervisors, allSalesData);
-                            selectedCitySellers = updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData); 
-                            selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData); 
-                            updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData); 
-                            updateCityView(); 
-                            viewState.cidades.dirty = false;
-                        }, 10);
-                    } else {
-                        // Ensure content is visible if not dirty
-                        if (cityLoader) cityLoader.classList.add('hidden');
-                        if (cityContent) cityContent.classList.remove('hidden');
-                    }
-                    break;
-                case 'semanal':
-                    weeklyView.classList.remove('hidden');
-                    if (viewState.semanal.dirty) {
-                        populateWeeklyFilters(); 
-                        updateWeeklyView();
-                        viewState.semanal.dirty = false;
-                    }
-                    break;
-                case 'inovacoes-mes':
-                    innovationsMonthView.classList.remove('hidden');
-                    if (viewState.inovacoes.dirty) {
-                        selectedInnovationsSupervisors = updateSupervisorFilter(document.getElementById('innovations-month-supervisor-filter-dropdown'), document.getElementById('innovations-month-supervisor-filter-text'), selectedInnovationsSupervisors, allSalesData);
-                        updateSellerFilter('', innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
-                        selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
-                        updateInnovationsMonthView();
-                        viewState.inovacoes.dirty = false;
-                    }
-                    break;
-                case 'mix':
-                    document.getElementById('mix-view').classList.remove('hidden');
-                    if (viewState.mix.dirty) {
-                        updateAllMixFilters();
-                        updateMixView();
-                        viewState.mix.dirty = false;
-                    }
-                    break;
+            const showNewView = () => {
+                if (targetViewElement) {
+                    targetViewElement.classList.remove('hidden');
+                    // RAF or timeout to ensure the 'hidden' class removal is rendered before changing opacity
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => { // Double RAF for robustness
+                            targetViewElement.classList.remove('opacity-0');
+                        });
+                    });
+                }
+
+                // Run view-specific update logic
+                switch(view) {
+                    case 'dashboard':
+                        if (chartView) chartView.classList.remove('hidden');
+                        if (tableView) tableView.classList.add('hidden');
+                        if (tablePaginationControls) tablePaginationControls.classList.add('hidden');
+                        if (viewState.dashboard.dirty) {
+                            updateAllVisuals();
+                            viewState.dashboard.dirty = false;
+                        }
+                        break;
+                    case 'pedidos':
+                        // This case is handled above, but as a fallback
+                        if (chartView) chartView.classList.add('hidden');
+                        if (tableView) tableView.classList.remove('hidden');
+                        if (tablePaginationControls) tablePaginationControls.classList.remove('hidden');
+                        if (viewState.pedidos.dirty) {
+                            updateAllVisuals();
+                            viewState.pedidos.dirty = false;
+                        }
+                        break;
+                    case 'comparativo':
+                        if (viewState.comparativo.dirty) {
+                            updateAllComparisonFilters();
+                            updateComparisonView();
+                            viewState.comparativo.dirty = false;
+                        }
+                        break;
+                    case 'estoque':
+                        const maxDaysLabel = document.getElementById('max-working-days-label');
+                        if (maxDaysLabel) maxDaysLabel.textContent = `(Máx: ${maxWorkingDaysStock})`;
+                        const daysInput = document.getElementById('stock-working-days-input');
+                        if(daysInput && parseInt(daysInput.value) === 0) daysInput.value = customWorkingDaysStock;
+                        
+                        if (viewState.estoque.dirty) {
+                            handleStockFilterChange(); 
+                            viewState.estoque.dirty = false;
+                        }
+                        break;
+                    case 'cobertura':
+                        customWorkingDaysCoverage = maxWorkingDaysStock;
+                        const workingDaysInputCov = document.getElementById('coverage-working-days-input');
+                        if(workingDaysInputCov) workingDaysInputCov.value = customWorkingDaysCoverage;
+                        
+                        if (viewState.cobertura.dirty) {
+                            updateAllCoverageFilters();
+                            updateCoverageView();
+                            viewState.cobertura.dirty = false;
+                        }
+                        break;
+                    case 'cidades':
+                        const cityContent = document.getElementById('city-view-content');
+                        const cityLoader = document.getElementById('city-view-loader');
+                        
+                        if (viewState.cidades.dirty) {
+                            if (cityContent) cityContent.classList.add('hidden'); 
+                            if (cityLoader) cityLoader.classList.remove('hidden'); 
+                            
+                            setTimeout(() => { 
+                                if (cityLoader) cityLoader.classList.add('hidden'); 
+                                if (cityContent) cityContent.classList.remove('hidden'); 
+
+                                selectedCitySupervisors = updateSupervisorFilter(document.getElementById('city-supervisor-filter-dropdown'), document.getElementById('city-supervisor-filter-text'), selectedCitySupervisors, allSalesData);
+                                selectedCitySellers = updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData); 
+                                selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData); 
+                                updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData); 
+                                updateCityView(); 
+                                viewState.cidades.dirty = false;
+                            }, 10);
+                        } else {
+                            if (cityLoader) cityLoader.classList.add('hidden');
+                            if (cityContent) cityContent.classList.remove('hidden');
+                        }
+                        break;
+                    case 'semanal':
+                        if (viewState.semanal.dirty) {
+                            populateWeeklyFilters(); 
+                            updateWeeklyView();
+                            viewState.semanal.dirty = false;
+                        }
+                        break;
+                    case 'inovacoes-mes':
+                        if (viewState.inovacoes.dirty) {
+                            selectedInnovationsSupervisors = updateSupervisorFilter(document.getElementById('innovations-month-supervisor-filter-dropdown'), document.getElementById('innovations-month-supervisor-filter-text'), selectedInnovationsSupervisors, allSalesData);
+                            updateSellerFilter('', innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
+                            selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
+                            updateInnovationsMonthView();
+                            viewState.inovacoes.dirty = false;
+                        }
+                        break;
+                    case 'mix':
+                        if (viewState.mix.dirty) {
+                            updateAllMixFilters();
+                            updateMixView();
+                            viewState.mix.dirty = false;
+                        }
+                        break;
+                }
+            };
+            
+            if (currentView) {
+                currentView.classList.add('opacity-0');
+                // After the fade-out transition ends, hide the element and show the new one.
+                setTimeout(() => {
+                    currentView.classList.add('hidden');
+                    showNewView();
+                }, transitionDuration);
+            } else {
+                // If no view is currently visible (initial load), just show the new one.
+                showNewView();
             }
         }
 
@@ -7205,7 +7289,7 @@
                         <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-40 hidden glass-effect"></div>
                         
                         <div id="content-wrapper" class="min-h-screen transition-all duration-300">
-                            <div id="main-dashboard">
+                            <div id="main-dashboard" class="transition-opacity duration-300">
                                 <div class="container mx-auto p-4 sm:p-6 lg:p-8">
                                     <!-- Cabeçalho com gradiente escuro -->
                                     <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
@@ -7224,19 +7308,19 @@
 
                                 <!-- KPIs com bordas e cores atualizadas -->
                                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                                    <div class="kpi-card border-t-4 border-indigo-500">
+                                    <div class="kpi-card border-t-4 border-indigo-500 transition transform hover:-translate-y-1 duration-200">
                                         <h3 class="text-slate-400 font-medium uppercase text-sm">Volume Tons</h3>
                                         <p id="total-peso" class="text-4xl font-bold text-white my-2">0,0</p>
                                     </div>
-                                    <div class="kpi-card border-t-4 border-teal-500">
+                                    <div class="kpi-card border-t-4 border-teal-500 transition transform hover:-translate-y-1 duration-200">
                                         <h3 class="text-slate-400 font-medium uppercase text-sm">Faturamento R$</h3>
                                         <p id="total-vendas" class="text-4xl font-bold text-white my-2">R$ 0,00</p>
                                     </div>
-                                    <div class="kpi-card border-t-4 border-green-500">
+                                    <div class="kpi-card border-t-4 border-green-500 transition transform hover:-translate-y-1 duration-200">
                                         <h3 class="text-slate-400 font-medium uppercase text-sm">SKU/PDV</h3>
                                         <p id="kpi-sku-pdv" class="text-4xl font-bold text-white my-2">0,0</p>
                                     </div>
-                                    <div class="kpi-card border-t-4 border-purple-500">
+                                    <div class="kpi-card border-t-4 border-purple-500 transition transform hover:-translate-y-1 duration-200">
                                         <h3 class="text-slate-400 font-medium uppercase text-sm">Cobertura PDVs</h3>
                                         <p id="kpi-positivacao" class="text-4xl font-bold text-white my-2">0,0%</p>
                                         <p id="kpi-positivacao-percent" class="text-sm text-slate-400 -mt-1">0 PDVs</p>
@@ -7346,7 +7430,7 @@
                         </div>
                         
                         <!-- Ecrã de Cidades -->
-                        <div id="city-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
+                        <div id="city-view" class="hidden opacity-0 transition-opacity duration-300 container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
                                 <div class="flex items-center gap-4">
                                     <button class="sidebar-toggle text-white focus:outline-none">
@@ -7428,7 +7512,7 @@
                         </div>
                         
                         <!-- Ecrã Semanal -->
-                        <div id="weekly-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
+                        <div id="weekly-view" class="hidden opacity-0 transition-opacity duration-300 container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
                                 <div class="flex items-center gap-4">
                                     <button class="sidebar-toggle text-white focus:outline-none">
@@ -7454,7 +7538,7 @@
                         </div>
                         
                         <!-- Ecrã Comparativo -->
-                        <div id="comparison-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
+                        <div id="comparison-view" class="hidden opacity-0 transition-opacity duration-300 container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
                                 <div class="flex items-center gap-4">
                                     <button class="sidebar-toggle text-white focus:outline-none">
@@ -7556,7 +7640,7 @@
                         </div>
                         
                         <!-- Ecrã Estoque -->
-                        <div id="stock-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
+                        <div id="stock-view" class="hidden opacity-0 transition-opacity duration-300 container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
                                 <div class="flex items-center gap-4">
                                     <button class="sidebar-toggle text-white focus:outline-none">
@@ -7696,7 +7780,7 @@
 
 
                         <!-- Ecrã Inovações Mês -->
-                        <div id="innovations-month-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
+                        <div id="innovations-month-view" class="hidden opacity-0 transition-opacity duration-300 container mx-auto p-4 sm:p-6 lg:p-8">
                              <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
                                 <div class="flex items-center gap-4">
                                     <button class="sidebar-toggle text-white focus:outline-none">
@@ -7709,12 +7793,12 @@
                                 </div>
                             </header>
                              <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6 mb-6">
-                                <div class="kpi-card"><p class="text-slate-400 text-sm font-medium">Clientes Ativos (Filtro)</p><p id="innovations-month-active-clients-kpi" class="text-3xl font-bold text-teal-400 my-1">0</p><p class="text-xs text-slate-500">Base para os KPIs</p></div>
-                                <div class="kpi-card"><p class="text-slate-400 text-sm font-medium">Cobertura Mês Anterior</p><p id="innovations-month-selection-coverage-value-kpi-previous" class="text-3xl font-bold text-orange-400 my-1">0%</p><p id="innovations-month-selection-coverage-count-kpi-previous" class="text-xs text-slate-500">0 de 0 clientes</p></div>
-                                <div class="kpi-card"><p class="text-slate-400 text-sm font-medium">Cobertura Mês Atual</p><p id="innovations-month-selection-coverage-value-kpi" class="text-3xl font-bold text-cyan-400 my-1">0%</p><p id="innovations-month-selection-coverage-count-kpi" class="text-xs text-slate-500">0 de 0 clientes</p></div>
-                                <div class="kpi-card"><p class="text-slate-400 text-sm font-medium">Cobertura Bonificação Ant.</p><p id="innovations-month-bonus-coverage-value-kpi-previous" class="text-3xl font-bold text-orange-400 my-1">0%</p><p id="innovations-month-bonus-coverage-count-kpi-previous" class="text-xs text-slate-500">0 de 0 clientes</p></div>
-                                <div class="kpi-card"><p class="text-slate-400 text-sm font-medium">Cobertura Bonificação Atual</p><p id="innovations-month-bonus-coverage-value-kpi" class="text-3xl font-bold text-cyan-400 my-1">0%</p><p id="innovations-month-bonus-coverage-count-kpi" class="text-xs text-slate-500">0 de 0 clientes</p></div>
-                                <div class="kpi-card"><p id="innovations-month-top-coverage-title" class="text-slate-400 text-sm font-medium">Item com Maior Cobertura</p><p id="innovations-month-top-coverage-value-kpi" class="text-3xl font-bold text-purple-400 my-1">0%</p><p id="innovations-month-top-coverage-kpi" class="text-xs text-slate-500 truncate" title="Nenhum item analisado">-</p><p id="innovations-month-top-coverage-count-kpi" class="text-xs text-slate-500">0 PDVs</p></div>
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p class="text-slate-400 text-sm font-medium">Clientes Ativos (Filtro)</p><p id="innovations-month-active-clients-kpi" class="text-3xl font-bold text-teal-400 my-1">0</p><p class="text-xs text-slate-500">Base para os KPIs</p></div>
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p class="text-slate-400 text-sm font-medium">Cobertura Mês Anterior</p><p id="innovations-month-selection-coverage-value-kpi-previous" class="text-3xl font-bold text-orange-400 my-1">0%</p><p id="innovations-month-selection-coverage-count-kpi-previous" class="text-xs text-slate-500">0 de 0 clientes</p></div>
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p class="text-slate-400 text-sm font-medium">Cobertura Mês Atual</p><p id="innovations-month-selection-coverage-value-kpi" class="text-3xl font-bold text-cyan-400 my-1">0%</p><p id="innovations-month-selection-coverage-count-kpi" class="text-xs text-slate-500">0 de 0 clientes</p></div>
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p class="text-slate-400 text-sm font-medium">Cobertura Bonificação Ant.</p><p id="innovations-month-bonus-coverage-value-kpi-previous" class="text-3xl font-bold text-orange-400 my-1">0%</p><p id="innovations-month-bonus-coverage-count-kpi-previous" class="text-xs text-slate-500">0 de 0 clientes</p></div>
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p class="text-slate-400 text-sm font-medium">Cobertura Bonificação Atual</p><p id="innovations-month-bonus-coverage-value-kpi" class="text-3xl font-bold text-cyan-400 my-1">0%</p><p id="innovations-month-bonus-coverage-count-kpi" class="text-xs text-slate-500">0 de 0 clientes</p></div>
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p id="innovations-month-top-coverage-title" class="text-slate-400 text-sm font-medium">Item com Maior Cobertura</p><p id="innovations-month-top-coverage-value-kpi" class="text-3xl font-bold text-purple-400 my-1">0%</p><p id="innovations-month-top-coverage-kpi" class="text-xs text-slate-500 truncate" title="Nenhum item analisado">-</p><p id="innovations-month-top-coverage-count-kpi" class="text-xs text-slate-500">0 PDVs</p></div>
                             </div>
                             <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
                                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
@@ -7775,7 +7859,7 @@
                         </div>
 
                         <!-- Ecrã Mix (Novo) -->
-                        <div id="mix-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
+                        <div id="mix-view" class="hidden opacity-0 transition-opacity duration-300 container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
                                 <div class="flex items-center gap-4">
                                     <button class="sidebar-toggle text-white focus:outline-none">
@@ -7809,7 +7893,7 @@
 
                             <!-- KPIs -->
                             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                                <div class="kpi-card">
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200">
                                     <div class="grid grid-cols-3 items-center mb-1">
                                         <div class="col-span-1"></div> <!-- Spacer -->
                                         <div class="col-span-1 text-center">
@@ -7828,17 +7912,17 @@
                                     <p id="mix-total-clients-kpi" class="text-3xl font-bold text-white my-1">0</p>
                                     <p class="text-xs text-slate-500">Base para análise</p>
                                 </div>
-                                <div class="kpi-card border-t-4 border-teal-500">
+                                <div class="kpi-card border-t-4 border-teal-500 transition transform hover:-translate-y-1 duration-200">
                                     <p class="text-slate-400 text-sm font-medium">Positivados Salty</p>
                                     <p id="mix-salty-kpi" class="text-3xl font-bold text-teal-400 my-1">0%</p>
                                     <p id="mix-salty-count-kpi" class="text-xs text-slate-500">0 clientes</p>
                                 </div>
-                                <div class="kpi-card border-t-4 border-yellow-500">
+                                <div class="kpi-card border-t-4 border-yellow-500 transition transform hover:-translate-y-1 duration-200">
                                     <p class="text-slate-400 text-sm font-medium">Positivados Foods</p>
                                     <p id="mix-foods-kpi" class="text-3xl font-bold text-yellow-400 my-1">0%</p>
                                     <p id="mix-foods-count-kpi" class="text-xs text-slate-500">0 clientes</p>
                                 </div>
-                                <div class="kpi-card border-t-4 border-purple-500">
+                                <div class="kpi-card border-t-4 border-purple-500 transition transform hover:-translate-y-1 duration-200">
                                     <p class="text-slate-400 text-sm font-medium">Mix Ideal (Ambos)</p>
                                     <p id="mix-both-kpi" class="text-3xl font-bold text-purple-400 my-1">0%</p>
                                     <p id="mix-both-count-kpi" class="text-xs text-slate-500">0 clientes</p>
@@ -7952,7 +8036,7 @@
                         </div>
 
                         <!-- Ecrã Cobertura (Novo) -->
-                        <div id="coverage-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
+                        <div id="coverage-view" class="hidden opacity-0 transition-opacity duration-300 container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
                                 <div class="flex items-center gap-4">
                                     <button class="sidebar-toggle text-white focus:outline-none">
@@ -7966,22 +8050,22 @@
                             </header>
                             <!-- KPIs (Cobertura) -->
                              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                                <div class="kpi-card">
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200">
                                     <p class="text-slate-400 text-sm font-medium">Clientes Ativos (Filtro)</p>
                                     <p id="coverage-active-clients-kpi" class="text-3xl font-bold text-teal-400 my-1">0</p>
                                     <p class="text-xs text-slate-500">Base para os KPIs</p>
                                 </div>
-                                <div class="kpi-card">
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200">
                                     <p class="text-slate-400 text-sm font-medium">Cobertura Mês Anterior</p>
                                     <p id="coverage-selection-coverage-value-kpi-previous" class="text-3xl font-bold text-orange-400 my-1">0%</p>
                                     <p id="coverage-selection-coverage-count-kpi-previous" class="text-xs text-slate-500">0 de 0 clientes</p>
                                 </div>
-                                <div class="kpi-card">
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200">
                                     <p class="text-slate-400 text-sm font-medium">Cobertura Mês Atual</p>
                                     <p id="coverage-selection-coverage-value-kpi" class="text-3xl font-bold text-cyan-400 my-1">0%</p>
                                     <p id="coverage-selection-coverage-count-kpi" class="text-xs text-slate-500">0 de 0 clientes</p>
                                 </div>
-                                <div class="kpi-card">
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200">
                                     <p class="text-slate-400 text-sm font-medium">Item com Maior Cobertura</p>
                                     <p id="coverage-top-coverage-value-kpi" class="text-3xl font-bold text-purple-400 my-1">0%</p>
                                     <p id="coverage-top-coverage-product-kpi" class="text-xs text-slate-500 truncate" title="Nenhum item analisado">-</p>
