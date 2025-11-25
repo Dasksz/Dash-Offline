@@ -3563,7 +3563,7 @@
                     displayValue = formatValue(kpi.current, kpi.format);
                 }
 
-                return `<div class="bg-[#1d2347] p-4 rounded-lg text-center border border-slate-700">
+                return `<div class="bg-[#1d2347] p-4 rounded-lg text-center border border-slate-700 transition transform hover:-translate-y-1 duration-200">
                             <p class="text-slate-400 text-sm">${kpi.title}</p>
                             <p class="text-2xl font-bold text-white my-2">${displayValue}</p>
                             <p class="text-sm ${colorClass}">${variation.toFixed(2)}% vs Média do Trimestre</p>
@@ -7224,19 +7224,19 @@
 
                                 <!-- KPIs com bordas e cores atualizadas -->
                                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                                    <div class="kpi-card border-t-4 border-indigo-500">
+                                    <div class="kpi-card border-t-4 border-indigo-500 transition transform hover:-translate-y-1 duration-200">
                                         <h3 class="text-slate-400 font-medium uppercase text-sm">Volume Tons</h3>
                                         <p id="total-peso" class="text-4xl font-bold text-white my-2">0,0</p>
                                     </div>
-                                    <div class="kpi-card border-t-4 border-teal-500">
+                                    <div class="kpi-card border-t-4 border-teal-500 transition transform hover:-translate-y-1 duration-200">
                                         <h3 class="text-slate-400 font-medium uppercase text-sm">Faturamento R$</h3>
                                         <p id="total-vendas" class="text-4xl font-bold text-white my-2">R$ 0,00</p>
                                     </div>
-                                    <div class="kpi-card border-t-4 border-green-500">
+                                    <div class="kpi-card border-t-4 border-green-500 transition transform hover:-translate-y-1 duration-200">
                                         <h3 class="text-slate-400 font-medium uppercase text-sm">SKU/PDV</h3>
                                         <p id="kpi-sku-pdv" class="text-4xl font-bold text-white my-2">0,0</p>
                                     </div>
-                                    <div class="kpi-card border-t-4 border-purple-500">
+                                    <div class="kpi-card border-t-4 border-purple-500 transition transform hover:-translate-y-1 duration-200">
                                         <h3 class="text-slate-400 font-medium uppercase text-sm">Cobertura PDVs</h3>
                                         <p id="kpi-positivacao" class="text-4xl font-bold text-white my-2">0,0%</p>
                                         <p id="kpi-positivacao-percent" class="text-sm text-slate-400 -mt-1">0 PDVs</p>
@@ -7401,7 +7401,7 @@
                                 </div>
                                 <!-- Gráficos (Cidades) -->
                                 <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                                    <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
+                                    <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]">
                                         <div class="flex justify-between items-center mb-4">
                                             <div class="w-1/4"><span class="text-xl font-bold text-indigo-400">Top 10</span></div>
                                             <div class="w-1/2 text-center"><h2 id="city-chart-title" class="text-lg font-semibold text-white"></h2></div>
@@ -7409,7 +7409,7 @@
                                         </div>
                                         <div id="salesByClientInCityChartContainer" class="relative h-96"></div>
                                     </div>
-                                    <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
+                                    <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]">
                                         <div class="flex justify-between items-center mb-4">
                                             <div class="w-1/4"></div>
                                             <div class="w-1/2 text-center"><h2 class="text-lg font-semibold text-white">Status dos Clientes</h2></div>
@@ -7445,11 +7445,11 @@
                                 <div class="mt-4"><label class="block text-sm font-medium text-slate-400 mb-2">Filtrar Supervisores</label><div id="weekly-supervisor-filter" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 text-slate-300"></div></div>
                             </div>
                             <div class="grid grid-cols-1 gap-6">
-                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
+                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]">
                                     <div class="flex justify-between items-center mb-4"><h2 class="text-lg font-semibold text-white text-center">Faturamento Mensal por Dia da Semana</h2><div class="text-right"><p class="text-slate-400 text-sm">Total do Mês</p><p id="total-mes-semanal" class="text-xl font-bold text-green-400">R$ 0,00</p></div></div><div id="weeklySalesChartContainer" class="relative h-96"></div>
                                     <div class="mt-6 border-t border-slate-700 pt-4"><h3 class="text-md font-semibold text-white mb-3 text-center">Resumo de Faturamento Semanal</h3><div class="overflow-x-auto"><table class="min-w-full text-sm text-left text-slate-300"><thead class="text-xs text-slate-400 uppercase"><tr><th class="px-4 py-2 bg-slate-800 rounded-l-lg">Semana</th><th class="px-4 py-2 bg-slate-800 text-right rounded-r-lg">Faturamento Total</th></tr></thead><tbody id="weekly-summary-table-body" class="divide-y divide-slate-700"></tbody></table></div></div>
                                 </div>
-                                <div class="grid grid-cols-1 gap-6"><div class="grid grid-cols-1 lg:grid-cols-2 gap-6"><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 class="text-lg font-semibold text-white mb-4 text-center">Ranking de Positivação</h2><div id="positivacaoChartContainer" class="relative h-80"></div></div><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 class="text-lg font-semibold text-white mb-4 text-center">Ranking de Mix de Produtos (Por PDV)</h2><div id="mixChartContainer" class="relative h-80"></div></div></div><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 class="text-lg font-semibold text-white mb-4 text-center">Top 10 Vendedores (Faturamento)</h2><div id="topSellersChartContainer" class="relative h-80"></div></div></div>
+                                <div class="grid grid-cols-1 gap-6"><div class="grid grid-cols-1 lg:grid-cols-2 gap-6"><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]"><h2 class="text-lg font-semibold text-white mb-4 text-center">Ranking de Positivação</h2><div id="positivacaoChartContainer" class="relative h-80"></div></div><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]"><h2 class="text-lg font-semibold text-white mb-4 text-center">Ranking de Mix de Produtos (Por PDV)</h2><div id="mixChartContainer" class="relative h-80"></div></div></div><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]"><h2 class="text-lg font-semibold text-white mb-4 text-center">Top 10 Vendedores (Faturamento)</h2><div id="topSellersChartContainer" class="relative h-80"></div></div></div>
                             </div>
                         </div>
                         
@@ -7533,7 +7533,7 @@
                             </div>
                             <!-- Gráficos (Comparativo) -->
                             <div class="grid grid-cols-1 gap-6">
-                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
+                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]">
                                     <div class="flex justify-center items-center mb-4 relative">
                                         <h2 id="comparison-chart-title" class="text-lg font-semibold text-white text-center">Comparativo de Faturamento Semanal</h2>
                                         <div class="absolute right-0 top-0 bottom-0 flex items-center">
@@ -7546,12 +7546,12 @@
                                     <div id="weeklyComparisonChartContainer" class="relative h-96"></div>
                                     <div id="monthlyComparisonChartContainer" class="relative h-96 hidden"></div>
                                 </div>
-                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
+                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]">
                                     <h2 class="text-lg font-semibold text-white text-center mb-4">Faturamento por Dia da Semana</h2>
                                     <div id="dailyWeeklyComparisonChartContainer" class="relative h-96"></div>
                                 </div>
                                 <!-- Tabela (Comparativo) -->
-                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 class="text-lg font-semibold text-white text-center mb-4">Variação de Faturamento por Supervisor</h2><div class="overflow-x-auto custom-scrollbar" style="max-height: 40vh;"><table class="min-w-full text-sm text-left text-slate-300"><thead class="text-xs text-slate-400 uppercase sticky-header"><tr><th class="px-4 py-3">Supervisor</th><th class="px-4 py-3 text-right">Média Trim.</th><th class="px-4 py-3 text-right">Fat. Mês Atual</th><th class="px-4 py-3 text-right">Variação</th></tr></thead><tbody id="supervisorComparisonTableBody" class="divide-y divide-slate-700"></tbody></table></div></div>
+                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]"><h2 class="text-lg font-semibold text-white text-center mb-4">Variação de Faturamento por Supervisor</h2><div class="overflow-x-auto custom-scrollbar" style="max-height: 40vh;"><table class="min-w-full text-sm text-left text-slate-300"><thead class="text-xs text-slate-400 uppercase sticky-header"><tr><th class="px-4 py-3">Supervisor</th><th class="px-4 py-3 text-right">Média Trim.</th><th class="px-4 py-3 text-right">Fat. Mês Atual</th><th class="px-4 py-3 text-right">Variação</th></tr></thead><tbody id="supervisorComparisonTableBody" class="divide-y divide-slate-700"></tbody></table></div></div>
                             </div>
                         </div>
                         
@@ -7709,12 +7709,12 @@
                                 </div>
                             </header>
                              <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6 mb-6">
-                                <div class="kpi-card"><p class="text-slate-400 text-sm font-medium">Clientes Ativos (Filtro)</p><p id="innovations-month-active-clients-kpi" class="text-3xl font-bold text-teal-400 my-1">0</p><p class="text-xs text-slate-500">Base para os KPIs</p></div>
-                                <div class="kpi-card"><p class="text-slate-400 text-sm font-medium">Cobertura Mês Anterior</p><p id="innovations-month-selection-coverage-value-kpi-previous" class="text-3xl font-bold text-orange-400 my-1">0%</p><p id="innovations-month-selection-coverage-count-kpi-previous" class="text-xs text-slate-500">0 de 0 clientes</p></div>
-                                <div class="kpi-card"><p class="text-slate-400 text-sm font-medium">Cobertura Mês Atual</p><p id="innovations-month-selection-coverage-value-kpi" class="text-3xl font-bold text-cyan-400 my-1">0%</p><p id="innovations-month-selection-coverage-count-kpi" class="text-xs text-slate-500">0 de 0 clientes</p></div>
-                                <div class="kpi-card"><p class="text-slate-400 text-sm font-medium">Cobertura Bonificação Ant.</p><p id="innovations-month-bonus-coverage-value-kpi-previous" class="text-3xl font-bold text-orange-400 my-1">0%</p><p id="innovations-month-bonus-coverage-count-kpi-previous" class="text-xs text-slate-500">0 de 0 clientes</p></div>
-                                <div class="kpi-card"><p class="text-slate-400 text-sm font-medium">Cobertura Bonificação Atual</p><p id="innovations-month-bonus-coverage-value-kpi" class="text-3xl font-bold text-cyan-400 my-1">0%</p><p id="innovations-month-bonus-coverage-count-kpi" class="text-xs text-slate-500">0 de 0 clientes</p></div>
-                                <div class="kpi-card"><p id="innovations-month-top-coverage-title" class="text-slate-400 text-sm font-medium">Item com Maior Cobertura</p><p id="innovations-month-top-coverage-value-kpi" class="text-3xl font-bold text-purple-400 my-1">0%</p><p id="innovations-month-top-coverage-kpi" class="text-xs text-slate-500 truncate" title="Nenhum item analisado">-</p><p id="innovations-month-top-coverage-count-kpi" class="text-xs text-slate-500">0 PDVs</p></div>
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p class="text-slate-400 text-sm font-medium">Clientes Ativos (Filtro)</p><p id="innovations-month-active-clients-kpi" class="text-3xl font-bold text-teal-400 my-1">0</p><p class="text-xs text-slate-500">Base para os KPIs</p></div>
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p class="text-slate-400 text-sm font-medium">Cobertura Mês Anterior</p><p id="innovations-month-selection-coverage-value-kpi-previous" class="text-3xl font-bold text-orange-400 my-1">0%</p><p id="innovations-month-selection-coverage-count-kpi-previous" class="text-xs text-slate-500">0 de 0 clientes</p></div>
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p class="text-slate-400 text-sm font-medium">Cobertura Mês Atual</p><p id="innovations-month-selection-coverage-value-kpi" class="text-3xl font-bold text-cyan-400 my-1">0%</p><p id="innovations-month-selection-coverage-count-kpi" class="text-xs text-slate-500">0 de 0 clientes</p></div>
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p class="text-slate-400 text-sm font-medium">Cobertura Bonificação Ant.</p><p id="innovations-month-bonus-coverage-value-kpi-previous" class="text-3xl font-bold text-orange-400 my-1">0%</p><p id="innovations-month-bonus-coverage-count-kpi-previous" class="text-xs text-slate-500">0 de 0 clientes</p></div>
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p class="text-slate-400 text-sm font-medium">Cobertura Bonificação Atual</p><p id="innovations-month-bonus-coverage-value-kpi" class="text-3xl font-bold text-cyan-400 my-1">0%</p><p id="innovations-month-bonus-coverage-count-kpi" class="text-xs text-slate-500">0 de 0 clientes</p></div>
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p id="innovations-month-top-coverage-title" class="text-slate-400 text-sm font-medium">Item com Maior Cobertura</p><p id="innovations-month-top-coverage-value-kpi" class="text-3xl font-bold text-purple-400 my-1">0%</p><p id="innovations-month-top-coverage-kpi" class="text-xs text-slate-500 truncate" title="Nenhum item analisado">-</p><p id="innovations-month-top-coverage-count-kpi" class="text-xs text-slate-500">0 PDVs</p></div>
                             </div>
                             <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
                                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
@@ -7744,7 +7744,7 @@
                                     <select id="innovations-month-category-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="">Todas as Categorias</option></select>
                                 </div>
                             </div>
-                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm mb-6">
+                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm mb-6 transition-transform duration-300 ease-in-out hover:scale-[1.02]">
                                 <div id="innovations-month-chartContainer" class="relative h-96"></div>
                             </div>
                             <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm mb-6">
@@ -7809,7 +7809,7 @@
 
                             <!-- KPIs -->
                             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                                <div class="kpi-card">
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200">
                                     <div class="grid grid-cols-3 items-center mb-1">
                                         <div class="col-span-1"></div> <!-- Spacer -->
                                         <div class="col-span-1 text-center">
@@ -7828,17 +7828,17 @@
                                     <p id="mix-total-clients-kpi" class="text-3xl font-bold text-white my-1">0</p>
                                     <p class="text-xs text-slate-500">Base para análise</p>
                                 </div>
-                                <div class="kpi-card border-t-4 border-teal-500">
+                                <div class="kpi-card border-t-4 border-teal-500 transition transform hover:-translate-y-1 duration-200">
                                     <p class="text-slate-400 text-sm font-medium">Positivados Salty</p>
                                     <p id="mix-salty-kpi" class="text-3xl font-bold text-teal-400 my-1">0%</p>
                                     <p id="mix-salty-count-kpi" class="text-xs text-slate-500">0 clientes</p>
                                 </div>
-                                <div class="kpi-card border-t-4 border-yellow-500">
+                                <div class="kpi-card border-t-4 border-yellow-500 transition transform hover:-translate-y-1 duration-200">
                                     <p class="text-slate-400 text-sm font-medium">Positivados Foods</p>
                                     <p id="mix-foods-kpi" class="text-3xl font-bold text-yellow-400 my-1">0%</p>
                                     <p id="mix-foods-count-kpi" class="text-xs text-slate-500">0 clientes</p>
                                 </div>
-                                <div class="kpi-card border-t-4 border-purple-500">
+                                <div class="kpi-card border-t-4 border-purple-500 transition transform hover:-translate-y-1 duration-200">
                                     <p class="text-slate-400 text-sm font-medium">Mix Ideal (Ambos)</p>
                                     <p id="mix-both-kpi" class="text-3xl font-bold text-purple-400 my-1">0%</p>
                                     <p id="mix-both-count-kpi" class="text-xs text-slate-500">0 clientes</p>
@@ -7907,11 +7907,11 @@
 
                             <!-- Gráficos -->
                             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-                                <div class="lg:col-span-1 bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
+                                <div class="lg:col-span-1 bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]">
                                     <h2 class="text-lg font-semibold text-white mb-4 text-center">Distribuição do Mix</h2>
                                     <div id="mixDistributionChartContainer" class="relative h-64 flex items-center justify-center"></div>
                                 </div>
-                                <div class="lg:col-span-2 bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
+                                <div class="lg:col-span-2 bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]">
                                     <h2 class="text-lg font-semibold text-white mb-4 text-center">Eficiência por Vendedor (Top 10)</h2>
                                     <div id="mixSellerChartContainer" class="relative h-64"></div>
                                 </div>
@@ -7966,22 +7966,22 @@
                             </header>
                             <!-- KPIs (Cobertura) -->
                              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                                <div class="kpi-card">
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200">
                                     <p class="text-slate-400 text-sm font-medium">Clientes Ativos (Filtro)</p>
                                     <p id="coverage-active-clients-kpi" class="text-3xl font-bold text-teal-400 my-1">0</p>
                                     <p class="text-xs text-slate-500">Base para os KPIs</p>
                                 </div>
-                                <div class="kpi-card">
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200">
                                     <p class="text-slate-400 text-sm font-medium">Cobertura Mês Anterior</p>
                                     <p id="coverage-selection-coverage-value-kpi-previous" class="text-3xl font-bold text-orange-400 my-1">0%</p>
                                     <p id="coverage-selection-coverage-count-kpi-previous" class="text-xs text-slate-500">0 de 0 clientes</p>
                                 </div>
-                                <div class="kpi-card">
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200">
                                     <p class="text-slate-400 text-sm font-medium">Cobertura Mês Atual</p>
                                     <p id="coverage-selection-coverage-value-kpi" class="text-3xl font-bold text-cyan-400 my-1">0%</p>
                                     <p id="coverage-selection-coverage-count-kpi" class="text-xs text-slate-500">0 de 0 clientes</p>
                                 </div>
-                                <div class="kpi-card">
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200">
                                     <p class="text-slate-400 text-sm font-medium">Item com Maior Cobertura</p>
                                     <p id="coverage-top-coverage-value-kpi" class="text-3xl font-bold text-purple-400 my-1">0%</p>
                                     <p id="coverage-top-coverage-product-kpi" class="text-xs text-slate-500 truncate" title="Nenhum item analisado">-</p>
@@ -8027,7 +8027,7 @@
                                     <button id="clear-coverage-filters-btn" class="w-full bg-slate-600 hover:bg-slate-500 text-white font-bold py-2.5 px-4 rounded-lg">Limpar Filtros</button>
                                 </div>
                             </div>
-                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm mb-6">
+                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm mb-6 transition-transform duration-300 ease-in-out hover:scale-[1.02]">
                                 <div class="flex justify-between items-center mb-4 relative">
                                     <div class="absolute left-0 top-0 bottom-0 flex items-center">
                                         <div class="text-left">
