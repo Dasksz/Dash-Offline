@@ -5900,6 +5900,128 @@
             if (sidebarOverlay) sidebarOverlay.classList.toggle('hidden');
         }
 
+        document.querySelector("#page-sv select").addEventListener('change', () => {
+                updateMetasSvView();
+            });
+
+            // Metas Event Listeners
+            document.getElementById('nav-gv').addEventListener('click', () => switchPage('page-gv'));
+            document.getElementById('nav-sv').addEventListener('click', () => switchPage('page-sv'));
+            document.getElementById('btn-elma').addEventListener('click', () => selectGroup('ELMA'));
+            document.getElementById('btn-foods').addEventListener('click', () => selectGroup('FOODS'));
+
+            document.querySelectorAll('#tabs-elma button, #tabs-foods button').forEach(button => {
+                button.addEventListener('click', () => {
+                    document.querySelectorAll('#tabs-elma button, #tabs-foods button').forEach(btn => {
+                        btn.classList.remove('border-teal-500', 'bg-teal-500/10', 'text-teal-300', 'font-bold');
+                        btn.classList.add('text-slate-400', 'hover:bg-slate-700', 'font-medium');
+                    });
+                    button.classList.add('border-teal-500', 'bg-teal-500/10', 'text-teal-300', 'font-bold');
+                    button.classList.remove('text-slate-400', 'hover:bg-slate-700', 'font-medium');
+                    updateMetasViews();
+                });
+            });
+
+            const metaRevenueInput = document.getElementById('meta-revenue-input');
+            const metaVolumeInput = document.getElementById('meta-volume-input');
+            const metaMixInput = document.getElementById('meta-mix-input');
+
+            const updateMetasViews = () => {
+                const goals = {
+                    revenue: parseFloat(metaRevenueInput.value.replace(/\./g, '').replace(',', '.')) || 0,
+                    volume: parseFloat(metaVolumeInput.value.replace(/\./g, '').replace(',', '.')) || 0,
+                    mix: parseInt(metaMixInput.value.replace(/\./g, '')) || 0
+                };
+                const activeCategory = document.querySelector('#tabs-elma button.border-teal-500, #tabs-foods button.border-teal-500').textContent.trim();
+                updateMetasGvView(activeCategory, goals);
+                updateMetasSvView(activeCategory, goals);
+            };
+
+            if (metaRevenueInput && metaVolumeInput && metaMixInput) {
+                [metaRevenueInput, metaVolumeInput, metaMixInput].forEach(input => {
+                    input.addEventListener('change', updateMetasViews);
+                });
+            }
+
+            document.querySelector("#page-sv tbody").addEventListener('input', () => {
+                const rows = document.querySelectorAll("#page-sv tbody tr");
+                let totalSuggestedRevenue = 0;
+                let totalFinalRevenue = 0;
+
+                rows.forEach(row => {
+                    const suggested = parseFloat(row.cells[3].textContent.replace(/\./g, '').replace(',', '.')) || 0;
+                    const adjustment = parseFloat(row.cells[4].querySelector('input').value) || 0;
+                    totalSuggestedRevenue += suggested;
+                    totalFinalRevenue += suggested + adjustment;
+                });
+
+                const diff = totalSuggestedRevenue - totalFinalRevenue;
+                const diffEl = document.querySelector("#footer-balance > div > div:nth-child(2) > span:nth-child(2)");
+                diffEl.textContent = `Dif: ${diff.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
+                diffEl.classList.toggle('text-red-400', diff !== 0);
+                diffEl.classList.toggle('text-emerald-400', diff === 0);
+
+                document.querySelector("#footer-balance button").disabled = diff !== 0;
+            });
+
+        function switchPage(pageId) {
+            // Esconde todas
+            document.getElementById('page-gv').classList.add('hidden');
+            document.getElementById('page-sv').classList.add('hidden');
+            document.getElementById('footer-balance').classList.add('hidden'); // Footer só aparece no SV
+
+            // Mostra a selecionada
+            document.getElementById(pageId).classList.remove('hidden');
+            document.getElementById(pageId).classList.add('flex');
+
+            // Logica de botões
+            const btnGv = document.getElementById('nav-gv');
+            const btnSv = document.getElementById('nav-sv');
+
+            if(pageId === 'page-gv') {
+                btnGv.className = "px-6 py-2 rounded-md text-sm font-bold bg-slate-700 text-white shadow-sm flex items-center gap-2 transition-all";
+                btnSv.className = "px-6 py-2 rounded-md text-sm font-medium text-slate-400 hover:text-white flex items-center gap-2 transition-all";
+            } else {
+                btnSv.className = "px-6 py-2 rounded-md text-sm font-bold bg-slate-700 text-white shadow-sm flex items-center gap-2 transition-all";
+                btnGv.className = "px-6 py-2 rounded-md text-sm font-medium text-slate-400 hover:text-white flex items-center gap-2 transition-all";
+
+                // Mostra footer no SV
+                document.getElementById('footer-balance').classList.remove('hidden');
+            }
+        }
+
+        // Função para alternar grupo na visão do GV
+        function selectGroup(group) {
+            const btnElma = document.getElementById('btn-elma');
+            const btnFoods = document.getElementById('btn-foods');
+            const tabsElma = document.getElementById('tabs-elma');
+            const tabsFoods = document.getElementById('tabs-foods');
+
+            if(group === 'ELMA') {
+                btnElma.className = "px-6 py-2 bg-teal-500 text-white rounded-lg font-bold shadow-md";
+                btnFoods.className = "px-6 py-2 bg-slate-700 text-slate-300 border border-slate-600 rounded-lg font-medium hover:bg-slate-600";
+                tabsElma.classList.remove('hidden');
+                tabsElma.classList.add('flex');
+                tabsFoods.classList.add('hidden');
+                tabsFoods.classList.remove('flex');
+            } else {
+                btnFoods.className = "px-6 py-2 bg-teal-500 text-white rounded-lg font-bold shadow-md";
+                btnElma.className = "px-6 py-2 bg-slate-700 text-slate-300 border border-slate-600 rounded-lg font-medium hover:bg-slate-600";
+                tabsFoods.classList.remove('hidden');
+                tabsFoods.classList.add('flex');
+                tabsElma.classList.add('hidden');
+                tabsElma.classList.remove('flex');
+            }
+        }
+
+            const METAS_CATEGORIES = {
+                'EXTRUSADOS': { type: 'GRUPO A', suppliers: ['707'] },
+                'NAO_EXTRUSADOS': { type: 'GRUPO A', suppliers: ['708'] },
+                'TORCIDA': { type: 'GRUPO A', suppliers: ['752'] },
+                'TODDYNHO': { type: 'GRUPO B', brands: ['TODDYNHO'] },
+                'TODDY': { type: 'GRUPO B', brands: ['TODDY'] },
+                'QUAKER_KEROCOCO': { type: 'GRUPO B', brands: ['QUAKER', 'KEROCOCO'] }
+            };
         function calculateMetasHistoricalData() {
             const historicalDataByClient = {};
             const historicalDataBySeller = {};
@@ -7295,112 +7417,6 @@
                 });
             });
 
-            function calculateMetasHistoricalData() {
-                const historicalDataByClient = {};
-                const historicalDataBySeller = {};
-
-                allHistoryData.forEach(sale => {
-                    const productDetails = productDetailsMap.get(sale.PRODUTO);
-                    let category = null;
-
-                    for (const cat in METAS_CATEGORIES) {
-                        const { suppliers, brands } = METAS_CATEGORIES[cat];
-                        if (suppliers && suppliers.includes(sale.CODFOR)) {
-                            category = cat;
-                            break;
-                        }
-                        if (brands && productDetails && brands.some(brand => productDetails.descricao.toUpperCase().includes(brand))) {
-                            category = cat;
-                            break;
-                        }
-                    }
-
-                    if (category) {
-                        const clientID = sale.CODCLI;
-                        const sellerName = sale.NOME;
-
-                        if (!historicalDataByClient[clientID]) historicalDataByClient[clientID] = {};
-                        if (!historicalDataByClient[clientID][category]) historicalDataByClient[clientID][category] = { revenue: 0, volume: 0, mix: new Set() };
-
-                        if (!historicalDataBySeller[sellerName]) historicalDataBySeller[sellerName] = {};
-                        if (!historicalDataBySeller[sellerName][category]) historicalDataBySeller[sellerName][category] = { revenue: 0, volume: 0, mix: new Set() };
-
-                        historicalDataByClient[clientID][category].revenue += sale.VLVENDA;
-                        historicalDataByClient[clientID][category].volume += sale.TOTPESOLIQ;
-                        historicalDataByClient[clientID][category].mix.add(sale.PRODUTO);
-
-                        historicalDataBySeller[sellerName][category].revenue += sale.VLVENDA;
-                        historicalDataBySeller[sellerName][category].volume += sale.TOTPESOLIQ;
-                        historicalDataBySeller[sellerName][category].mix.add(sale.PRODUTO);
-                    }
-                });
-
-                return { byClient: historicalDataByClient, bySeller: historicalDataBySeller };
-            }
-
-            // Metas Event Listeners
-            document.getElementById('nav-gv').addEventListener('click', () => switchPage('page-gv'));
-            document.getElementById('nav-sv').addEventListener('click', () => switchPage('page-sv'));
-            document.getElementById('btn-elma').addEventListener('click', () => selectGroup('ELMA'));
-            document.getElementById('btn-foods').addEventListener('click', () => selectGroup('FOODS'));
-
-            document.querySelectorAll('#tabs-elma button, #tabs-foods button').forEach(button => {
-                button.addEventListener('click', () => {
-                    document.querySelectorAll('#tabs-elma button, #tabs-foods button').forEach(btn => {
-                        btn.classList.remove('border-teal-500', 'bg-teal-500/10', 'text-teal-300', 'font-bold');
-                        btn.classList.add('text-slate-400', 'hover:bg-slate-700', 'font-medium');
-                    });
-                    button.classList.add('border-teal-500', 'bg-teal-500/10', 'text-teal-300', 'font-bold');
-                    button.classList.remove('text-slate-400', 'hover:bg-slate-700', 'font-medium');
-                    updateMetasViews();
-                });
-            });
-
-            const metaRevenueInput = document.getElementById('meta-revenue-input');
-            const metaVolumeInput = document.getElementById('meta-volume-input');
-            const metaMixInput = document.getElementById('meta-mix-input');
-
-            const updateMetasViews = () => {
-                const goals = {
-                    revenue: parseFloat(metaRevenueInput.value.replace(/\./g, '').replace(',', '.')) || 0,
-                    volume: parseFloat(metaVolumeInput.value.replace(/\./g, '').replace(',', '.')) || 0,
-                    mix: parseInt(metaMixInput.value.replace(/\./g, '')) || 0
-                };
-                const activeCategory = document.querySelector('#tabs-elma button.border-teal-500, #tabs-foods button.border-teal-500').textContent.trim();
-                updateMetasGvView(activeCategory, goals);
-                updateMetasSvView(activeCategory, goals);
-            };
-
-            if (metaRevenueInput && metaVolumeInput && metaMixInput) {
-                [metaRevenueInput, metaVolumeInput, metaMixInput].forEach(input => {
-                    input.addEventListener('change', updateMetasViews);
-                });
-            }
-
-            document.querySelector("#page-sv tbody").addEventListener('input', () => {
-                const rows = document.querySelectorAll("#page-sv tbody tr");
-                let totalSuggestedRevenue = 0;
-                let totalFinalRevenue = 0;
-
-                rows.forEach(row => {
-                    const suggested = parseFloat(row.cells[3].textContent.replace(/\./g, '').replace(',', '.')) || 0;
-                    const adjustment = parseFloat(row.cells[4].querySelector('input').value) || 0;
-                    totalSuggestedRevenue += suggested;
-                    totalFinalRevenue += suggested + adjustment;
-                });
-
-                const diff = totalSuggestedRevenue - totalFinalRevenue;
-                const diffEl = document.querySelector("#footer-balance > div > div:nth-child(2) > span:nth-child(2)");
-                diffEl.textContent = `Dif: ${diff.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
-                diffEl.classList.toggle('text-red-400', diff !== 0);
-                diffEl.classList.toggle('text-emerald-400', diff === 0);
-
-                document.querySelector("#footer-balance button").disabled = diff !== 0;
-            });
-
-            document.querySelector("#page-sv select").addEventListener('change', () => {
-                updateMetasSvView();
-            });
         }
 
         initializeOptimizedDataStructures();
