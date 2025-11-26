@@ -880,6 +880,15 @@
 
         const QUARTERLY_DIVISOR = 3;
 
+        const METAS_CATEGORIES = {
+            'EXTRUSADOS': { type: 'GRUPO A', suppliers: ['707'] },
+            'NAO_EXTRUSADOS': { type: 'GRUPO A', suppliers: ['708'] },
+            'TORCIDA': { type: 'GRUPO A', suppliers: ['752'] },
+            'TODDYNHO': { type: 'GRUPO B', brands: ['TODDYNHO'] },
+            'TODDY': { type: 'GRUPO B', brands: ['TODDY'] },
+            'QUAKER_KEROCOCO': { type: 'GRUPO B', brands: ['QUAKER', 'KEROCOCO'] }
+        };
+
         const lastSaleDate = allSalesData.length > 0 ? new Date(Math.max.apply(null, allSalesData.map(s => parseDate(s.DTPED)).filter(d => d && !isNaN(d)))) : new Date();
         lastSaleDate.setUTCHours(0,0,0,0);
         let maxWorkingDaysStock = 0;
@@ -6654,15 +6663,6 @@
 
                 tableBody.innerHTML = tableHTML;
             }
-
-            const METAS_CATEGORIES = {
-                'EXTRUSADOS': { type: 'GRUPO A', suppliers: ['707'] },
-                'NAO_EXTRUSADOS': { type: 'GRUPO A', suppliers: ['708'] },
-                'TORCIDA': { type: 'GRUPO A', suppliers: ['752'] },
-                'TODDYNHO': { type: 'GRUPO B', brands: ['TODDYNHO'] },
-                'TODDY': { type: 'GRUPO B', brands: ['TODDY'] },
-                'QUAKER_KEROCOCO': { type: 'GRUPO B', brands: ['QUAKER', 'KEROCOCO'] }
-            };
 
             function switchPage(pageId) {
                 // Esconde todas
