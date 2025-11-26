@@ -5779,6 +5779,34 @@
             };
         }
 
+        function showLoader(text = 'Carregando...') {
+            return new Promise(resolve => {
+                const loader = document.getElementById('page-transition-loader');
+                const loaderText = document.getElementById('loader-text');
+                if (loader && loaderText) {
+                    loaderText.textContent = text;
+                    loader.classList.remove('opacity-0', 'pointer-events-none');
+                    // Resolve after a short delay to allow transition to start
+                    setTimeout(resolve, 50); 
+                } else {
+                    resolve();
+                }
+            });
+        }
+
+        function hideLoader() {
+             return new Promise(resolve => {
+                const loader = document.getElementById('page-transition-loader');
+                if (loader) {
+                    loader.classList.add('opacity-0', 'pointer-events-none');
+                     // Resolve after the transition ends
+                    setTimeout(resolve, 300);
+                } else {
+                    resolve();
+                }
+            });
+        }
+
         function toggleSidebar() {
             const sideMenu = document.getElementById('side-menu');
             const sidebarOverlay = document.getElementById('sidebar-overlay');
@@ -5787,136 +5815,131 @@
             if (sidebarOverlay) sidebarOverlay.classList.toggle('hidden');
         }
 
-        function navigateTo(view) {
+        async function navigateTo(view) {
             const sideMenu = document.getElementById('side-menu');
             const sidebarOverlay = document.getElementById('sidebar-overlay');
             
             if (sideMenu) sideMenu.classList.add('-translate-x-full');
             if (sidebarOverlay) sidebarOverlay.classList.add('hidden');
 
-                        [mainDashboard, cityView, weeklyView, comparisonView, stockView, innovationsMonthView, coverageView, document.getElementById('mix-view')].forEach(el => {
-                if(el) el.classList.add('hidden');
-            });
+            const viewNameMap = {
+                dashboard: 'Dashboard',
+                pedidos: 'Pedidos',
+                comparativo: 'Comparativo',
+                estoque: 'Estoque',
+                cobertura: 'Cobertura',
+                cidades: 'Cidades',
+                semanal: 'Semanal',
+                'inovacoes-mes': 'Inovações',
+                mix: 'Mix'
+            };
+            const friendlyName = viewNameMap[view] || 'a página';
+            
+            await showLoader(`Carregando ${friendlyName}...`);
 
-            document.querySelectorAll('.nav-link').forEach(link => {
-                link.classList.remove('bg-slate-700', 'text-white');
-                const icon = link.querySelector('svg');
-                if(icon) icon.classList.remove('text-white');
-            });
-            const activeLink = document.querySelector(`.nav-link[data-target="${view}"]`);
-            if (activeLink) {
-                activeLink.classList.add('bg-slate-700', 'text-white');
-                const icon = activeLink.querySelector('svg');
-                if(icon) icon.classList.add('text-white');
-            }
+            // This function now runs after the loader is visible
+            const updateContent = () => {
+                [mainDashboard, cityView, weeklyView, comparisonView, stockView, innovationsMonthView, coverageView, document.getElementById('mix-view')].forEach(el => {
+                    if(el) el.classList.add('hidden');
+                });
 
-            switch(view) {
-                case 'dashboard':
-                    mainDashboard.classList.remove('hidden');
-                    if (chartView) chartView.classList.remove('hidden');
-                    if (tableView) tableView.classList.add('hidden');
-                    if (tablePaginationControls) tablePaginationControls.classList.add('hidden');
-                    if (viewState.dashboard.dirty) {
-                        updateAllVisuals();
-                        viewState.dashboard.dirty = false;
-                    }
-                    break;
-                case 'pedidos':
-                    mainDashboard.classList.remove('hidden');
-                    if (chartView) chartView.classList.add('hidden');
-                    if (tableView) tableView.classList.remove('hidden');
-                    if (tablePaginationControls) tablePaginationControls.classList.remove('hidden');
-                    if (viewState.pedidos.dirty) {
-                        updateAllVisuals(); // Uses same visual update but switches DOM visibility
-                        viewState.pedidos.dirty = false;
-                    }
-                    break;
-                case 'comparativo':
-                    comparisonView.classList.remove('hidden');
-                    if (viewState.comparativo.dirty) {
-                        updateAllComparisonFilters();
-                        updateComparisonView();
-                        viewState.comparativo.dirty = false;
-                    }
-                    break;
-                case 'estoque':
-                    stockView.classList.remove('hidden');
-                    const maxDaysLabel = document.getElementById('max-working-days-label');
-                    if (maxDaysLabel) maxDaysLabel.textContent = `(Máx: ${maxWorkingDaysStock})`;
-                    const daysInput = document.getElementById('stock-working-days-input');
-                    if(daysInput && parseInt(daysInput.value) === 0) daysInput.value = customWorkingDaysStock;
-                    
-                    if (viewState.estoque.dirty) {
-                        handleStockFilterChange(); 
-                        viewState.estoque.dirty = false;
-                    }
-                    break;
-                case 'cobertura':
-                    coverageView.classList.remove('hidden');
-                    customWorkingDaysCoverage = maxWorkingDaysStock;
-                    const workingDaysInputCov = document.getElementById('coverage-working-days-input');
-                    if(workingDaysInputCov) workingDaysInputCov.value = customWorkingDaysCoverage;
-                    
-                    if (viewState.cobertura.dirty) {
-                        updateAllCoverageFilters();
-                        updateCoverageView();
-                        viewState.cobertura.dirty = false;
-                    }
-                    break;
-                case 'cidades':
-                    cityView.classList.remove('hidden');
-                    const cityContent = document.getElementById('city-view-content');
-                    const cityLoader = document.getElementById('city-view-loader');
-                    
-                    if (viewState.cidades.dirty) {
-                        // Show loader only if dirty (first load or forced refresh)
-                        if (cityContent) cityContent.classList.add('hidden'); 
-                        if (cityLoader) cityLoader.classList.remove('hidden'); 
-                        
-                        setTimeout(() => { 
-                            if (cityLoader) cityLoader.classList.add('hidden'); 
-                            if (cityContent) cityContent.classList.remove('hidden'); 
+                document.querySelectorAll('.nav-link').forEach(link => {
+                    link.classList.remove('bg-slate-700', 'text-white');
+                    const icon = link.querySelector('svg');
+                    if(icon) icon.classList.remove('text-white');
+                });
+                
+                const activeLink = document.querySelector(`.nav-link[data-target="${view}"]`);
+                if (activeLink) {
+                    activeLink.classList.add('bg-slate-700', 'text-white');
+                    const icon = activeLink.querySelector('svg');
+                    if(icon) icon.classList.add('text-white');
+                }
 
-                            selectedCitySupervisors = updateSupervisorFilter(document.getElementById('city-supervisor-filter-dropdown'), document.getElementById('city-supervisor-filter-text'), selectedCitySupervisors, allSalesData);
-                            selectedCitySellers = updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData); 
-                            selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData); 
-                            updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData); 
+                switch(view) {
+                    case 'dashboard':
+                        mainDashboard.classList.remove('hidden');
+                        chartView.classList.remove('hidden');
+                        tableView.classList.add('hidden');
+                        tablePaginationControls.classList.add('hidden');
+                        if (viewState.dashboard.dirty) {
+                            updateAllVisuals();
+                            viewState.dashboard.dirty = false;
+                        }
+                        break;
+                    case 'pedidos':
+                        mainDashboard.classList.remove('hidden');
+                        chartView.classList.add('hidden');
+                        tableView.classList.remove('hidden');
+                        tablePaginationControls.classList.remove('hidden');
+                        if (viewState.pedidos.dirty) {
+                            updateAllVisuals();
+                            viewState.pedidos.dirty = false;
+                        }
+                        break;
+                    case 'comparativo':
+                        comparisonView.classList.remove('hidden');
+                        if (viewState.comparativo.dirty) {
+                            updateAllComparisonFilters();
+                            updateComparisonView();
+                            viewState.comparativo.dirty = false;
+                        }
+                        break;
+                    case 'estoque':
+                        stockView.classList.remove('hidden');
+                        if (viewState.estoque.dirty) {
+                            handleStockFilterChange(); 
+                            viewState.estoque.dirty = false;
+                        }
+                        break;
+                    case 'cobertura':
+                        coverageView.classList.remove('hidden');
+                        if (viewState.cobertura.dirty) {
+                            updateAllCoverageFilters();
+                            updateCoverageView();
+                            viewState.cobertura.dirty = false;
+                        }
+                        break;
+                    case 'cidades':
+                        cityView.classList.remove('hidden');
+                        if (viewState.cidades.dirty) {
+                            updateAllCityFilters();
                             updateCityView(); 
                             viewState.cidades.dirty = false;
-                        }, 10);
-                    } else {
-                        // Ensure content is visible if not dirty
-                        if (cityLoader) cityLoader.classList.add('hidden');
-                        if (cityContent) cityContent.classList.remove('hidden');
-                    }
-                    break;
-                case 'semanal':
-                    weeklyView.classList.remove('hidden');
-                    if (viewState.semanal.dirty) {
-                        populateWeeklyFilters(); 
-                        updateWeeklyView();
-                        viewState.semanal.dirty = false;
-                    }
-                    break;
-                case 'inovacoes-mes':
-                    innovationsMonthView.classList.remove('hidden');
-                    if (viewState.inovacoes.dirty) {
-                        selectedInnovationsSupervisors = updateSupervisorFilter(document.getElementById('innovations-month-supervisor-filter-dropdown'), document.getElementById('innovations-month-supervisor-filter-text'), selectedInnovationsSupervisors, allSalesData);
-                        updateSellerFilter('', innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
-                        selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
-                        updateInnovationsMonthView();
-                        viewState.inovacoes.dirty = false;
-                    }
-                    break;
-                case 'mix':
-                    document.getElementById('mix-view').classList.remove('hidden');
-                    if (viewState.mix.dirty) {
-                        updateAllMixFilters();
-                        updateMixView();
-                        viewState.mix.dirty = false;
-                    }
-                    break;
-            }
+                        }
+                        break;
+                    case 'semanal':
+                        weeklyView.classList.remove('hidden');
+                        if (viewState.semanal.dirty) {
+                            populateWeeklyFilters(); 
+                            updateWeeklyView();
+                            viewState.semanal.dirty = false;
+                        }
+                        break;
+                    case 'inovacoes-mes':
+                        innovationsMonthView.classList.remove('hidden');
+                        if (viewState.inovacoes.dirty) {
+                            selectedInnovationsSupervisors = updateSupervisorFilter(document.getElementById('innovations-month-supervisor-filter-dropdown'), document.getElementById('innovations-month-supervisor-filter-text'), selectedInnovationsSupervisors, allSalesData);
+                            updateSellerFilter(selectedInnovationsSupervisors, innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
+                            selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
+                            updateInnovationsMonthView();
+                            viewState.inovacoes.dirty = false;
+                        }
+                        break;
+                    case 'mix':
+                        document.getElementById('mix-view').classList.remove('hidden');
+                        if (viewState.mix.dirty) {
+                            updateAllMixFilters();
+                            updateMixView();
+                            viewState.mix.dirty = false;
+                        }
+                        break;
+                }
+            };
+            
+            updateContent();
+            
+            await hideLoader();
         }
 
         function setupEventListeners() {
@@ -7204,6 +7227,16 @@
                         </aside>
                         <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-40 hidden glass-effect"></div>
                         
+                        <div id="page-transition-loader" class="fixed inset-0 bg-black/30 backdrop-blur-sm z-[9999] flex items-center justify-center transition-opacity duration-300 opacity-0 pointer-events-none">
+                            <div class="flex flex-col items-center">
+                                <svg class="animate-spin -ml-1 mr-3 h-10 w-10 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                <span id="loader-text" class="text-white text-lg mt-4">Carregando...</span>
+                            </div>
+                        </div>
+
                         <div id="content-wrapper" class="min-h-screen transition-all duration-300">
                             <div id="main-dashboard">
                                 <div class="container mx-auto p-4 sm:p-6 lg:p-8">
@@ -7355,8 +7388,7 @@
                                     <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Análise de Vendas por Cidade</p></div>
                                 </div>
                             </header>
-                            <div id="city-view-loader" class="text-center p-16"><p class="text-lg text-slate-400">Carregando dados...</p></div>
-                            <div id="city-view-content" class="hidden">
+                            <div id="city-view-content">
                                 <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
                                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
                                         <!-- Filtro de Rede (Cidades) -->
@@ -7401,7 +7433,7 @@
                                 </div>
                                 <!-- Gráficos (Cidades) -->
                                 <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                                    <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]">
+                                    <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
                                         <div class="flex justify-between items-center mb-4">
                                             <div class="w-1/4"><span class="text-xl font-bold text-indigo-400">Top 10</span></div>
                                             <div class="w-1/2 text-center"><h2 id="city-chart-title" class="text-lg font-semibold text-white"></h2></div>
@@ -7409,7 +7441,7 @@
                                         </div>
                                         <div id="salesByClientInCityChartContainer" class="relative h-96"></div>
                                     </div>
-                                    <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]">
+                                    <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
                                         <div class="flex justify-between items-center mb-4">
                                             <div class="w-1/4"></div>
                                             <div class="w-1/2 text-center"><h2 class="text-lg font-semibold text-white">Status dos Clientes</h2></div>
@@ -7445,11 +7477,11 @@
                                 <div class="mt-4"><label class="block text-sm font-medium text-slate-400 mb-2">Filtrar Supervisores</label><div id="weekly-supervisor-filter" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 text-slate-300"></div></div>
                             </div>
                             <div class="grid grid-cols-1 gap-6">
-                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]">
+                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
                                     <div class="flex justify-between items-center mb-4"><h2 class="text-lg font-semibold text-white text-center">Faturamento Mensal por Dia da Semana</h2><div class="text-right"><p class="text-slate-400 text-sm">Total do Mês</p><p id="total-mes-semanal" class="text-xl font-bold text-green-400">R$ 0,00</p></div></div><div id="weeklySalesChartContainer" class="relative h-96"></div>
                                     <div class="mt-6 border-t border-slate-700 pt-4"><h3 class="text-md font-semibold text-white mb-3 text-center">Resumo de Faturamento Semanal</h3><div class="overflow-x-auto"><table class="min-w-full text-sm text-left text-slate-300"><thead class="text-xs text-slate-400 uppercase"><tr><th class="px-4 py-2 bg-slate-800 rounded-l-lg">Semana</th><th class="px-4 py-2 bg-slate-800 text-right rounded-r-lg">Faturamento Total</th></tr></thead><tbody id="weekly-summary-table-body" class="divide-y divide-slate-700"></tbody></table></div></div>
                                 </div>
-                                <div class="grid grid-cols-1 gap-6"><div class="grid grid-cols-1 lg:grid-cols-2 gap-6"><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]"><h2 class="text-lg font-semibold text-white mb-4 text-center">Ranking de Positivação</h2><div id="positivacaoChartContainer" class="relative h-80"></div></div><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]"><h2 class="text-lg font-semibold text-white mb-4 text-center">Ranking de Mix de Produtos (Por PDV)</h2><div id="mixChartContainer" class="relative h-80"></div></div></div><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]"><h2 class="text-lg font-semibold text-white mb-4 text-center">Top 10 Vendedores (Faturamento)</h2><div id="topSellersChartContainer" class="relative h-80"></div></div></div>
+                                <div class="grid grid-cols-1 gap-6"><div class="grid grid-cols-1 lg:grid-cols-2 gap-6"><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 class="text-lg font-semibold text-white mb-4 text-center">Ranking de Positivação</h2><div id="positivacaoChartContainer" class="relative h-80"></div></div><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 class="text-lg font-semibold text-white mb-4 text-center">Ranking de Mix de Produtos (Por PDV)</h2><div id="mixChartContainer" class="relative h-80"></div></div></div><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 class="text-lg font-semibold text-white mb-4 text-center">Top 10 Vendedores (Faturamento)</h2><div id="topSellersChartContainer" class="relative h-80"></div></div></div>
                             </div>
                         </div>
                         
@@ -7533,7 +7565,7 @@
                             </div>
                             <!-- Gráficos (Comparativo) -->
                             <div class="grid grid-cols-1 gap-6">
-                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]">
+                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
                                     <div class="flex justify-center items-center mb-4 relative">
                                         <h2 id="comparison-chart-title" class="text-lg font-semibold text-white text-center">Comparativo de Faturamento Semanal</h2>
                                         <div class="absolute right-0 top-0 bottom-0 flex items-center">
@@ -7546,12 +7578,12 @@
                                     <div id="weeklyComparisonChartContainer" class="relative h-96"></div>
                                     <div id="monthlyComparisonChartContainer" class="relative h-96 hidden"></div>
                                 </div>
-                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]">
+                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
                                     <h2 class="text-lg font-semibold text-white text-center mb-4">Faturamento por Dia da Semana</h2>
                                     <div id="dailyWeeklyComparisonChartContainer" class="relative h-96"></div>
                                 </div>
                                 <!-- Tabela (Comparativo) -->
-                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]"><h2 class="text-lg font-semibold text-white text-center mb-4">Variação de Faturamento por Supervisor</h2><div class="overflow-x-auto custom-scrollbar" style="max-height: 40vh;"><table class="min-w-full text-sm text-left text-slate-300"><thead class="text-xs text-slate-400 uppercase sticky-header"><tr><th class="px-4 py-3">Supervisor</th><th class="px-4 py-3 text-right">Média Trim.</th><th class="px-4 py-3 text-right">Fat. Mês Atual</th><th class="px-4 py-3 text-right">Variação</th></tr></thead><tbody id="supervisorComparisonTableBody" class="divide-y divide-slate-700"></tbody></table></div></div>
+                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 class="text-lg font-semibold text-white text-center mb-4">Variação de Faturamento por Supervisor</h2><div class="overflow-x-auto custom-scrollbar" style="max-height: 40vh;"><table class="min-w-full text-sm text-left text-slate-300"><thead class="text-xs text-slate-400 uppercase sticky-header"><tr><th class="px-4 py-3">Supervisor</th><th class="px-4 py-3 text-right">Média Trim.</th><th class="px-4 py-3 text-right">Fat. Mês Atual</th><th class="px-4 py-3 text-right">Variação</th></tr></thead><tbody id="supervisorComparisonTableBody" class="divide-y divide-slate-700"></tbody></table></div></div>
                             </div>
                         </div>
                         
@@ -7744,7 +7776,7 @@
                                     <select id="innovations-month-category-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="">Todas as Categorias</option></select>
                                 </div>
                             </div>
-                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm mb-6 transition-transform duration-300 ease-in-out hover:scale-[1.02]">
+                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm mb-6">
                                 <div id="innovations-month-chartContainer" class="relative h-96"></div>
                             </div>
                             <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm mb-6">
@@ -7907,11 +7939,11 @@
 
                             <!-- Gráficos -->
                             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-                                <div class="lg:col-span-1 bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]">
+                                <div class="lg:col-span-1 bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
                                     <h2 class="text-lg font-semibold text-white mb-4 text-center">Distribuição do Mix</h2>
                                     <div id="mixDistributionChartContainer" class="relative h-64 flex items-center justify-center"></div>
                                 </div>
-                                <div class="lg:col-span-2 bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]">
+                                <div class="lg:col-span-2 bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
                                     <h2 class="text-lg font-semibold text-white mb-4 text-center">Eficiência por Vendedor (Top 10)</h2>
                                     <div id="mixSellerChartContainer" class="relative h-64"></div>
                                 </div>
@@ -8027,7 +8059,7 @@
                                     <button id="clear-coverage-filters-btn" class="w-full bg-slate-600 hover:bg-slate-500 text-white font-bold py-2.5 px-4 rounded-lg">Limpar Filtros</button>
                                 </div>
                             </div>
-                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm mb-6 transition-transform duration-300 ease-in-out hover:scale-[1.02]">
+                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm mb-6">
                                 <div class="flex justify-between items-center mb-4 relative">
                                     <div class="absolute left-0 top-0 bottom-0 flex items-center">
                                         <div class="text-left">
