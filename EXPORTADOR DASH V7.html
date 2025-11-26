@@ -5784,9 +5784,9 @@
                 const loader = document.getElementById('page-transition-loader');
                 const loaderText = document.getElementById('loader-text');
                 if (loader && loaderText) {
+                    document.body.setAttribute('data-loading', 'true');
                     loaderText.textContent = text;
                     loader.classList.remove('opacity-0', 'pointer-events-none');
-                    // Resolve after a short delay to allow transition to start
                     setTimeout(resolve, 50); 
                 } else {
                     resolve();
@@ -5798,8 +5798,8 @@
              return new Promise(resolve => {
                 const loader = document.getElementById('page-transition-loader');
                 if (loader) {
+                    document.body.removeAttribute('data-loading');
                     loader.classList.add('opacity-0', 'pointer-events-none');
-                     // Resolve after the transition ends
                     setTimeout(resolve, 300);
                 } else {
                     resolve();
