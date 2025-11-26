@@ -778,6 +778,25 @@
     </script>
 
     <script id="report-logic-script" type="text/template">
+
+        const METAS_CATEGORIES = {
+            'EXTRUSADOS': {{ type: 'GRUPO A', suppliers: ['707'] }},
+            'NAO_EXTRUSADOS': {{ type: 'GRUPO A', suppliers: ['708'] }},
+            'TORCIDA': {{ type: 'GRUPO A', suppliers: ['752'] }},
+            'TODDYNHO': {{ type: 'GRUPO B', brands: ['TODDYNHO'] }},
+            'TODDY': {{ type: 'GRUPO B', brands: ['TODDY'] }},
+            'QUAKER_KEROCOCO': {{ type: 'GRUPO B', brands: ['QUAKER', 'KEROCOCO'] }}
+        };
+
+        const METAS_CATEGORIES = {
+            'EXTRUSADOS': { type: 'GRUPO A', suppliers: ['707'] },
+            'NAO_EXTRUSADOS': { type: 'GRUPO A', suppliers: ['708'] },
+            'TORCIDA': { type: 'GRUPO A', suppliers: ['752'] },
+            'TODDYNHO': { type: 'GRUPO B', brands: ['TODDYNHO'] },
+            'TODDY': { type: 'GRUPO B', brands: ['TODDY'] },
+            'QUAKER_KEROCOCO': { type: 'GRUPO B', brands: ['QUAKER', 'KEROCOCO'] }
+        };
+
         function parseDate(dateString) {
             if (!dateString) return null;
 
@@ -876,7 +895,7 @@
         let clientLastBranch = new Map();
         let clientRamoMap = new Map();
         let clientMap = new Map();
-            let metasHistoricalData = null;
+        let metasHistoricalData = null;
 
         const QUARTERLY_DIVISOR = 3;
 
@@ -6655,15 +6674,6 @@
                 tableBody.innerHTML = tableHTML;
             }
 
-            const METAS_CATEGORIES = {
-                'EXTRUSADOS': { type: 'GRUPO A', suppliers: ['707'] },
-                'NAO_EXTRUSADOS': { type: 'GRUPO A', suppliers: ['708'] },
-                'TORCIDA': { type: 'GRUPO A', suppliers: ['752'] },
-                'TODDYNHO': { type: 'GRUPO B', brands: ['TODDYNHO'] },
-                'TODDY': { type: 'GRUPO B', brands: ['TODDY'] },
-                'QUAKER_KEROCOCO': { type: 'GRUPO B', brands: ['QUAKER', 'KEROCOCO'] }
-            };
-
             function switchPage(pageId) {
                 // Esconde todas
                 document.getElementById('page-gv').classList.add('hidden');
@@ -7294,49 +7304,6 @@
                     handleStockFilterChange();
                 });
             });
-
-            function calculateMetasHistoricalData() {
-                const historicalDataByClient = {};
-                const historicalDataBySeller = {};
-
-                allHistoryData.forEach(sale => {
-                    const productDetails = productDetailsMap.get(sale.PRODUTO);
-                    let category = null;
-
-                    for (const cat in METAS_CATEGORIES) {
-                        const { suppliers, brands } = METAS_CATEGORIES[cat];
-                        if (suppliers && suppliers.includes(sale.CODFOR)) {
-                            category = cat;
-                            break;
-                        }
-                        if (brands && productDetails && brands.some(brand => productDetails.descricao.toUpperCase().includes(brand))) {
-                            category = cat;
-                            break;
-                        }
-                    }
-
-                    if (category) {
-                        const clientID = sale.CODCLI;
-                        const sellerName = sale.NOME;
-
-                        if (!historicalDataByClient[clientID]) historicalDataByClient[clientID] = {};
-                        if (!historicalDataByClient[clientID][category]) historicalDataByClient[clientID][category] = { revenue: 0, volume: 0, mix: new Set() };
-
-                        if (!historicalDataBySeller[sellerName]) historicalDataBySeller[sellerName] = {};
-                        if (!historicalDataBySeller[sellerName][category]) historicalDataBySeller[sellerName][category] = { revenue: 0, volume: 0, mix: new Set() };
-
-                        historicalDataByClient[clientID][category].revenue += sale.VLVENDA;
-                        historicalDataByClient[clientID][category].volume += sale.TOTPESOLIQ;
-                        historicalDataByClient[clientID][category].mix.add(sale.PRODUTO);
-
-                        historicalDataBySeller[sellerName][category].revenue += sale.VLVENDA;
-                        historicalDataBySeller[sellerName][category].volume += sale.TOTPESOLIQ;
-                        historicalDataBySeller[sellerName][category].mix.add(sale.PRODUTO);
-                    }
-                });
-
-                return { byClient: historicalDataByClient, bySeller: historicalDataBySeller };
-            }
 
             // Metas Event Listeners
             document.getElementById('nav-gv').addEventListener('click', () => switchPage('page-gv'));
