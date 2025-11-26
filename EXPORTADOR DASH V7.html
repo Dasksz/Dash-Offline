@@ -876,7 +876,15 @@
         let clientLastBranch = new Map();
         let clientRamoMap = new Map();
         let clientMap = new Map();
-            let metasHistoricalData = null;
+        let metasHistoricalData = null;
+    const METAS_CATEGORIES = {
+        'EXTRUSADOS': { type: 'GRUPO A', suppliers: ['707'] },
+        'NAO_EXTRUSADOS': { type: 'GRUPO A', suppliers: ['708'] },
+        'TORCIDA': { type: 'GRUPO A', suppliers: ['752'] },
+        'TODDYNHO': { type: 'GRUPO B', brands: ['TODDYNHO'] },
+        'TODDY': { type: 'GRUPO B', brands: ['TODDY'] },
+        'QUAKER_KEROCOCO': { type: 'GRUPO B', brands: ['QUAKER', 'KEROCOCO'] }
+    };
 
         const QUARTERLY_DIVISOR = 3;
 
@@ -5943,6 +5951,140 @@
             return { byClient: historicalDataByClient, bySeller: historicalDataBySeller };
         }
 
+
+        function updateMetasGvView(category = 'EXTRUSADOS', globalGoals = { revenue: 2000000, volume: 45500, mix: 1250 }) {
+                const tableBody = document.querySelector("#page-gv tbody");
+                let tableHTML = "";
+
+                const clientData = Object.entries(metasHistoricalData.byClient).map(([clientID, clientCategories]) => {
+                    const clientInfo = clientMap.get(clientID);
+                    const categoryData = clientCategories[category] || { revenue: 0, volume: 0, mix: new Set() };
+                    return {
+                        clientID,
+                        clientName: clientInfo ? clientInfo.nomeCliente : 'N/A',
+                        sellerName: clientInfo ? (optimizedData.rcaNameByCode.get(clientInfo.rca1) || 'N/A') : 'N/A',
+                        ...categoryData
+                    };
+                });
+
+                const totalRevenue = clientData.reduce((sum, client) => sum + client.revenue, 0);
+                const totalVolume = clientData.reduce((sum, client) => sum + client.volume, 0);
+                const totalMix = clientData.reduce((sum, client) => sum + client.mix.size, 0);
+
+                clientData.forEach(client => {
+                    const revenueShare = totalRevenue > 0 ? (client.revenue / totalRevenue) : 0;
+                    const volumeShare = totalVolume > 0 ? (client.volume / totalVolume) : 0;
+                    const mixShare = totalMix > 0 ? (client.mix.size / totalMix) : 0;
+
+                    const suggestedRevenue = globalGoals.revenue * revenueShare;
+                    const suggestedVolume = globalGoals.volume * volumeShare;
+                    const suggestedMix = globalGoals.mix * mixShare;
+
+                    tableHTML += `
+                        <tr class="hover:bg-slate-800 transition-colors">
+                            <td class="px-4 py-2 sticky left-0 bg-[#1d2347] border-r border-slate-800 z-10">
+                                <div class="font-bold text-slate-300">${client.clientID} - ${client.clientName}</div>
+                                <div class="text-xs text-slate-400">Vend: ${client.sellerName}</div>
+                            </td>
+                            <td class="px-2 py-2 text-right text-slate-400">${client.revenue.toFixed(2)}</td>
+                            <td class="px-2 py-2 text-center text-xs text-blue-400">${(revenueShare * 100).toFixed(2)}%</td>
+                            <td class="px-2 py-2 text-right font-bold text-blue-400 bg-blue-900/20 border-r border-blue-800">${suggestedRevenue.toFixed(2)}</td>
+                            <td class="px-2 py-2 text-right text-slate-400">${(client.volume / 1000).toFixed(3)}</td>
+                            <td class="px-2 py-2 text-center text-xs text-orange-400">${(volumeShare * 100).toFixed(2)}%</td>
+                            <td class="px-2 py-2 text-right font-bold text-orange-400 bg-orange-900/20 border-r border-orange-800">${(suggestedVolume / 1000).toFixed(3)}</td>
+                            <td class="px-2 py-2 text-right text-slate-400">${client.mix.size}</td>
+                            <td class="px-2 py-2 text-center text-xs text-purple-400">${(mixShare * 100).toFixed(2)}%</td>
+                            <td class="px-2 py-2 text-right font-bold text-purple-400 bg-purple-900/20">${Math.round(suggestedMix)}</td>
+                        </tr>
+                    `;
+                });
+
+                tableBody.innerHTML = tableHTML;
+            }
+
+            function updateMetasSvView(category = 'EXTRUSADOS', globalGoals = { revenue: 2000000, volume: 45500, mix: 1250 }) {
+                const tableBody = document.querySelector("#page-sv tbody");
+                const supervisorSelect = document.querySelector("#page-sv select");
+                let tableHTML = "";
+
+                const supervisors = [...new Set(Object.values(metasHistoricalData.bySeller).flatMap(Object.keys).map(seller => {
+                    const rcaCode = optimizedData.rcaCodeByName.get(seller);
+                    const sellerDetails = optimizedData.clientsByRca.get(rcaCode);
+                    return sellerDetails ? sellerDetails[0].SUPERV : null;
+                }))].filter(Boolean).sort();
+
+                if (supervisorSelect.options.length <= 1) {
+                    supervisors.forEach(sup => {
+                        const option = document.createElement('option');
+                        option.value = sup;
+                        option.textContent = sup;
+                        supervisorSelect.appendChild(option);
+                    });
+                }
+
+                const selectedSupervisor = supervisorSelect.value;
+                const sellerData = {};
+
+                Object.entries(metasHistoricalData.byClient).forEach(([clientID, clientCategories]) => {
+                    const clientInfo = clientMap.get(clientID);
+                    const sellerName = clientInfo ? (optimizedData.rcaNameByCode.get(clientInfo.rca1) || 'N/A') : 'N/A';
+
+                    if (!sellerData[sellerName]) {
+                        sellerData[sellerName] = {
+                            revenue: 0,
+                            volume: 0,
+                            mix: 0,
+                            clients: new Set()
+                        };
+                    }
+
+                    const categoryData = clientCategories[category] || { revenue: 0, volume: 0, mix: new Set() };
+                    sellerData[sellerName].revenue += categoryData.revenue;
+                    sellerData[sellerName].volume += categoryData.volume;
+                    sellerData[sellerName].mix += categoryData.mix.size;
+                    sellerData[sellerName].clients.add(clientID);
+                });
+
+                const totalRevenue = Object.values(sellerData).reduce((sum, seller) => sum + seller.revenue, 0);
+                const totalVolume = Object.values(sellerData).reduce((sum, seller) => sum + seller.volume, 0);
+                const totalMix = Object.values(sellerData).reduce((sum, seller) => sum + seller.mix, 0);
+
+                Object.entries(sellerData).forEach(([sellerName, data]) => {
+                    const revenueShare = totalRevenue > 0 ? (data.revenue / totalRevenue) : 0;
+                    const volumeShare = totalVolume > 0 ? (data.volume / totalVolume) : 0;
+                    const mixShare = totalMix > 0 ? (data.mix / totalMix) : 0;
+
+                    const suggestedRevenue = globalGoals.revenue * revenueShare;
+                    const suggestedVolume = globalGoals.volume * volumeShare;
+                    const suggestedMix = globalGoals.mix * mixShare;
+
+                    tableHTML += `
+                        <tr class="hover:bg-slate-800 transition-colors">
+                            <td class="px-4 py-2 font-semibold text-slate-300 sticky left-0 bg-[#1d2347] border-r border-slate-800 z-10">${sellerName}</td>
+                            <td class="px-2 py-2 text-right text-slate-400">${(data.revenue / 1000).toFixed(1)}k</td>
+                            <td class="px-2 py-2 text-center text-xs text-slate-500">${(revenueShare * 100).toFixed(1)}%</td>
+                            <td class="px-2 py-2 text-right font-bold text-blue-400 bg-blue-900/20 border-r border-blue-800">${suggestedRevenue.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
+                            <td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" placeholder="-"></td>
+                            <td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50 border-r border-slate-700">${suggestedRevenue.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
+
+                            <td class="px-2 py-2 text-right text-slate-400">${(data.volume / 1000).toFixed(1)}</td>
+                            <td class="px-2 py-2 text-center text-xs text-slate-500">${(volumeShare * 100).toFixed(1)}%</td>
+                            <td class="px-2 py-2 text-right font-bold text-orange-400 bg-orange-900/20 border-r border-orange-800">${(suggestedVolume).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
+                            <td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-orange-500" placeholder="-"></td>
+                            <td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50 border-r border-slate-700">${(suggestedVolume).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
+
+                            <td class="px-2 py-2 text-right text-slate-400">${data.mix}</td>
+                            <td class="px-2 py-2 text-center text-xs text-slate-500">${(mixShare * 100).toFixed(1)}%</td>
+                            <td class="px-2 py-2 text-right font-bold text-purple-400 bg-purple-900/20 border-r border-purple-800">${Math.round(suggestedMix)}</td>
+                            <td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-purple-500" placeholder="-"></td>
+                            <td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50">${Math.round(suggestedMix)}</td>
+                        </tr>
+                    `;
+                });
+
+                tableBody.innerHTML = tableHTML;
+            }
+
         async function navigateTo(view) {
             const sideMenu = document.getElementById('side-menu');
             const sidebarOverlay = document.getElementById('sidebar-overlay');
@@ -6521,148 +6663,6 @@
                     debouncedStockProductSearch();
                 }
             });
-
-            function updateMetasGvView(category = 'EXTRUSADOS', globalGoals = { revenue: 2000000, volume: 45500, mix: 1250 }) {
-                const tableBody = document.querySelector("#page-gv tbody");
-                let tableHTML = "";
-
-                const clientData = Object.entries(metasHistoricalData.byClient).map(([clientID, clientCategories]) => {
-                    const clientInfo = clientMap.get(clientID);
-                    const categoryData = clientCategories[category] || { revenue: 0, volume: 0, mix: new Set() };
-                    return {
-                        clientID,
-                        clientName: clientInfo ? clientInfo.nomeCliente : 'N/A',
-                        sellerName: clientInfo ? (optimizedData.rcaNameByCode.get(clientInfo.rca1) || 'N/A') : 'N/A',
-                        ...categoryData
-                    };
-                });
-
-                const totalRevenue = clientData.reduce((sum, client) => sum + client.revenue, 0);
-                const totalVolume = clientData.reduce((sum, client) => sum + client.volume, 0);
-                const totalMix = clientData.reduce((sum, client) => sum + client.mix.size, 0);
-
-                clientData.forEach(client => {
-                    const revenueShare = totalRevenue > 0 ? (client.revenue / totalRevenue) : 0;
-                    const volumeShare = totalVolume > 0 ? (client.volume / totalVolume) : 0;
-                    const mixShare = totalMix > 0 ? (client.mix.size / totalMix) : 0;
-
-                    const suggestedRevenue = globalGoals.revenue * revenueShare;
-                    const suggestedVolume = globalGoals.volume * volumeShare;
-                    const suggestedMix = globalGoals.mix * mixShare;
-
-                    tableHTML += `
-                        <tr class="hover:bg-slate-800 transition-colors">
-                            <td class="px-4 py-2 sticky left-0 bg-[#1d2347] border-r border-slate-800 z-10">
-                                <div class="font-bold text-slate-300">${client.clientID} - ${client.clientName}</div>
-                                <div class="text-xs text-slate-400">Vend: ${client.sellerName}</div>
-                            </td>
-                            <td class="px-2 py-2 text-right text-slate-400">${client.revenue.toFixed(2)}</td>
-                            <td class="px-2 py-2 text-center text-xs text-blue-400">${(revenueShare * 100).toFixed(2)}%</td>
-                            <td class="px-2 py-2 text-right font-bold text-blue-400 bg-blue-900/20 border-r border-blue-800">${suggestedRevenue.toFixed(2)}</td>
-                            <td class="px-2 py-2 text-right text-slate-400">${(client.volume / 1000).toFixed(3)}</td>
-                            <td class="px-2 py-2 text-center text-xs text-orange-400">${(volumeShare * 100).toFixed(2)}%</td>
-                            <td class="px-2 py-2 text-right font-bold text-orange-400 bg-orange-900/20 border-r border-orange-800">${(suggestedVolume / 1000).toFixed(3)}</td>
-                            <td class="px-2 py-2 text-right text-slate-400">${client.mix.size}</td>
-                            <td class="px-2 py-2 text-center text-xs text-purple-400">${(mixShare * 100).toFixed(2)}%</td>
-                            <td class="px-2 py-2 text-right font-bold text-purple-400 bg-purple-900/20">${Math.round(suggestedMix)}</td>
-                        </tr>
-                    `;
-                });
-
-                tableBody.innerHTML = tableHTML;
-            }
-
-            function updateMetasSvView(category = 'EXTRUSADOS', globalGoals = { revenue: 2000000, volume: 45500, mix: 1250 }) {
-                const tableBody = document.querySelector("#page-sv tbody");
-                const supervisorSelect = document.querySelector("#page-sv select");
-                let tableHTML = "";
-
-                const supervisors = [...new Set(Object.values(metasHistoricalData.bySeller).flatMap(Object.keys).map(seller => {
-                    const rcaCode = optimizedData.rcaCodeByName.get(seller);
-                    const sellerDetails = optimizedData.clientsByRca.get(rcaCode);
-                    return sellerDetails ? sellerDetails[0].SUPERV : null;
-                }))].filter(Boolean).sort();
-
-                if (supervisorSelect.options.length <= 1) {
-                    supervisors.forEach(sup => {
-                        const option = document.createElement('option');
-                        option.value = sup;
-                        option.textContent = sup;
-                        supervisorSelect.appendChild(option);
-                    });
-                }
-
-                const selectedSupervisor = supervisorSelect.value;
-                const sellerData = {};
-
-                Object.entries(metasHistoricalData.byClient).forEach(([clientID, clientCategories]) => {
-                    const clientInfo = clientMap.get(clientID);
-                    const sellerName = clientInfo ? (optimizedData.rcaNameByCode.get(clientInfo.rca1) || 'N/A') : 'N/A';
-
-                    if (!sellerData[sellerName]) {
-                        sellerData[sellerName] = {
-                            revenue: 0,
-                            volume: 0,
-                            mix: 0,
-                            clients: new Set()
-                        };
-                    }
-
-                    const categoryData = clientCategories[category] || { revenue: 0, volume: 0, mix: new Set() };
-                    sellerData[sellerName].revenue += categoryData.revenue;
-                    sellerData[sellerName].volume += categoryData.volume;
-                    sellerData[sellerName].mix += categoryData.mix.size;
-                    sellerData[sellerName].clients.add(clientID);
-                });
-
-                const totalRevenue = Object.values(sellerData).reduce((sum, seller) => sum + seller.revenue, 0);
-                const totalVolume = Object.values(sellerData).reduce((sum, seller) => sum + seller.volume, 0);
-                const totalMix = Object.values(sellerData).reduce((sum, seller) => sum + seller.mix, 0);
-
-                Object.entries(sellerData).forEach(([sellerName, data]) => {
-                    const revenueShare = totalRevenue > 0 ? (data.revenue / totalRevenue) : 0;
-                    const volumeShare = totalVolume > 0 ? (data.volume / totalVolume) : 0;
-                    const mixShare = totalMix > 0 ? (data.mix / totalMix) : 0;
-
-                    const suggestedRevenue = globalGoals.revenue * revenueShare;
-                    const suggestedVolume = globalGoals.volume * volumeShare;
-                    const suggestedMix = globalGoals.mix * mixShare;
-
-                    tableHTML += `
-                        <tr class="hover:bg-slate-800 transition-colors">
-                            <td class="px-4 py-2 font-semibold text-slate-300 sticky left-0 bg-[#1d2347] border-r border-slate-800 z-10">${sellerName}</td>
-                            <td class="px-2 py-2 text-right text-slate-400">${(data.revenue / 1000).toFixed(1)}k</td>
-                            <td class="px-2 py-2 text-center text-xs text-slate-500">${(revenueShare * 100).toFixed(1)}%</td>
-                            <td class="px-2 py-2 text-right font-bold text-blue-400 bg-blue-900/20 border-r border-blue-800">${suggestedRevenue.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
-                            <td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" placeholder="-"></td>
-                            <td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50 border-r border-slate-700">${suggestedRevenue.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
-
-                            <td class="px-2 py-2 text-right text-slate-400">${(data.volume / 1000).toFixed(1)}</td>
-                            <td class="px-2 py-2 text-center text-xs text-slate-500">${(volumeShare * 100).toFixed(1)}%</td>
-                            <td class="px-2 py-2 text-right font-bold text-orange-400 bg-orange-900/20 border-r border-orange-800">${(suggestedVolume).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
-                            <td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-orange-500" placeholder="-"></td>
-                            <td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50 border-r border-slate-700">${(suggestedVolume).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
-
-                            <td class="px-2 py-2 text-right text-slate-400">${data.mix}</td>
-                            <td class="px-2 py-2 text-center text-xs text-slate-500">${(mixShare * 100).toFixed(1)}%</td>
-                            <td class="px-2 py-2 text-right font-bold text-purple-400 bg-purple-900/20 border-r border-purple-800">${Math.round(suggestedMix)}</td>
-                            <td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-purple-500" placeholder="-"></td>
-                            <td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50">${Math.round(suggestedMix)}</td>
-                        </tr>
-                    `;
-                });
-
-                tableBody.innerHTML = tableHTML;
-            }
-
-            const METAS_CATEGORIES = {
-                'EXTRUSADOS': { type: 'GRUPO A', suppliers: ['707'] },
-                'NAO_EXTRUSADOS': { type: 'GRUPO A', suppliers: ['708'] },
-                'TORCIDA': { type: 'GRUPO A', suppliers: ['752'] },
-                'TODDYNHO': { type: 'GRUPO B', brands: ['TODDYNHO'] },
-                'TODDY': { type: 'GRUPO B', brands: ['TODDY'] },
-                'QUAKER_KEROCOCO': { type: 'GRUPO B', brands: ['QUAKER', 'KEROCOCO'] }
-            };
 
             function switchPage(pageId) {
                 // Esconde todas
