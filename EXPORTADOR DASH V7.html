@@ -828,7 +828,7 @@
         let allSalesData = embeddedData.detailed;
         let allHistoryData = embeddedData.history;
         let aggregatedOrders = embeddedData.byOrder;
-        const allClientsData = embeddedData.clients;
+        const allClientsData = embeddedData.clients.filter(client => client.bloqueio !== 'S');
         const stockData05 = new Map(Object.entries(embeddedData.stockMap05 || {}));
         const stockData08 = new Map(Object.entries(embeddedData.stockMap08 || {}));
         const innovationsMonthData = embeddedData.innovationsMonth;
@@ -876,7 +876,15 @@
         let clientLastBranch = new Map();
         let clientRamoMap = new Map();
         let clientMap = new Map();
-            let metasHistoricalData = null;
+        let metasHistoricalData = null;
+    const METAS_CATEGORIES = {
+        'EXTRUSADOS': { type: 'GRUPO A', suppliers: ['707'] },
+        'NAO_EXTRUSADOS': { type: 'GRUPO A', suppliers: ['708'] },
+        'TORCIDA': { type: 'GRUPO A', suppliers: ['752'] },
+        'TODDYNHO': { type: 'GRUPO B', brands: ['TODDYNHO'] },
+        'TODDY': { type: 'GRUPO B', brands: ['TODDY'] },
+        'QUAKER_KEROCOCO': { type: 'GRUPO B', brands: ['QUAKER', 'KEROCOCO'] }
+    };
 
         const QUARTERLY_DIVISOR = 3;
 
@@ -1339,6 +1347,7 @@
         let selectedMixTiposVenda = [];
         let mixTableDataForExport = [];
         let mixKpiMode = 'total'; // 'total' ou 'atendidos'
+        let selectedMetasSvSupervisors = [];
 
         // let innovationsIncludeBonus = true; // REMOVED
         // let innovationsMonthIncludeBonus = true; // REMOVED
@@ -1374,6 +1383,20 @@
         };
         
         let mixTableState = {
+            currentPage: 1,
+            itemsPerPage: 100,
+            filteredData: [],
+            totalPages: 1
+        };
+
+        let cityActiveTableState = {
+            currentPage: 1,
+            itemsPerPage: 100,
+            filteredData: [],
+            totalPages: 1
+        };
+
+        let cityInactiveTableState = {
             currentPage: 1,
             itemsPerPage: 100,
             filteredData: [],
@@ -1479,7 +1502,9 @@
             clients = clients.filter(c => {
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                return (isAmericanas || rca1 !== '53' || clientsWithSalesThisMonth.has(c['Código']));
+                const hasRca = rca1 && rca1.length > 0;
+                const isRca53WithSales = rca1 === '53' && clientsWithSalesThisMonth.has(c['Código']);
+                return isAmericanas || (hasRca && (rca1 !== '53' || isRca53WithSales));
             });
 
             const clientCodes = new Set(clients.map(c => c['Código']));
@@ -2015,9 +2040,10 @@
             const activeClientsForCoverage = clients.filter(c => {
                 const codcli = c['Código'];
                 const rca1 = String(c.rca1 || '').trim();
-                
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                return (isAmericanas || rca1 !== '53' || clientsWithSalesThisMonth.has(codcli));
+                const hasRca = rca1 && rca1.length > 0;
+                const isRca53WithSales = rca1 === '53' && clientsWithSalesThisMonth.has(codcli);
+                return isAmericanas || (hasRca && (rca1 !== '53' || isRca53WithSales));
             });
             const activeClientsCount = activeClientsForCoverage.length;
             const activeClientCodes = new Set(activeClientsForCoverage.map(c => c['Código']));
@@ -2673,11 +2699,15 @@
 
             let clientBaseForCoverage = allClientsData.filter(c => {
                 const rca1 = String(c.rca1 || '').trim();
-
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 
-                // Regra de inclusão (Americanas ou RCA 1 diferente de 53)
-                return (isAmericanas || rca1 !== '53' || clientsWithSalesThisMonth.has(c['Código']));
+                // Regra de inclusão:
+                // 1. Cliente é 'AMERICANAS'
+                // 2. OU (Cliente tem um RCA1 definido E (esse RCA1 não é '53' OU o cliente fez uma compra este mês))
+                const hasRca = rca1 && rca1.length > 0;
+                const isRca53WithSales = rca1 === '53' && clientsWithSalesThisMonth.has(c['Código']);
+
+                return isAmericanas || (hasRca && (rca1 !== '53' || isRca53WithSales));
             });
 
             if (mainRedeGroupFilter === 'com_rede') {
@@ -2831,7 +2861,6 @@
             kpiSkuPdVEl.textContent = summary.skuPdv.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             kpiPositivacaoEl.textContent = `${summary.positivacaoPercent.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
             kpiPositivacaoPercentEl.textContent = `${summary.positivacaoCount.toLocaleString('pt-BR')} PDVs`;
-
 
             if (!tableView.classList.contains('hidden')) {
                 renderTable(filteredTableData);
@@ -3225,7 +3254,9 @@
             clientsForAnalysis = clientsForAnalysis.filter(c => {
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                return (isAmericanas || rca1 !== '53' || clientsWithSalesThisMonth.has(c['Código']));
+                const hasRca = rca1 && rca1.length > 0;
+                const isRca53WithSales = rca1 === '53' && clientsWithSalesThisMonth.has(c['Código']);
+                return isAmericanas || (hasRca && (rca1 !== '53' || isRca53WithSales));
             });
 
             let activeClientsList = [];
@@ -3293,7 +3324,17 @@
 
             const sortedActiveClients = Object.values(salesByActiveClient).sort((a, b) => b.total - a.total);
             activeClientsForExport = sortedActiveClients;
-            cityActiveDetailTableBody.innerHTML = sortedActiveClients.slice(0, 500).map(data => {
+
+            // Paginação para Clientes Ativos
+            cityActiveTableState.filteredData = sortedActiveClients;
+            cityActiveTableState.totalPages = Math.ceil(sortedActiveClients.length / cityActiveTableState.itemsPerPage);
+            if (cityActiveTableState.currentPage > cityActiveTableState.totalPages) cityActiveTableState.currentPage = cityActiveTableState.totalPages > 0 ? cityActiveTableState.totalPages : 1;
+
+            const activeStartIndex = (cityActiveTableState.currentPage - 1) * cityActiveTableState.itemsPerPage;
+            const activeEndIndex = activeStartIndex + cityActiveTableState.itemsPerPage;
+            const activePageData = sortedActiveClients.slice(activeStartIndex, activeEndIndex);
+
+            cityActiveDetailTableBody.innerHTML = activePageData.map(data => {
                 const novoLabel = data.isNew ? `<span class="ml-2 text-xs font-semibold text-purple-400 bg-purple-900/50 px-2 py-0.5 rounded-full">NOVO</span>` : '';
                 let tooltipParts = [];
                 if (data.pepsico > 0) tooltipParts.push(`PEPSICO: ${data.pepsico.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`);
@@ -3310,11 +3351,41 @@
                 if (!a.isNewForInactiveLabel && b.isNewForInactiveLabel) return 1;
                 return (parseDate(b.ultimaCompra) || 0) - (parseDate(a.ultimaCompra) || 0);
             });
-            cityInactiveDetailTableBody.innerHTML = inactiveClientsList.slice(0, 500).map(client => {
+
+            // Paginação para Clientes Inativos
+            cityInactiveTableState.filteredData = inactiveClientsList;
+            cityInactiveTableState.totalPages = Math.ceil(inactiveClientsList.length / cityInactiveTableState.itemsPerPage);
+             if (cityInactiveTableState.currentPage > cityInactiveTableState.totalPages) cityInactiveTableState.currentPage = cityInactiveTableState.totalPages > 0 ? cityInactiveTableState.totalPages : 1;
+
+            const inactiveStartIndex = (cityInactiveTableState.currentPage - 1) * cityInactiveTableState.itemsPerPage;
+            const inactiveEndIndex = inactiveStartIndex + cityInactiveTableState.itemsPerPage;
+            const inactivePageData = inactiveClientsList.slice(inactiveStartIndex, inactiveEndIndex);
+
+            cityInactiveDetailTableBody.innerHTML = inactivePageData.map(client => {
                 const novoLabel = client.isNewForInactiveLabel ? `<span class="ml-2 text-xs font-semibold text-purple-400 bg-purple-900/50 px-2 py-0.5 rounded-full">NOVO</span>` : '';
                 const devolucaoLabel = client.isReturn ? `<span class="ml-2 text-xs font-semibold text-red-400 bg-red-900/50 px-2 py-0.5 rounded-full">DEVOLUÇÃO</span>` : '';
                 return `<tr class="hover:bg-slate-700"><td class="px-4 py-2"><a href="#" class="text-teal-400 hover:underline" data-codcli="${client['Código']}">${client['Código']}</a></td><td class="px-4 py-2 flex items-center">${client.fantasia || client.razaoSocial}${novoLabel}${devolucaoLabel}</td><td class="px-4 py-2">${client.cidade}</td><td class="px-4 py-2">${client.bairro}</td><td class="px-4 py-2 text-center">${formatDate(client.ultimaCompra)}</td><td class="px-4 py-2">${client.rcas[0] || '-'}</td></tr>`
             }).join('');
+
+            // Atualiza controles de paginação
+            const updatePaginationControls = (controlsId, infoId, prevBtnId, nextBtnId, state) => {
+                const controls = document.getElementById(controlsId);
+                const infoText = document.getElementById(infoId);
+                const prevBtn = document.getElementById(prevBtnId);
+                const nextBtn = document.getElementById(nextBtnId);
+
+                if (state.totalPages > 1) {
+                    infoText.textContent = `Página ${state.currentPage} de ${state.totalPages} (Total: ${state.filteredData.length} clientes)`;
+                    prevBtn.disabled = state.currentPage === 1;
+                    nextBtn.disabled = state.currentPage === state.totalPages;
+                    controls.classList.remove('hidden');
+                } else {
+                    controls.classList.add('hidden');
+                }
+            };
+
+            updatePaginationControls('city-active-pagination-controls', 'city-active-page-info-text', 'city-active-prev-page-btn', 'city-active-next-page-btn', cityActiveTableState);
+            updatePaginationControls('city-inactive-pagination-controls', 'city-inactive-page-info-text', 'city-inactive-prev-page-btn', 'city-inactive-next-page-btn', cityInactiveTableState);
 
             const cityChartTitleEl = document.getElementById('city-chart-title');
             const cityChartOptions = { indexAxis: 'y', scales: { x: { grace: '15%' } }, plugins: { datalabels: { align: 'end', anchor: 'end', color: '#cbd5e1', font: { size: 14, weight: 'bold' }, formatter: (value) => (value / 1000).toFixed(1) + 'k', offset: 8 } } };
@@ -4992,7 +5063,9 @@
                 const rca1 = String(c.rca1 || '').trim();
                 if (rca1 === '306' || rca1 === '300') return false;
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                return (isAmericanas || rca1 !== '53' || clientsWithSalesThisMonth.has(codcli));
+                const hasRca = rca1 && rca1.length > 0;
+                const isRca53WithSales = rca1 === '53' && clientsWithSalesThisMonth.has(codcli);
+                return isAmericanas || (hasRca && (rca1 !== '53' || isRca53WithSales));
             });
             const activeClientsCount = activeClients.length;
             const activeClientCodes = new Set(activeClients.map(c => c['Código']));
@@ -5914,7 +5987,7 @@
                         category = cat;
                         break;
                     }
-                    if (brands && productDetails && brands.some(brand => productDetails.descricao.toUpperCase().includes(brand))) {
+                    if (brands && productDetails && brands.some(brand => productDetails.descricao.toUpperCase().includes(brand.toUpperCase()))) {
                         category = cat;
                         break;
                     }
@@ -5942,6 +6015,169 @@
 
             return { byClient: historicalDataByClient, bySeller: historicalDataBySeller };
         }
+
+        function updateActiveClientsKpi() {
+            const activeClientsEl = document.getElementById('kpi-active-clients');
+            const activeClientsPercentEl = document.getElementById('kpi-active-clients-percent');
+
+            if (activeClientsEl && activeClientsPercentEl) {
+                const baseClientsForActiveKPI = allClientsData.filter(c => {
+                    const rca1 = String(c.rca1 || '').trim();
+                    const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
+                    return isAmericanas || rca1 !== '53';
+                });
+
+                const activeClientsCount = baseClientsForActiveKPI.filter(c => clientsWithSalesThisMonth.has(c['Código'])).length;
+                const totalBaseCount = baseClientsForActiveKPI.length;
+                const activePercent = totalBaseCount > 0 ? (activeClientsCount / totalBaseCount) * 100 : 0;
+
+                activeClientsEl.textContent = activeClientsCount.toLocaleString('pt-BR');
+                activeClientsPercentEl.textContent = `${activePercent.toFixed(1)}% da base`;
+            }
+        }
+
+
+        function updateMetasGvView(category = 'EXTRUSADOS', globalGoals = { revenue: 2000000, volume: 45500, mix: 1250 }) {
+                const tableBody = document.querySelector("#page-gv tbody");
+                let tableHTML = "";
+
+                updateActiveClientsKpi();
+
+                const clientData = Object.entries(metasHistoricalData.byClient).map(([clientID, clientCategories]) => {
+                    const clientInfo = clientMap.get(clientID);
+                    const categoryData = clientCategories[category] || { revenue: 0, volume: 0, mix: new Set() };
+                    return {
+                        clientID,
+                        clientName: clientInfo ? clientInfo.nomeCliente : 'N/A',
+                        sellerName: clientInfo ? (optimizedData.rcaNameByCode.get(clientInfo.rca1) || 'N/A') : 'N/A',
+                        ...categoryData
+                    };
+                });
+
+                const totalRevenue = clientData.reduce((sum, client) => sum + client.revenue, 0);
+                const totalVolume = clientData.reduce((sum, client) => sum + client.volume, 0);
+                const totalMix = clientData.reduce((sum, client) => sum + client.mix.size, 0);
+
+                clientData.forEach(client => {
+                    const revenueShare = totalRevenue > 0 ? (client.revenue / totalRevenue) : 0;
+                    const volumeShare = totalVolume > 0 ? (client.volume / totalVolume) : 0;
+                    const mixShare = totalMix > 0 ? (client.mix.size / totalMix) : 0;
+
+                    const suggestedRevenue = globalGoals.revenue * revenueShare;
+                    const suggestedVolume = globalGoals.volume * volumeShare;
+                    const suggestedMix = globalGoals.mix * mixShare;
+
+                    tableHTML += `
+                        <tr class="hover:bg-slate-800 transition-colors">
+                            <td class="px-4 py-2 sticky left-0 bg-[#1d2347] border-r border-slate-800 z-10">${client.clientID}</td>
+                            <td class="px-4 py-2 sticky left-40 bg-[#1d2347] border-r border-slate-800 z-10 font-bold text-slate-300">${client.clientName}</td>
+                            <td class="px-4 py-2 border-r border-slate-800 text-xs text-slate-400">${client.sellerName}</td>
+                            <td class="px-2 py-2 text-right text-slate-400">${client.revenue.toFixed(2)}</td>
+                            <td class="px-2 py-2 text-center text-xs text-blue-400">${(revenueShare * 100).toFixed(2)}%</td>
+                            <td class="px-2 py-2 text-right font-bold text-blue-400 bg-blue-900/20 border-r border-blue-800">${suggestedRevenue.toFixed(2)}</td>
+                            <td class="px-2 py-2 text-right text-slate-400">${(client.volume / 1000).toFixed(3)}</td>
+                            <td class="px-2 py-2 text-center text-xs text-orange-400">${(volumeShare * 100).toFixed(2)}%</td>
+                            <td class="px-2 py-2 text-right font-bold text-orange-400 bg-orange-900/20 border-r border-orange-800">${(suggestedVolume / 1000).toFixed(3)}</td>
+                            <td class="px-2 py-2 text-right text-slate-400">${client.mix.size}</td>
+                            <td class="px-2 py-2 text-center text-xs text-purple-400">${(mixShare * 100).toFixed(2)}%</td>
+                            <td class="px-2 py-2 text-right font-bold text-purple-400 bg-purple-900/20">${Math.round(suggestedMix)}</td>
+                        </tr>
+                    `;
+                });
+
+                tableBody.innerHTML = tableHTML;
+            }
+
+            function updateMetasSvView(category = 'EXTRUSADOS', globalGoals = { revenue: 2000000, volume: 45500, mix: 1250 }) {
+                const tableBody = document.querySelector("#page-sv tbody");
+                const supervisorDropdown = document.getElementById('metas-sv-supervisor-filter-dropdown');
+                const supervisorText = document.getElementById('metas-sv-supervisor-filter-text');
+                const equipeText = document.getElementById('metas-sv-equipe-text');
+                let tableHTML = "";
+
+                // Populate supervisor filter using history data as source
+                selectedMetasSvSupervisors = updateSupervisorFilter(supervisorDropdown, supervisorText, selectedMetasSvSupervisors, allHistoryData);
+
+                // Update text based on selection
+                if (selectedMetasSvSupervisors.length === 1) {
+                    equipeText.innerHTML = `Gerenciando metas da equipe de <b>${selectedMetasSvSupervisors[0]}</b>`;
+                } else if (selectedMetasSvSupervisors.length > 1) {
+                    equipeText.textContent = `Gerenciando metas de ${selectedMetasSvSupervisors.length} equipes`;
+                } else {
+                    equipeText.textContent = 'Gerenciando metas de todas as equipes';
+                }
+
+                const sellerData = {};
+                const sellerToSupervisorMap = new Map();
+                 [...allSalesData, ...allHistoryData].forEach(s => {
+                    if (s.NOME && s.SUPERV && !sellerToSupervisorMap.has(s.NOME)) {
+                        sellerToSupervisorMap.set(s.NOME, s.SUPERV);
+                    }
+                });
+
+                Object.entries(metasHistoricalData.byClient).forEach(([clientID, clientCategories]) => {
+                    const clientInfo = clientMap.get(clientID);
+                    const sellerName = clientInfo ? (optimizedData.rcaNameByCode.get(clientInfo.rca1) || 'N/A') : 'N/A';
+
+                    if (!sellerData[sellerName]) {
+                        sellerData[sellerName] = { revenue: 0, volume: 0, mix: 0, clients: new Set() };
+                    }
+
+                    const categoryData = clientCategories[category] || { revenue: 0, volume: 0, mix: new Set() };
+                    sellerData[sellerName].revenue += categoryData.revenue;
+                    sellerData[sellerName].volume += categoryData.volume;
+                    sellerData[sellerName].mix += categoryData.mix.size;
+                    sellerData[sellerName].clients.add(clientID);
+                });
+
+                let sellersToDisplay = Object.entries(sellerData);
+                if (selectedMetasSvSupervisors.length > 0) {
+                    const selectedSupSet = new Set(selectedMetasSvSupervisors);
+                    sellersToDisplay = sellersToDisplay.filter(([sellerName, data]) => {
+                        const supervisor = sellerToSupervisorMap.get(sellerName);
+                        return supervisor && selectedSupSet.has(supervisor);
+                    });
+                }
+
+                const totalRevenue = sellersToDisplay.reduce((sum, [, seller]) => sum + seller.revenue, 0);
+                const totalVolume = sellersToDisplay.reduce((sum, [, seller]) => sum + seller.volume, 0);
+                const totalMix = sellersToDisplay.reduce((sum, [, seller]) => sum + seller.mix, 0);
+
+                sellersToDisplay.forEach(([sellerName, data]) => {
+                    const revenueShare = totalRevenue > 0 ? (data.revenue / totalRevenue) : 0;
+                    const volumeShare = totalVolume > 0 ? (data.volume / totalVolume) : 0;
+                    const mixShare = totalMix > 0 ? (data.mix / totalMix) : 0;
+
+                    const suggestedRevenue = globalGoals.revenue * revenueShare;
+                    const suggestedVolume = globalGoals.volume * volumeShare;
+                    const suggestedMix = globalGoals.mix * mixShare;
+
+                    tableHTML += `
+                        <tr class="hover:bg-slate-800 transition-colors">
+                            <td class="px-4 py-2 font-semibold text-slate-300 sticky left-0 bg-[#1d2347] border-r border-slate-800 z-10">${sellerName}</td>
+                            <td class="px-2 py-2 text-right text-slate-400">${(data.revenue / 1000).toFixed(1)}k</td>
+                            <td class="px-2 py-2 text-center text-xs text-slate-500">${(revenueShare * 100).toFixed(1)}%</td>
+                            <td class="px-2 py-2 text-right font-bold text-blue-400 bg-blue-900/20 border-r border-blue-800">${suggestedRevenue.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
+                            <td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" placeholder="-"></td>
+                            <td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50 border-r border-slate-700">${suggestedRevenue.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
+
+                            <td class="px-2 py-2 text-right text-slate-400">${(data.volume / 1000).toFixed(1)}</td>
+                            <td class="px-2 py-2 text-center text-xs text-slate-500">${(volumeShare * 100).toFixed(1)}%</td>
+                            <td class="px-2 py-2 text-right font-bold text-orange-400 bg-orange-900/20 border-r border-orange-800">${(suggestedVolume).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
+                            <td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-orange-500" placeholder="-"></td>
+                            <td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50 border-r border-slate-700">${(suggestedVolume).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
+
+                            <td class="px-2 py-2 text-right text-slate-400">${data.mix}</td>
+                            <td class="px-2 py-2 text-center text-xs text-slate-500">${(mixShare * 100).toFixed(1)}%</td>
+                            <td class="px-2 py-2 text-right font-bold text-purple-400 bg-purple-900/20 border-r border-purple-800">${Math.round(suggestedMix)}</td>
+                            <td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-purple-500" placeholder="-"></td>
+                            <td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50">${Math.round(suggestedMix)}</td>
+                        </tr>
+                    `;
+                });
+
+                tableBody.innerHTML = tableHTML;
+            }
 
         async function navigateTo(view) {
             const sideMenu = document.getElementById('side-menu');
@@ -6521,148 +6757,6 @@
                     debouncedStockProductSearch();
                 }
             });
-
-            function updateMetasGvView(category = 'EXTRUSADOS', globalGoals = { revenue: 2000000, volume: 45500, mix: 1250 }) {
-                const tableBody = document.querySelector("#page-gv tbody");
-                let tableHTML = "";
-
-                const clientData = Object.entries(metasHistoricalData.byClient).map(([clientID, clientCategories]) => {
-                    const clientInfo = clientMap.get(clientID);
-                    const categoryData = clientCategories[category] || { revenue: 0, volume: 0, mix: new Set() };
-                    return {
-                        clientID,
-                        clientName: clientInfo ? clientInfo.nomeCliente : 'N/A',
-                        sellerName: clientInfo ? (optimizedData.rcaNameByCode.get(clientInfo.rca1) || 'N/A') : 'N/A',
-                        ...categoryData
-                    };
-                });
-
-                const totalRevenue = clientData.reduce((sum, client) => sum + client.revenue, 0);
-                const totalVolume = clientData.reduce((sum, client) => sum + client.volume, 0);
-                const totalMix = clientData.reduce((sum, client) => sum + client.mix.size, 0);
-
-                clientData.forEach(client => {
-                    const revenueShare = totalRevenue > 0 ? (client.revenue / totalRevenue) : 0;
-                    const volumeShare = totalVolume > 0 ? (client.volume / totalVolume) : 0;
-                    const mixShare = totalMix > 0 ? (client.mix.size / totalMix) : 0;
-
-                    const suggestedRevenue = globalGoals.revenue * revenueShare;
-                    const suggestedVolume = globalGoals.volume * volumeShare;
-                    const suggestedMix = globalGoals.mix * mixShare;
-
-                    tableHTML += `
-                        <tr class="hover:bg-slate-800 transition-colors">
-                            <td class="px-4 py-2 sticky left-0 bg-[#1d2347] border-r border-slate-800 z-10">
-                                <div class="font-bold text-slate-300">${client.clientID} - ${client.clientName}</div>
-                                <div class="text-xs text-slate-400">Vend: ${client.sellerName}</div>
-                            </td>
-                            <td class="px-2 py-2 text-right text-slate-400">${client.revenue.toFixed(2)}</td>
-                            <td class="px-2 py-2 text-center text-xs text-blue-400">${(revenueShare * 100).toFixed(2)}%</td>
-                            <td class="px-2 py-2 text-right font-bold text-blue-400 bg-blue-900/20 border-r border-blue-800">${suggestedRevenue.toFixed(2)}</td>
-                            <td class="px-2 py-2 text-right text-slate-400">${(client.volume / 1000).toFixed(3)}</td>
-                            <td class="px-2 py-2 text-center text-xs text-orange-400">${(volumeShare * 100).toFixed(2)}%</td>
-                            <td class="px-2 py-2 text-right font-bold text-orange-400 bg-orange-900/20 border-r border-orange-800">${(suggestedVolume / 1000).toFixed(3)}</td>
-                            <td class="px-2 py-2 text-right text-slate-400">${client.mix.size}</td>
-                            <td class="px-2 py-2 text-center text-xs text-purple-400">${(mixShare * 100).toFixed(2)}%</td>
-                            <td class="px-2 py-2 text-right font-bold text-purple-400 bg-purple-900/20">${Math.round(suggestedMix)}</td>
-                        </tr>
-                    `;
-                });
-
-                tableBody.innerHTML = tableHTML;
-            }
-
-            function updateMetasSvView(category = 'EXTRUSADOS', globalGoals = { revenue: 2000000, volume: 45500, mix: 1250 }) {
-                const tableBody = document.querySelector("#page-sv tbody");
-                const supervisorSelect = document.querySelector("#page-sv select");
-                let tableHTML = "";
-
-                const supervisors = [...new Set(Object.values(metasHistoricalData.bySeller).flatMap(Object.keys).map(seller => {
-                    const rcaCode = optimizedData.rcaCodeByName.get(seller);
-                    const sellerDetails = optimizedData.clientsByRca.get(rcaCode);
-                    return sellerDetails ? sellerDetails[0].SUPERV : null;
-                }))].filter(Boolean).sort();
-
-                if (supervisorSelect.options.length <= 1) {
-                    supervisors.forEach(sup => {
-                        const option = document.createElement('option');
-                        option.value = sup;
-                        option.textContent = sup;
-                        supervisorSelect.appendChild(option);
-                    });
-                }
-
-                const selectedSupervisor = supervisorSelect.value;
-                const sellerData = {};
-
-                Object.entries(metasHistoricalData.byClient).forEach(([clientID, clientCategories]) => {
-                    const clientInfo = clientMap.get(clientID);
-                    const sellerName = clientInfo ? (optimizedData.rcaNameByCode.get(clientInfo.rca1) || 'N/A') : 'N/A';
-
-                    if (!sellerData[sellerName]) {
-                        sellerData[sellerName] = {
-                            revenue: 0,
-                            volume: 0,
-                            mix: 0,
-                            clients: new Set()
-                        };
-                    }
-
-                    const categoryData = clientCategories[category] || { revenue: 0, volume: 0, mix: new Set() };
-                    sellerData[sellerName].revenue += categoryData.revenue;
-                    sellerData[sellerName].volume += categoryData.volume;
-                    sellerData[sellerName].mix += categoryData.mix.size;
-                    sellerData[sellerName].clients.add(clientID);
-                });
-
-                const totalRevenue = Object.values(sellerData).reduce((sum, seller) => sum + seller.revenue, 0);
-                const totalVolume = Object.values(sellerData).reduce((sum, seller) => sum + seller.volume, 0);
-                const totalMix = Object.values(sellerData).reduce((sum, seller) => sum + seller.mix, 0);
-
-                Object.entries(sellerData).forEach(([sellerName, data]) => {
-                    const revenueShare = totalRevenue > 0 ? (data.revenue / totalRevenue) : 0;
-                    const volumeShare = totalVolume > 0 ? (data.volume / totalVolume) : 0;
-                    const mixShare = totalMix > 0 ? (data.mix / totalMix) : 0;
-
-                    const suggestedRevenue = globalGoals.revenue * revenueShare;
-                    const suggestedVolume = globalGoals.volume * volumeShare;
-                    const suggestedMix = globalGoals.mix * mixShare;
-
-                    tableHTML += `
-                        <tr class="hover:bg-slate-800 transition-colors">
-                            <td class="px-4 py-2 font-semibold text-slate-300 sticky left-0 bg-[#1d2347] border-r border-slate-800 z-10">${sellerName}</td>
-                            <td class="px-2 py-2 text-right text-slate-400">${(data.revenue / 1000).toFixed(1)}k</td>
-                            <td class="px-2 py-2 text-center text-xs text-slate-500">${(revenueShare * 100).toFixed(1)}%</td>
-                            <td class="px-2 py-2 text-right font-bold text-blue-400 bg-blue-900/20 border-r border-blue-800">${suggestedRevenue.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
-                            <td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" placeholder="-"></td>
-                            <td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50 border-r border-slate-700">${suggestedRevenue.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
-
-                            <td class="px-2 py-2 text-right text-slate-400">${(data.volume / 1000).toFixed(1)}</td>
-                            <td class="px-2 py-2 text-center text-xs text-slate-500">${(volumeShare * 100).toFixed(1)}%</td>
-                            <td class="px-2 py-2 text-right font-bold text-orange-400 bg-orange-900/20 border-r border-orange-800">${(suggestedVolume).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
-                            <td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-orange-500" placeholder="-"></td>
-                            <td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50 border-r border-slate-700">${(suggestedVolume).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
-
-                            <td class="px-2 py-2 text-right text-slate-400">${data.mix}</td>
-                            <td class="px-2 py-2 text-center text-xs text-slate-500">${(mixShare * 100).toFixed(1)}%</td>
-                            <td class="px-2 py-2 text-right font-bold text-purple-400 bg-purple-900/20 border-r border-purple-800">${Math.round(suggestedMix)}</td>
-                            <td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-purple-500" placeholder="-"></td>
-                            <td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50">${Math.round(suggestedMix)}</td>
-                        </tr>
-                    `;
-                });
-
-                tableBody.innerHTML = tableHTML;
-            }
-
-            const METAS_CATEGORIES = {
-                'EXTRUSADOS': { type: 'GRUPO A', suppliers: ['707'] },
-                'NAO_EXTRUSADOS': { type: 'GRUPO A', suppliers: ['708'] },
-                'TORCIDA': { type: 'GRUPO A', suppliers: ['752'] },
-                'TODDYNHO': { type: 'GRUPO B', brands: ['TODDYNHO'] },
-                'TODDY': { type: 'GRUPO B', brands: ['TODDY'] },
-                'QUAKER_KEROCOCO': { type: 'GRUPO B', brands: ['QUAKER', 'KEROCOCO'] }
-            };
 
             function switchPage(pageId) {
                 // Esconde todas
@@ -7309,7 +7403,7 @@
                             category = cat;
                             break;
                         }
-                        if (brands && productDetails && brands.some(brand => productDetails.descricao.toUpperCase().includes(brand))) {
+                    if (brands && productDetails && brands.some(brand => productDetails.descricao.toUpperCase().includes(brand.toUpperCase()))) {
                             category = cat;
                             break;
                         }
@@ -7398,8 +7492,57 @@
                 document.querySelector("#footer-balance button").disabled = diff !== 0;
             });
 
-            document.querySelector("#page-sv select").addEventListener('change', () => {
-                updateMetasSvView();
+
+            // --- City View Pagination ---
+            document.getElementById('city-active-prev-page-btn').addEventListener('click', () => {
+                if (cityActiveTableState.currentPage > 1) {
+                    cityActiveTableState.currentPage--;
+                    updateCityView();
+                }
+            });
+            document.getElementById('city-active-next-page-btn').addEventListener('click', () => {
+                if (cityActiveTableState.currentPage < cityActiveTableState.totalPages) {
+                    cityActiveTableState.currentPage++;
+                    updateCityView();
+                }
+            });
+            document.getElementById('city-inactive-prev-page-btn').addEventListener('click', () => {
+                if (cityInactiveTableState.currentPage > 1) {
+                    cityInactiveTableState.currentPage--;
+                    updateCityView();
+                }
+            });
+            document.getElementById('city-inactive-next-page-btn').addEventListener('click', () => {
+                if (cityInactiveTableState.currentPage < cityInactiveTableState.totalPages) {
+                    cityInactiveTableState.currentPage++;
+                    updateCityView();
+                }
+            });
+
+
+            const metasSvSupervisorBtn = document.getElementById('metas-sv-supervisor-filter-btn');
+            const metasSvSupervisorDropdown = document.getElementById('metas-sv-supervisor-filter-dropdown');
+
+            metasSvSupervisorBtn.addEventListener('click', () => {
+                metasSvSupervisorDropdown.classList.toggle('hidden');
+            });
+
+            metasSvSupervisorDropdown.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox') {
+                    const { value, checked } = e.target;
+                    if (checked) {
+                        if (!selectedMetasSvSupervisors.includes(value)) selectedMetasSvSupervisors.push(value);
+                    } else {
+                        selectedMetasSvSupervisors = selectedMetasSvSupervisors.filter(s => s !== value);
+                    }
+                    updateMetasViews();
+                }
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!metasSvSupervisorBtn.contains(e.target) && !metasSvSupervisorDropdown.contains(e.target)) {
+                    metasSvSupervisorDropdown.classList.add('hidden');
+                }
             });
         }
 
@@ -7919,8 +8062,40 @@
                                     </div>
                                 </div>
                                 <!-- Tabelas (Cidades) -->
-                                <div class="bg-[#1d2347] p-4 rounded-lg mt-6 border border-slate-700 shadow-sm"><div class="flex justify-between items-center mb-4 px-4"><h3 class="text-lg font-semibold text-white">Clientes Ativos no Mês</h3><button id="export-active-pdf-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg text-sm">Exportar Relatório</button></div><div class="overflow-x-auto custom-scrollbar" style="max-height: 40vh;"><table class="min-w-full text-sm text-left text-slate-300"><thead class="text-xs text-slate-400 uppercase sticky-header"><tr><th class="px-4 py-3">Código</th><th class="px-4 py-3">Nome Fantasia</th><th class="px-4 py-3 text-right">Faturamento</th><th class="px-4 py-3">Cidade</th><th class="px-4 py-3">Bairro</th><th class="px-4 py-3">RCA 1</th></tr></thead><tbody id="city-active-detail-table-body" class="divide-y divide-slate-700"></tbody></table></div></div>
-                                <div class="bg-[#1d2347] p-4 rounded-lg mt-6 border border-slate-700 shadow-sm"><div class="flex justify-between items-center mb-4 px-4"><h3 class="text-lg font-semibold text-white">Clientes S/ Vendas no Mês</h3><button id="export-inactive-pdf-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg text-sm">Exportar Relatório</button></div><div class="overflow-x-auto custom-scrollbar" style="max-height: 40vh;"><table class="min-w-full text-sm text-left text-slate-300"><thead class="text-xs text-slate-400 uppercase sticky-header"><tr><th class="px-4 py-3">Código</th><th class="px-4 py-3">Nome Fantasia</th><th class="px-4 py-3">Cidade</th><th class="px-4 py-3">Bairro</th><th class="px-4 py-3 text-center">Última Compra</th><th class="px-4 py-3">RCA 1</th></tr></thead><tbody id="city-inactive-detail-table-body" class="divide-y divide-slate-700"></tbody></table></div></div>
+                                <div class="bg-[#1d2347] p-4 rounded-lg mt-6 border border-slate-700 shadow-sm">
+                                    <div class="flex justify-between items-center mb-4 px-4">
+                                        <h3 class="text-lg font-semibold text-white">Clientes Ativos no Mês</h3>
+                                        <button id="export-active-pdf-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg text-sm">Exportar Relatório</button>
+                                    </div>
+                                    <div class="overflow-x-auto custom-scrollbar" style="max-height: 40vh;">
+                                        <table class="min-w-full text-sm text-left text-slate-300">
+                                            <thead class="text-xs text-slate-400 uppercase sticky-header"><tr><th class="px-4 py-3">Código</th><th class="px-4 py-3">Nome Fantasia</th><th class="px-4 py-3 text-right">Faturamento</th><th class="px-4 py-3">Cidade</th><th class="px-4 py-3">Bairro</th><th class="px-4 py-3">RCA 1</th></tr></thead>
+                                            <tbody id="city-active-detail-table-body" class="divide-y divide-slate-700"></tbody>
+                                        </table>
+                                    </div>
+                                    <div id="city-active-pagination-controls" class="hidden mt-4 flex justify-between items-center">
+                                        <button id="city-active-prev-page-btn" class="bg-slate-700 border border-slate-600 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg disabled:opacity-50" disabled>Anterior</button>
+                                        <span id="city-active-page-info-text" class="text-slate-400">Página 1 de 1</span>
+                                        <button id="city-active-next-page-btn" class="bg-slate-700 border border-slate-600 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg disabled:opacity-50" disabled>Próxima</button>
+                                    </div>
+                                </div>
+                                <div class="bg-[#1d2347] p-4 rounded-lg mt-6 border border-slate-700 shadow-sm">
+                                    <div class="flex justify-between items-center mb-4 px-4">
+                                        <h3 class="text-lg font-semibold text-white">Clientes S/ Vendas no Mês</h3>
+                                        <button id="export-inactive-pdf-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg text-sm">Exportar Relatório</button>
+                                    </div>
+                                    <div class="overflow-x-auto custom-scrollbar" style="max-height: 40vh;">
+                                        <table class="min-w-full text-sm text-left text-slate-300">
+                                            <thead class="text-xs text-slate-400 uppercase sticky-header"><tr><th class="px-4 py-3">Código</th><th class="px-4 py-3">Nome Fantasia</th><th class="px-4 py-3">Cidade</th><th class="px-4 py-3">Bairro</th><th class="px-4 py-3 text-center">Última Compra</th><th class="px-4 py-3">RCA 1</th></tr></thead>
+                                            <tbody id="city-inactive-detail-table-body" class="divide-y divide-slate-700"></tbody>
+                                        </table>
+                                    </div>
+                                    <div id="city-inactive-pagination-controls" class="hidden mt-4 flex justify-between items-center">
+                                        <button id="city-inactive-prev-page-btn" class="bg-slate-700 border border-slate-600 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg disabled:opacity-50" disabled>Anterior</button>
+                                        <span id="city-inactive-page-info-text" class="text-slate-400">Página 1 de 1</span>
+                                        <button id="city-inactive-next-page-btn" class="bg-slate-700 border border-slate-600 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg disabled:opacity-50" disabled>Próxima</button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         
@@ -8607,10 +8782,35 @@
                                         <div class="lg:col-span-3 bg-purple-900/30 p-2 rounded-lg border border-purple-800/50"><label class="text-[10px] font-bold text-purple-400 uppercase mb-1 block">Meta Mix (QTDE)</label><div class="flex gap-2"><input type="text" id="meta-mix-input" value="1.250" class="w-full bg-slate-800 border border-purple-700 text-purple-300 font-bold text-lg rounded px-3 py-1 focus:ring-2 focus:ring-purple-500 outline-none h-10"><button class="bg-purple-600 text-white px-3 rounded hover:bg-purple-700 transition shadow-sm h-10"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5M4 20h5v-5M20 4h-5v5"/></svg></button></div></div>
                                         <div class="lg:col-span-3 text-right"><span class="text-[10px] font-bold text-slate-400 uppercase block">Total Rateado</span><span class="text-xl font-bold text-emerald-400">100% Distribuído</span></div>
                                     </div>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                                      <div class="kpi-card border-t-4 border-cyan-500 transition transform hover:-translate-y-1 duration-200">
+                                        <h3 class="text-slate-400 font-medium uppercase text-sm">Clientes Ativos</h3>
+                                        <p id="kpi-active-clients" class="text-4xl font-bold text-white my-2">0</p>
+                                        <p id="kpi-active-clients-percent" class="text-sm text-slate-400 -mt-1">0% da base</p>
+                                      </div>
+                                    </div>
                                     <div class="bg-[#1d2347] rounded-xl border border-slate-700 shadow-sm flex-1 overflow-hidden flex flex-col">
                                         <div class="overflow-auto custom-scrollbar flex-1">
-                                            <table class="w-full text-left border-collapse text-xs whitespace-nowrap"><thead class="sticky top-0 z-20 shadow-sm"><tr class="uppercase font-bold text-slate-400 bg-slate-800"><th class="px-4 py-2 border-b border-r border-slate-700 sticky left-0 z-30 bg-slate-800 min-w-[300px]">Dados do Cliente</th><th colspan="3" class="px-4 py-1 border-b border-r border-blue-700 bg-blue-900/30 text-blue-300 text-center">FATURAMENTO (R$)</th><th colspan="3" class="px-4 py-1 border-b border-r border-orange-700 bg-orange-900/30 text-orange-300 text-center">VOLUME (TON)</th><th colspan="3" class="px-4 py-1 border-b border-slate-700 bg-purple-900/30 text-purple-300 text-center">MIX (POSIT)</th></tr><tr class="bg-slate-900/50 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-700"><th class="px-4 py-3 sticky left-0 z-30 bg-slate-900/50 border-r border-slate-700">Cód | Cliente | Vendedor</th><th class="px-2 py-2 text-right bg-blue-900/20">Média</th><th class="px-2 py-2 text-center bg-blue-900/20">% Share</th><th class="px-2 py-2 text-right bg-blue-900/40 text-blue-300 border-r border-blue-700">Meta Auto</th><th class="px-2 py-2 text-right bg-orange-900/20">Média KG</th><th class="px-2 py-2 text-center bg-orange-900/20">% Share</th><th class="px-2 py-2 text-right bg-orange-900/40 text-orange-300 border-r border-orange-700">Meta KG</th><th class="px-2 py-2 text-right bg-purple-900/20">Média</th><th class="px-2 py-2 text-center bg-purple-900/20">% Share</th><th class="px-2 py-2 text-right bg-purple-900/40 text-purple-300">Meta Mix</th></tr></thead>
-                                                <tbody class="divide-y divide-slate-800 text-sm"><tr class="hover:bg-slate-800 transition-colors"><td class="px-4 py-2 sticky left-0 bg-[#1d2347] border-r border-slate-800 z-10"><div class="font-bold text-slate-300">10452 - MERCADINHO ESTRELA</div><div class="text-xs text-slate-400">Vend: 224 - JOÃO SILVA</div></td><td class="px-2 py-2 text-right text-slate-400">10.000</td><td class="px-2 py-2 text-center text-xs text-blue-400">0.5%</td><td class="px-2 py-2 text-right font-bold text-blue-400 bg-blue-900/20 border-r border-blue-800">10.000</td><td class="px-2 py-2 text-right text-slate-400">0.250</td><td class="px-2 py-2 text-center text-xs text-orange-400">0.55%</td><td class="px-2 py-2 text-right font-bold text-orange-400 bg-orange-900/20 border-r border-orange-800">0.252</td><td class="px-2 py-2 text-right text-slate-400">12</td><td class="px-2 py-2 text-center text-xs text-purple-400">0.9%</td><td class="px-2 py-2 text-right font-bold text-purple-400 bg-purple-900/20">12</td></tr></tbody>
+                                            <table class="w-full text-left border-collapse text-xs whitespace-nowrap">
+                                                <thead class="sticky top-0 z-20 shadow-sm">
+                                                    <tr class="uppercase font-bold text-slate-400 bg-slate-800">
+                                                        <th class="px-4 py-2 border-b border-r border-slate-700 sticky left-0 z-30 bg-slate-800">Código</th>
+                                                        <th class="px-4 py-2 border-b border-r border-slate-700 sticky left-40 z-30 bg-slate-800 min-w-[300px]">Cliente</th>
+                                                        <th class="px-4 py-2 border-b border-r border-slate-700">Vendedor</th>
+                                                        <th colspan="3" class="px-4 py-1 border-b border-r border-blue-700 bg-blue-900/30 text-blue-300 text-center">FATURAMENTO (R$)</th>
+                                                        <th colspan="3" class="px-4 py-1 border-b border-r border-orange-700 bg-orange-900/30 text-orange-300 text-center">VOLUME (TON)</th>
+                                                        <th colspan="3" class="px-4 py-1 border-b border-slate-700 bg-purple-900/30 text-purple-300 text-center">MIX (POSIT)</th>
+                                                    </tr>
+                                                    <tr class="bg-slate-900/50 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-700">
+                                                        <th class="px-4 py-3 sticky left-0 z-30 bg-slate-900/50 border-r border-slate-700"></th>
+                                                        <th class="px-4 py-3 sticky left-40 z-30 bg-slate-900/50 border-r border-slate-700"></th>
+                                                        <th class="px-4 py-3 border-r border-slate-700"></th>
+                                                        <th class="px-2 py-2 text-right bg-blue-900/20">Média</th><th class="px-2 py-2 text-center bg-blue-900/20">% Share</th><th class="px-2 py-2 text-right bg-blue-900/40 text-blue-300 border-r border-blue-700">Meta Auto</th>
+                                                        <th class="px-2 py-2 text-right bg-orange-900/20">Média KG</th><th class="px-2 py-2 text-center bg-orange-900/20">% Share</th><th class="px-2 py-2 text-right bg-orange-900/40 text-orange-300 border-r border-orange-700">Meta KG</th>
+                                                        <th class="px-2 py-2 text-right bg-purple-900/20">Média</th><th class="px-2 py-2 text-center bg-purple-900/20">% Share</th><th class="px-2 py-2 text-right bg-purple-900/40 text-purple-300">Meta Mix</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody class="divide-y divide-slate-800 text-sm"></tbody>
                                             </table>
                                         </div>
                                     </div>
@@ -8618,7 +8818,19 @@
                                 <!-- PÁGINA 2: VISÃO DO SUPERVISOR (SV) -->
                                 <div id="page-sv" class="hidden flex-col gap-4 h-full">
                                     <div class="bg-[#1d2347] rounded-xl border border-slate-700 shadow-sm mb-2 overflow-hidden">
-                                        <div class="p-4 border-b border-slate-700 bg-slate-800/50 flex justify-between items-center"><div class="flex items-center gap-4"><label class="text-xs font-bold text-slate-400 uppercase">Supervisor:</label><div class="relative"><select class="appearance-none w-72 bg-slate-700 border border-slate-600 text-white py-1.5 px-4 pr-8 rounded-lg font-bold shadow-sm focus:ring-2 focus:ring-teal-500 outline-none text-sm"><option>SELECIONE...</option><option selected>SV - CARLOS ALMEIDA</option></select><div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></div></div></div><div class="text-xs text-slate-400">Gerenciando metas da equipe de <b>Carlos Almeida</b></div></div>
+                                        <div class="p-4 border-b border-slate-700 bg-slate-800/50 flex justify-between items-center">
+                                            <div class="flex items-center gap-4">
+                                                <label class="text-xs font-bold text-slate-400 uppercase">Supervisor:</label>
+                                                <div class="relative">
+                                                    <button id="metas-sv-supervisor-filter-btn" class="w-72 bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
+                                                        <span id="metas-sv-supervisor-filter-text">Todos</span>
+                                                        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
+                                                    </button>
+                                                    <div id="metas-sv-supervisor-filter-dropdown" class="hidden absolute z-20 w-72 mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
+                                                </div>
+                                            </div>
+                                            <div id="metas-sv-equipe-text" class="text-xs text-slate-400">Gerenciando metas da equipe</div>
+                                        </div>
                                         <div class="flex bg-[#1d2347] px-2 pt-2 overflow-x-auto custom-scrollbar"><div class="flex items-center border-r border-slate-700 pr-4 mr-4 gap-2"><span class="text-[10px] font-bold text-slate-400 uppercase">ELMA:</span><button class="px-4 py-3 text-teal-300 font-bold flex items-center gap-2 relative group whitespace-nowrap border-b-2 border-teal-500"><span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>EXTRUSADOS</button><button class="px-4 py-3 text-slate-400 hover:text-white flex items-center gap-2 transition-colors whitespace-nowrap"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>NÃO EXTRUSADOS</button><button class="px-4 py-3 text-slate-400 hover:text-white flex items-center gap-2 transition-colors whitespace-nowrap"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>TORCIDA</button></div><div class="flex items-center gap-2"><span class="text-[10px] font-bold text-slate-400 uppercase">FOODS:</span><button class="px-4 py-3 text-slate-400 hover:text-white flex items-center gap-2 transition-colors whitespace-nowrap"><span class="w-2 h-2 rounded-full bg-slate-500"></span>TODDYNHO</button><button class="px-4 py-3 text-slate-400 hover:text-white flex items-center gap-2 transition-colors whitespace-nowrap"><span class="w-2 h-2 rounded-full bg-slate-500"></span>TODDY</button><button class="px-4 py-3 text-slate-400 hover:text-white flex items-center gap-2 transition-colors whitespace-nowrap"><span class="w-2 h-2 rounded-full bg-slate-500"></span>QUAKER/KEROCOCO</button></div></div>
                                     </div>
                                     <div class="bg-[#1d2347] rounded-xl border border-slate-700 shadow-sm flex-1 overflow-hidden flex flex-col relative">
