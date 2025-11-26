@@ -875,6 +875,8 @@
         };
         let clientLastBranch = new Map();
         let clientRamoMap = new Map();
+        let clientMap = new Map();
+            let metasHistoricalData = null;
 
         const QUARTERLY_DIVISOR = 3;
 
@@ -920,6 +922,7 @@
                             if (!optimizedData.clientsByRca.has(rca)) optimizedData.clientsByRca.set(rca, []);
                             optimizedData.clientsByRca.get(rca).push(client);
                         }
+                clientMap.set(codCli, client);
                     });
                 }
                 return { code: codCli, nameLower: (client.nomeCliente || '').toLowerCase(), cityLower: (client.cidade || '').toLowerCase() };
@@ -1279,7 +1282,8 @@
             cidades: { dirty: true },
             semanal: { dirty: true },
             inovacoes: { dirty: true, cache: null, lastTypesKey: '' },
-            mix: { dirty: true }
+                mix: { dirty: true },
+                metas: { dirty: true }
         };
 
         let charts = {};
@@ -5896,6 +5900,49 @@
             if (sidebarOverlay) sidebarOverlay.classList.toggle('hidden');
         }
 
+        function calculateMetasHistoricalData() {
+            const historicalDataByClient = {};
+            const historicalDataBySeller = {};
+
+            allHistoryData.forEach(sale => {
+                const productDetails = productDetailsMap.get(sale.PRODUTO);
+                let category = null;
+
+                for (const cat in METAS_CATEGORIES) {
+                    const { suppliers, brands } = METAS_CATEGORIES[cat];
+                    if (suppliers && suppliers.includes(sale.CODFOR)) {
+                        category = cat;
+                        break;
+                    }
+                    if (brands && productDetails && brands.some(brand => productDetails.descricao.toUpperCase().includes(brand))) {
+                        category = cat;
+                        break;
+                    }
+                }
+
+                if (category) {
+                    const clientID = sale.CODCLI;
+                    const sellerName = sale.NOME;
+
+                    if (!historicalDataByClient[clientID]) historicalDataByClient[clientID] = {};
+                    if (!historicalDataByClient[clientID][category]) historicalDataByClient[clientID][category] = { revenue: 0, volume: 0, mix: new Set() };
+
+                    if (!historicalDataBySeller[sellerName]) historicalDataBySeller[sellerName] = {};
+                    if (!historicalDataBySeller[sellerName][category]) historicalDataBySeller[sellerName][category] = { revenue: 0, volume: 0, mix: new Set() };
+
+                    historicalDataByClient[clientID][category].revenue += sale.VLVENDA;
+                    historicalDataByClient[clientID][category].volume += sale.TOTPESOLIQ;
+                    historicalDataByClient[clientID][category].mix.add(sale.PRODUTO);
+
+                    historicalDataBySeller[sellerName][category].revenue += sale.VLVENDA;
+                    historicalDataBySeller[sellerName][category].volume += sale.TOTPESOLIQ;
+                    historicalDataBySeller[sellerName][category].mix.add(sale.PRODUTO);
+                }
+            });
+
+            return { byClient: historicalDataByClient, bySeller: historicalDataBySeller };
+        }
+
         async function navigateTo(view) {
             const sideMenu = document.getElementById('side-menu');
             const sidebarOverlay = document.getElementById('sidebar-overlay');
@@ -5912,7 +5959,8 @@
                 cidades: 'Cidades',
                 semanal: 'Semanal',
                 'inovacoes-mes': 'Inovações',
-                mix: 'Mix'
+                mix: 'Mix',
+                metas: 'Metas'
             };
             const friendlyName = viewNameMap[view] || 'a página';
             
@@ -5920,7 +5968,7 @@
 
             // This function now runs after the loader is visible
             const updateContent = () => {
-                [mainDashboard, cityView, weeklyView, comparisonView, stockView, innovationsMonthView, coverageView, document.getElementById('mix-view')].forEach(el => {
+                [mainDashboard, cityView, weeklyView, comparisonView, stockView, innovationsMonthView, coverageView, document.getElementById('mix-view'), document.getElementById('metas-view')].forEach(el => {
                     if(el) el.classList.add('hidden');
                 });
 
@@ -6013,6 +6061,17 @@
                             updateAllMixFilters();
                             updateMixView();
                             viewState.mix.dirty = false;
+                        }
+                        break;
+                    case 'metas':
+                        document.getElementById('metas-view').classList.remove('hidden');
+                        if (viewState.metas.dirty) {
+                            if (!metasHistoricalData) {
+                                metasHistoricalData = calculateMetasHistoricalData();
+                            }
+                            updateMetasGvView();
+                            updateMetasSvView();
+                            viewState.metas.dirty = false;
                         }
                         break;
                 }
@@ -6462,6 +6521,198 @@
                     debouncedStockProductSearch();
                 }
             });
+
+            function updateMetasGvView(category = 'EXTRUSADOS', globalGoals = { revenue: 2000000, volume: 45500, mix: 1250 }) {
+                const tableBody = document.querySelector("#page-gv tbody");
+                let tableHTML = "";
+
+                const clientData = Object.entries(metasHistoricalData.byClient).map(([clientID, clientCategories]) => {
+                    const clientInfo = clientMap.get(clientID);
+                    const categoryData = clientCategories[category] || { revenue: 0, volume: 0, mix: new Set() };
+                    return {
+                        clientID,
+                        clientName: clientInfo ? clientInfo.nomeCliente : 'N/A',
+                        sellerName: clientInfo ? (optimizedData.rcaNameByCode.get(clientInfo.rca1) || 'N/A') : 'N/A',
+                        ...categoryData
+                    };
+                });
+
+                const totalRevenue = clientData.reduce((sum, client) => sum + client.revenue, 0);
+                const totalVolume = clientData.reduce((sum, client) => sum + client.volume, 0);
+                const totalMix = clientData.reduce((sum, client) => sum + client.mix.size, 0);
+
+                clientData.forEach(client => {
+                    const revenueShare = totalRevenue > 0 ? (client.revenue / totalRevenue) : 0;
+                    const volumeShare = totalVolume > 0 ? (client.volume / totalVolume) : 0;
+                    const mixShare = totalMix > 0 ? (client.mix.size / totalMix) : 0;
+
+                    const suggestedRevenue = globalGoals.revenue * revenueShare;
+                    const suggestedVolume = globalGoals.volume * volumeShare;
+                    const suggestedMix = globalGoals.mix * mixShare;
+
+                    tableHTML += `
+                        <tr class="hover:bg-slate-800 transition-colors">
+                            <td class="px-4 py-2 sticky left-0 bg-[#1d2347] border-r border-slate-800 z-10">
+                                <div class="font-bold text-slate-300">${client.clientID} - ${client.clientName}</div>
+                                <div class="text-xs text-slate-400">Vend: ${client.sellerName}</div>
+                            </td>
+                            <td class="px-2 py-2 text-right text-slate-400">${client.revenue.toFixed(2)}</td>
+                            <td class="px-2 py-2 text-center text-xs text-blue-400">${(revenueShare * 100).toFixed(2)}%</td>
+                            <td class="px-2 py-2 text-right font-bold text-blue-400 bg-blue-900/20 border-r border-blue-800">${suggestedRevenue.toFixed(2)}</td>
+                            <td class="px-2 py-2 text-right text-slate-400">${(client.volume / 1000).toFixed(3)}</td>
+                            <td class="px-2 py-2 text-center text-xs text-orange-400">${(volumeShare * 100).toFixed(2)}%</td>
+                            <td class="px-2 py-2 text-right font-bold text-orange-400 bg-orange-900/20 border-r border-orange-800">${(suggestedVolume / 1000).toFixed(3)}</td>
+                            <td class="px-2 py-2 text-right text-slate-400">${client.mix.size}</td>
+                            <td class="px-2 py-2 text-center text-xs text-purple-400">${(mixShare * 100).toFixed(2)}%</td>
+                            <td class="px-2 py-2 text-right font-bold text-purple-400 bg-purple-900/20">${Math.round(suggestedMix)}</td>
+                        </tr>
+                    `;
+                });
+
+                tableBody.innerHTML = tableHTML;
+            }
+
+            function updateMetasSvView(category = 'EXTRUSADOS', globalGoals = { revenue: 2000000, volume: 45500, mix: 1250 }) {
+                const tableBody = document.querySelector("#page-sv tbody");
+                const supervisorSelect = document.querySelector("#page-sv select");
+                let tableHTML = "";
+
+                const supervisors = [...new Set(Object.values(metasHistoricalData.bySeller).flatMap(Object.keys).map(seller => {
+                    const rcaCode = optimizedData.rcaCodeByName.get(seller);
+                    const sellerDetails = optimizedData.clientsByRca.get(rcaCode);
+                    return sellerDetails ? sellerDetails[0].SUPERV : null;
+                }))].filter(Boolean).sort();
+
+                if (supervisorSelect.options.length <= 1) {
+                    supervisors.forEach(sup => {
+                        const option = document.createElement('option');
+                        option.value = sup;
+                        option.textContent = sup;
+                        supervisorSelect.appendChild(option);
+                    });
+                }
+
+                const selectedSupervisor = supervisorSelect.value;
+                const sellerData = {};
+
+                Object.entries(metasHistoricalData.byClient).forEach(([clientID, clientCategories]) => {
+                    const clientInfo = clientMap.get(clientID);
+                    const sellerName = clientInfo ? (optimizedData.rcaNameByCode.get(clientInfo.rca1) || 'N/A') : 'N/A';
+
+                    if (!sellerData[sellerName]) {
+                        sellerData[sellerName] = {
+                            revenue: 0,
+                            volume: 0,
+                            mix: 0,
+                            clients: new Set()
+                        };
+                    }
+
+                    const categoryData = clientCategories[category] || { revenue: 0, volume: 0, mix: new Set() };
+                    sellerData[sellerName].revenue += categoryData.revenue;
+                    sellerData[sellerName].volume += categoryData.volume;
+                    sellerData[sellerName].mix += categoryData.mix.size;
+                    sellerData[sellerName].clients.add(clientID);
+                });
+
+                const totalRevenue = Object.values(sellerData).reduce((sum, seller) => sum + seller.revenue, 0);
+                const totalVolume = Object.values(sellerData).reduce((sum, seller) => sum + seller.volume, 0);
+                const totalMix = Object.values(sellerData).reduce((sum, seller) => sum + seller.mix, 0);
+
+                Object.entries(sellerData).forEach(([sellerName, data]) => {
+                    const revenueShare = totalRevenue > 0 ? (data.revenue / totalRevenue) : 0;
+                    const volumeShare = totalVolume > 0 ? (data.volume / totalVolume) : 0;
+                    const mixShare = totalMix > 0 ? (data.mix / totalMix) : 0;
+
+                    const suggestedRevenue = globalGoals.revenue * revenueShare;
+                    const suggestedVolume = globalGoals.volume * volumeShare;
+                    const suggestedMix = globalGoals.mix * mixShare;
+
+                    tableHTML += `
+                        <tr class="hover:bg-slate-800 transition-colors">
+                            <td class="px-4 py-2 font-semibold text-slate-300 sticky left-0 bg-[#1d2347] border-r border-slate-800 z-10">${sellerName}</td>
+                            <td class="px-2 py-2 text-right text-slate-400">${(data.revenue / 1000).toFixed(1)}k</td>
+                            <td class="px-2 py-2 text-center text-xs text-slate-500">${(revenueShare * 100).toFixed(1)}%</td>
+                            <td class="px-2 py-2 text-right font-bold text-blue-400 bg-blue-900/20 border-r border-blue-800">${suggestedRevenue.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
+                            <td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" placeholder="-"></td>
+                            <td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50 border-r border-slate-700">${suggestedRevenue.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
+
+                            <td class="px-2 py-2 text-right text-slate-400">${(data.volume / 1000).toFixed(1)}</td>
+                            <td class="px-2 py-2 text-center text-xs text-slate-500">${(volumeShare * 100).toFixed(1)}%</td>
+                            <td class="px-2 py-2 text-right font-bold text-orange-400 bg-orange-900/20 border-r border-orange-800">${(suggestedVolume).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
+                            <td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-orange-500" placeholder="-"></td>
+                            <td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50 border-r border-slate-700">${(suggestedVolume).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
+
+                            <td class="px-2 py-2 text-right text-slate-400">${data.mix}</td>
+                            <td class="px-2 py-2 text-center text-xs text-slate-500">${(mixShare * 100).toFixed(1)}%</td>
+                            <td class="px-2 py-2 text-right font-bold text-purple-400 bg-purple-900/20 border-r border-purple-800">${Math.round(suggestedMix)}</td>
+                            <td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-purple-500" placeholder="-"></td>
+                            <td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50">${Math.round(suggestedMix)}</td>
+                        </tr>
+                    `;
+                });
+
+                tableBody.innerHTML = tableHTML;
+            }
+
+            const METAS_CATEGORIES = {
+                'EXTRUSADOS': { type: 'GRUPO A', suppliers: ['707'] },
+                'NAO_EXTRUSADOS': { type: 'GRUPO A', suppliers: ['708'] },
+                'TORCIDA': { type: 'GRUPO A', suppliers: ['752'] },
+                'TODDYNHO': { type: 'GRUPO B', brands: ['TODDYNHO'] },
+                'TODDY': { type: 'GRUPO B', brands: ['TODDY'] },
+                'QUAKER_KEROCOCO': { type: 'GRUPO B', brands: ['QUAKER', 'KEROCOCO'] }
+            };
+
+            function switchPage(pageId) {
+                // Esconde todas
+                document.getElementById('page-gv').classList.add('hidden');
+                document.getElementById('page-sv').classList.add('hidden');
+                document.getElementById('footer-balance').classList.add('hidden'); // Footer só aparece no SV
+
+                // Mostra a selecionada
+                document.getElementById(pageId).classList.remove('hidden');
+                document.getElementById(pageId).classList.add('flex');
+
+                // Logica de botões
+                const btnGv = document.getElementById('nav-gv');
+                const btnSv = document.getElementById('nav-sv');
+
+                if(pageId === 'page-gv') {
+                    btnGv.className = "px-6 py-2 rounded-md text-sm font-bold bg-slate-700 text-white shadow-sm flex items-center gap-2 transition-all";
+                    btnSv.className = "px-6 py-2 rounded-md text-sm font-medium text-slate-400 hover:text-white flex items-center gap-2 transition-all";
+                } else {
+                    btnSv.className = "px-6 py-2 rounded-md text-sm font-bold bg-slate-700 text-white shadow-sm flex items-center gap-2 transition-all";
+                    btnGv.className = "px-6 py-2 rounded-md text-sm font-medium text-slate-400 hover:text-white flex items-center gap-2 transition-all";
+
+                    // Mostra footer no SV
+                    document.getElementById('footer-balance').classList.remove('hidden');
+                }
+            }
+
+            // Função para alternar grupo na visão do GV
+            function selectGroup(group) {
+                const btnElma = document.getElementById('btn-elma');
+                const btnFoods = document.getElementById('btn-foods');
+                const tabsElma = document.getElementById('tabs-elma');
+                const tabsFoods = document.getElementById('tabs-foods');
+
+                if(group === 'ELMA') {
+                    btnElma.className = "px-6 py-2 bg-teal-500 text-white rounded-lg font-bold shadow-md";
+                    btnFoods.className = "px-6 py-2 bg-slate-700 text-slate-300 border border-slate-600 rounded-lg font-medium hover:bg-slate-600";
+                    tabsElma.classList.remove('hidden');
+                    tabsElma.classList.add('flex');
+                    tabsFoods.classList.add('hidden');
+                    tabsFoods.classList.remove('flex');
+                } else {
+                    btnFoods.className = "px-6 py-2 bg-teal-500 text-white rounded-lg font-bold shadow-md";
+                    btnElma.className = "px-6 py-2 bg-slate-700 text-slate-300 border border-slate-600 rounded-lg font-medium hover:bg-slate-600";
+                    tabsFoods.classList.remove('hidden');
+                    tabsFoods.classList.add('flex');
+                    tabsElma.classList.add('hidden');
+                    tabsElma.classList.remove('flex');
+                }
+            }
 
             stockProductFilterDropdown.addEventListener('change', (e) => {
                 if(e.target.dataset.filterType === 'stock' && handleProductFilterChange(e, selectedStockProducts)) {
@@ -7043,6 +7294,113 @@
                     handleStockFilterChange();
                 });
             });
+
+            function calculateMetasHistoricalData() {
+                const historicalDataByClient = {};
+                const historicalDataBySeller = {};
+
+                allHistoryData.forEach(sale => {
+                    const productDetails = productDetailsMap.get(sale.PRODUTO);
+                    let category = null;
+
+                    for (const cat in METAS_CATEGORIES) {
+                        const { suppliers, brands } = METAS_CATEGORIES[cat];
+                        if (suppliers && suppliers.includes(sale.CODFOR)) {
+                            category = cat;
+                            break;
+                        }
+                        if (brands && productDetails && brands.some(brand => productDetails.descricao.toUpperCase().includes(brand))) {
+                            category = cat;
+                            break;
+                        }
+                    }
+
+                    if (category) {
+                        const clientID = sale.CODCLI;
+                        const sellerName = sale.NOME;
+
+                        if (!historicalDataByClient[clientID]) historicalDataByClient[clientID] = {};
+                        if (!historicalDataByClient[clientID][category]) historicalDataByClient[clientID][category] = { revenue: 0, volume: 0, mix: new Set() };
+
+                        if (!historicalDataBySeller[sellerName]) historicalDataBySeller[sellerName] = {};
+                        if (!historicalDataBySeller[sellerName][category]) historicalDataBySeller[sellerName][category] = { revenue: 0, volume: 0, mix: new Set() };
+
+                        historicalDataByClient[clientID][category].revenue += sale.VLVENDA;
+                        historicalDataByClient[clientID][category].volume += sale.TOTPESOLIQ;
+                        historicalDataByClient[clientID][category].mix.add(sale.PRODUTO);
+
+                        historicalDataBySeller[sellerName][category].revenue += sale.VLVENDA;
+                        historicalDataBySeller[sellerName][category].volume += sale.TOTPESOLIQ;
+                        historicalDataBySeller[sellerName][category].mix.add(sale.PRODUTO);
+                    }
+                });
+
+                return { byClient: historicalDataByClient, bySeller: historicalDataBySeller };
+            }
+
+            // Metas Event Listeners
+            document.getElementById('nav-gv').addEventListener('click', () => switchPage('page-gv'));
+            document.getElementById('nav-sv').addEventListener('click', () => switchPage('page-sv'));
+            document.getElementById('btn-elma').addEventListener('click', () => selectGroup('ELMA'));
+            document.getElementById('btn-foods').addEventListener('click', () => selectGroup('FOODS'));
+
+            document.querySelectorAll('#tabs-elma button, #tabs-foods button').forEach(button => {
+                button.addEventListener('click', () => {
+                    document.querySelectorAll('#tabs-elma button, #tabs-foods button').forEach(btn => {
+                        btn.classList.remove('border-teal-500', 'bg-teal-500/10', 'text-teal-300', 'font-bold');
+                        btn.classList.add('text-slate-400', 'hover:bg-slate-700', 'font-medium');
+                    });
+                    button.classList.add('border-teal-500', 'bg-teal-500/10', 'text-teal-300', 'font-bold');
+                    button.classList.remove('text-slate-400', 'hover:bg-slate-700', 'font-medium');
+                    updateMetasViews();
+                });
+            });
+
+            const metaRevenueInput = document.getElementById('meta-revenue-input');
+            const metaVolumeInput = document.getElementById('meta-volume-input');
+            const metaMixInput = document.getElementById('meta-mix-input');
+
+            const updateMetasViews = () => {
+                const goals = {
+                    revenue: parseFloat(metaRevenueInput.value.replace(/\./g, '').replace(',', '.')) || 0,
+                    volume: parseFloat(metaVolumeInput.value.replace(/\./g, '').replace(',', '.')) || 0,
+                    mix: parseInt(metaMixInput.value.replace(/\./g, '')) || 0
+                };
+                const activeCategory = document.querySelector('#tabs-elma button.border-teal-500, #tabs-foods button.border-teal-500').textContent.trim();
+                updateMetasGvView(activeCategory, goals);
+                updateMetasSvView(activeCategory, goals);
+            };
+
+            if (metaRevenueInput && metaVolumeInput && metaMixInput) {
+                [metaRevenueInput, metaVolumeInput, metaMixInput].forEach(input => {
+                    input.addEventListener('change', updateMetasViews);
+                });
+            }
+
+            document.querySelector("#page-sv tbody").addEventListener('input', () => {
+                const rows = document.querySelectorAll("#page-sv tbody tr");
+                let totalSuggestedRevenue = 0;
+                let totalFinalRevenue = 0;
+
+                rows.forEach(row => {
+                    const suggested = parseFloat(row.cells[3].textContent.replace(/\./g, '').replace(',', '.')) || 0;
+                    const adjustment = parseFloat(row.cells[4].querySelector('input').value) || 0;
+                    totalSuggestedRevenue += suggested;
+                    totalFinalRevenue += suggested + adjustment;
+                });
+
+                const diff = totalSuggestedRevenue - totalFinalRevenue;
+                const diffEl = document.querySelector("#footer-balance > div > div:nth-child(2) > span:nth-child(2)");
+                diffEl.textContent = `Dif: ${diff.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
+                diffEl.classList.toggle('text-red-400', diff !== 0);
+                diffEl.classList.toggle('text-emerald-400', diff === 0);
+
+                document.querySelector("#footer-balance button").disabled = diff !== 0;
+            });
+
+            document.querySelector("#page-sv select").addEventListener('change', () => {
+                updateMetasSvView();
+            });
         }
 
         initializeOptimizedDataStructures();
@@ -7321,6 +7679,12 @@
                                         <button data-target="mix" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
                                             <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"></path></svg>
                                             <span class="ml-3">Mix Salty & Foods</span>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button data-target="metas" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"></path></svg>
+                                            <span class="ml-3">Metas</span>
                                         </button>
                                     </li>
                                 </ul>
@@ -8194,6 +8558,85 @@
                                         </thead>
                                         <tbody id="coverage-table-body" class="divide-y divide-slate-700"></tbody>
                                     </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Ecrã Metas -->
+                        <div id="metas-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
+                            <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
+                                <div class="flex items-center gap-4">
+                                    <button class="sidebar-toggle text-white focus:outline-none">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                                    </button>
+                                    <div class="flex-1 flex flex-col sm:flex-row justify-between items-center gap-4">
+                                        <div>
+                                            <h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1>
+                                            <p class="text-lg text-slate-300 -mt-1">Planejamento de Metas (GV & SV)</p>
+                                        </div>
+                                        <div class="flex bg-slate-800/50 p-1 rounded-lg border border-slate-700">
+                                            <button id="nav-gv" class="px-6 py-2 rounded-md text-sm font-bold bg-slate-700 text-white shadow-sm flex items-center gap-2 transition-all">1. Rateio Global (GV)</button>
+                                            <button id="nav-sv" class="px-6 py-2 rounded-md text-sm font-medium text-slate-400 hover:text-white flex items-center gap-2 transition-all">2. Fechamento (SV)</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </header>
+
+                            <main class="flex-1 w-full flex flex-col h-full">
+                                <!-- PÁGINA 1: VISÃO DO GERENTE (GV) -->
+                                <div id="page-gv" class="flex flex-col gap-4 h-full">
+                                    <div class="flex flex-col gap-0 mb-2 shrink-0">
+                                        <div class="flex gap-4 mb-2">
+                                            <button id="btn-elma" class="px-6 py-2 bg-teal-500 text-white rounded-lg font-bold shadow-md">ELMA CHIPS</button>
+                                            <button id="btn-foods" class="px-6 py-2 bg-slate-700 text-slate-300 border border-slate-600 rounded-lg font-medium hover:bg-slate-600">FOODS</button>
+                                        </div>
+                                        <div id="tabs-elma" class="flex border-b border-slate-600 bg-[#1d2347] rounded-t-xl overflow-hidden shadow-sm">
+                                            <button class="px-6 py-3 border-b-2 border-teal-500 bg-teal-500/10 text-teal-300 font-bold text-sm flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-teal-500"></span> EXTRUSADOS</button>
+                                            <button class="px-6 py-3 text-slate-400 hover:bg-slate-700 font-medium text-sm">NÃO EXTRUSADOS</button>
+                                            <button class="px-6 py-3 text-slate-400 hover:bg-slate-700 font-medium text-sm">TORCIDA</button>
+                                        </div>
+                                        <div id="tabs-foods" class="hidden border-b border-slate-600 bg-[#1d2347] rounded-t-xl overflow-hidden shadow-sm">
+                                            <button class="px-6 py-3 border-b-2 border-teal-500 bg-teal-500/10 text-teal-300 font-bold text-sm flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-teal-500"></span> TODDYNHO</button>
+                                            <button class="px-6 py-3 text-slate-400 hover:bg-slate-700 font-medium text-sm">TODDY</button>
+                                            <button class="px-6 py-3 text-slate-400 hover:bg-slate-700 font-medium text-sm">QUAKER / KEROCOCO</button>
+                                        </div>
+                                    </div>
+                                    <div class="bg-[#1d2347] border border-slate-700 p-4 grid grid-cols-1 lg:grid-cols-12 gap-6 shadow-sm rounded-b-xl mb-4 shrink-0 items-center">
+                                        <div class="lg:col-span-3 bg-blue-900/30 p-2 rounded-lg border border-blue-800/50"><label class="text-[10px] font-bold text-blue-400 uppercase mb-1 block">Meta Faturamento (R$)</label><div class="flex gap-2"><input type="text" id="meta-revenue-input" value="2.000.000,00" class="w-full bg-slate-800 border border-blue-700 text-blue-300 font-bold text-lg rounded px-3 py-1 focus:ring-2 focus:ring-blue-500 outline-none h-10"><button class="bg-blue-600 text-white px-3 rounded hover:bg-blue-700 transition shadow-sm h-10"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5M4 20h5v-5M20 4h-5v5"/></svg></button></div></div>
+                                        <div class="lg:col-span-3 bg-orange-900/30 p-2 rounded-lg border border-orange-800/50"><label class="text-[10px] font-bold text-orange-400 uppercase mb-1 block">Meta Volume (TON)</label><div class="flex gap-2"><input type="text" id="meta-volume-input" value="45.500" class="w-full bg-slate-800 border border-orange-700 text-orange-300 font-bold text-lg rounded px-3 py-1 focus:ring-2 focus:ring-orange-500 outline-none h-10"><button class="bg-orange-500 text-white px-3 rounded hover:bg-orange-600 transition shadow-sm h-10"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5M4 20h5v-5M20 4h-5v5"/></svg></button></div></div>
+                                        <div class="lg:col-span-3 bg-purple-900/30 p-2 rounded-lg border border-purple-800/50"><label class="text-[10px] font-bold text-purple-400 uppercase mb-1 block">Meta Mix (QTDE)</label><div class="flex gap-2"><input type="text" id="meta-mix-input" value="1.250" class="w-full bg-slate-800 border border-purple-700 text-purple-300 font-bold text-lg rounded px-3 py-1 focus:ring-2 focus:ring-purple-500 outline-none h-10"><button class="bg-purple-600 text-white px-3 rounded hover:bg-purple-700 transition shadow-sm h-10"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5M4 20h5v-5M20 4h-5v5"/></svg></button></div></div>
+                                        <div class="lg:col-span-3 text-right"><span class="text-[10px] font-bold text-slate-400 uppercase block">Total Rateado</span><span class="text-xl font-bold text-emerald-400">100% Distribuído</span></div>
+                                    </div>
+                                    <div class="bg-[#1d2347] rounded-xl border border-slate-700 shadow-sm flex-1 overflow-hidden flex flex-col">
+                                        <div class="overflow-auto custom-scrollbar flex-1">
+                                            <table class="w-full text-left border-collapse text-xs whitespace-nowrap"><thead class="sticky top-0 z-20 shadow-sm"><tr class="uppercase font-bold text-slate-400 bg-slate-800"><th class="px-4 py-2 border-b border-r border-slate-700 sticky left-0 z-30 bg-slate-800 min-w-[300px]">Dados do Cliente</th><th colspan="3" class="px-4 py-1 border-b border-r border-blue-700 bg-blue-900/30 text-blue-300 text-center">FATURAMENTO (R$)</th><th colspan="3" class="px-4 py-1 border-b border-r border-orange-700 bg-orange-900/30 text-orange-300 text-center">VOLUME (TON)</th><th colspan="3" class="px-4 py-1 border-b border-slate-700 bg-purple-900/30 text-purple-300 text-center">MIX (POSIT)</th></tr><tr class="bg-slate-900/50 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-700"><th class="px-4 py-3 sticky left-0 z-30 bg-slate-900/50 border-r border-slate-700">Cód | Cliente | Vendedor</th><th class="px-2 py-2 text-right bg-blue-900/20">Média</th><th class="px-2 py-2 text-center bg-blue-900/20">% Share</th><th class="px-2 py-2 text-right bg-blue-900/40 text-blue-300 border-r border-blue-700">Meta Auto</th><th class="px-2 py-2 text-right bg-orange-900/20">Média KG</th><th class="px-2 py-2 text-center bg-orange-900/20">% Share</th><th class="px-2 py-2 text-right bg-orange-900/40 text-orange-300 border-r border-orange-700">Meta KG</th><th class="px-2 py-2 text-right bg-purple-900/20">Média</th><th class="px-2 py-2 text-center bg-purple-900/20">% Share</th><th class="px-2 py-2 text-right bg-purple-900/40 text-purple-300">Meta Mix</th></tr></thead>
+                                                <tbody class="divide-y divide-slate-800 text-sm"><tr class="hover:bg-slate-800 transition-colors"><td class="px-4 py-2 sticky left-0 bg-[#1d2347] border-r border-slate-800 z-10"><div class="font-bold text-slate-300">10452 - MERCADINHO ESTRELA</div><div class="text-xs text-slate-400">Vend: 224 - JOÃO SILVA</div></td><td class="px-2 py-2 text-right text-slate-400">10.000</td><td class="px-2 py-2 text-center text-xs text-blue-400">0.5%</td><td class="px-2 py-2 text-right font-bold text-blue-400 bg-blue-900/20 border-r border-blue-800">10.000</td><td class="px-2 py-2 text-right text-slate-400">0.250</td><td class="px-2 py-2 text-center text-xs text-orange-400">0.55%</td><td class="px-2 py-2 text-right font-bold text-orange-400 bg-orange-900/20 border-r border-orange-800">0.252</td><td class="px-2 py-2 text-right text-slate-400">12</td><td class="px-2 py-2 text-center text-xs text-purple-400">0.9%</td><td class="px-2 py-2 text-right font-bold text-purple-400 bg-purple-900/20">12</td></tr></tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- PÁGINA 2: VISÃO DO SUPERVISOR (SV) -->
+                                <div id="page-sv" class="hidden flex-col gap-4 h-full">
+                                    <div class="bg-[#1d2347] rounded-xl border border-slate-700 shadow-sm mb-2 overflow-hidden">
+                                        <div class="p-4 border-b border-slate-700 bg-slate-800/50 flex justify-between items-center"><div class="flex items-center gap-4"><label class="text-xs font-bold text-slate-400 uppercase">Supervisor:</label><div class="relative"><select class="appearance-none w-72 bg-slate-700 border border-slate-600 text-white py-1.5 px-4 pr-8 rounded-lg font-bold shadow-sm focus:ring-2 focus:ring-teal-500 outline-none text-sm"><option>SELECIONE...</option><option selected>SV - CARLOS ALMEIDA</option></select><div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></div></div></div><div class="text-xs text-slate-400">Gerenciando metas da equipe de <b>Carlos Almeida</b></div></div>
+                                        <div class="flex bg-[#1d2347] px-2 pt-2 overflow-x-auto custom-scrollbar"><div class="flex items-center border-r border-slate-700 pr-4 mr-4 gap-2"><span class="text-[10px] font-bold text-slate-400 uppercase">ELMA:</span><button class="px-4 py-3 text-teal-300 font-bold flex items-center gap-2 relative group whitespace-nowrap border-b-2 border-teal-500"><span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>EXTRUSADOS</button><button class="px-4 py-3 text-slate-400 hover:text-white flex items-center gap-2 transition-colors whitespace-nowrap"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>NÃO EXTRUSADOS</button><button class="px-4 py-3 text-slate-400 hover:text-white flex items-center gap-2 transition-colors whitespace-nowrap"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>TORCIDA</button></div><div class="flex items-center gap-2"><span class="text-[10px] font-bold text-slate-400 uppercase">FOODS:</span><button class="px-4 py-3 text-slate-400 hover:text-white flex items-center gap-2 transition-colors whitespace-nowrap"><span class="w-2 h-2 rounded-full bg-slate-500"></span>TODDYNHO</button><button class="px-4 py-3 text-slate-400 hover:text-white flex items-center gap-2 transition-colors whitespace-nowrap"><span class="w-2 h-2 rounded-full bg-slate-500"></span>TODDY</button><button class="px-4 py-3 text-slate-400 hover:text-white flex items-center gap-2 transition-colors whitespace-nowrap"><span class="w-2 h-2 rounded-full bg-slate-500"></span>QUAKER/KEROCOCO</button></div></div>
+                                    </div>
+                                    <div class="bg-[#1d2347] rounded-xl border border-slate-700 shadow-sm flex-1 overflow-hidden flex flex-col relative">
+                                        <div class="p-2 bg-indigo-900/30 border-b border-slate-700 text-center text-xs font-semibold text-indigo-300">BALANCEAMENTO: EXTRUSADOS (Elma Chips)</div>
+                                        <div class="overflow-auto custom-scrollbar flex-1 pb-24">
+                                            <table class="w-full text-left border-collapse text-xs whitespace-nowrap"><thead class="sticky top-0 z-20 shadow-sm"><tr class="uppercase font-bold text-slate-400 bg-slate-800"><th class="px-4 py-2 border-b border-r border-slate-700 sticky left-0 z-30 bg-slate-800 min-w-[250px]">Vendedor (Equipe Carlos)</th><th colspan="5" class="px-4 py-1 border-b border-r border-blue-700 bg-blue-900/30 text-blue-300 text-center border-l-4 border-l-blue-500">FATURAMENTO (R$)</th><th colspan="5" class="px-4 py-1 border-b border-r border-orange-700 bg-orange-900/30 text-orange-300 text-center border-l-4 border-l-orange-500">VOLUME (TON)</th><th colspan="5" class="px-4 py-1 border-b border-r border-purple-700 bg-purple-900/30 text-purple-300 text-center border-l-4 border-l-purple-500">MIX (POSIT)</th></tr><tr class="bg-slate-900/50 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-700"><th class="px-4 py-3 sticky left-0 z-30 bg-slate-900/50 border-r border-slate-700">Nome / Código</th><th class="px-2 py-2 text-right bg-blue-900/20 w-24">Média</th><th class="px-2 py-2 text-center bg-blue-900/20 w-16">%</th><th class="px-2 py-2 text-right text-blue-300 bg-blue-900/30 border-r border-blue-700 w-24">Sugestão</th><th class="px-2 py-2 w-28 bg-[#1d2347] border-r border-slate-700 text-center">Ajuste SV</th><th class="px-2 py-2 w-24 text-right font-bold bg-slate-800 border-r border-slate-600">Final R$</th><th class="px-2 py-2 text-right bg-orange-900/20 w-20">Média</th><th class="px-2 py-2 text-center bg-orange-900/20 w-16">%</th><th class="px-2 py-2 text-right text-orange-300 bg-orange-900/30 border-r border-orange-700 w-24">Sugestão</th><th class="px-2 py-2 w-24 bg-[#1d2347] border-r border-slate-700 text-center">Ajuste SV</th><th class="px-2 py-2 w-20 text-right font-bold bg-slate-800 border-r border-slate-600">Final Ton</th><th class="px-2 py-2 text-right bg-purple-900/20 w-16">Média</th><th class="px-2 py-2 text-center bg-purple-900/20 w-16">%</th><th class="px-2 py-2 text-right text-purple-300 bg-purple-900/30 border-r border-purple-700 w-20">Sugestão</th><th class="px-2 py-2 w-20 bg-[#1d2347] border-r border-slate-700 text-center">Ajuste SV</th><th class="px-2 py-2 w-16 text-right font-bold bg-slate-800">Final</th></tr></thead>
+                                                <tbody class="divide-y divide-slate-800 text-sm"><tr class="hover:bg-slate-800 transition-colors"><td class="px-4 py-2 font-semibold text-slate-300 sticky left-0 bg-[#1d2347] border-r border-slate-800 z-10">224 - JOÃO SILVA</td><td class="px-2 py-2 text-right text-slate-400">100k</td><td class="px-2 py-2 text-center text-xs text-slate-500">10%</td><td class="px-2 py-2 text-right font-bold text-blue-400 bg-blue-900/20 border-r border-blue-800">100.000</td><td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" placeholder="-"></td><td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50 border-r border-slate-700">100.000</td><td class="px-2 py-2 text-right text-slate-400">5.0</td><td class="px-2 py-2 text-center text-xs text-slate-500">10%</td><td class="px-2 py-2 text-right font-bold text-orange-400 bg-orange-900/20 border-r border-orange-800">5.000</td><td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-orange-500" placeholder="-"></td><td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50 border-r border-slate-700">5.000</td><td class="px-2 py-2 text-right text-slate-400">40</td><td class="px-2 py-2 text-center text-xs text-slate-500">8%</td><td class="px-2 py-2 text-right font-bold text-purple-400 bg-purple-900/20 border-r border-purple-800">45</td><td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-purple-500" placeholder="-"></td><td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50">45</td></tr></tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </main>
+
+                            <div id="footer-balance" class="hidden fixed bottom-0 left-0 w-full bg-[#1d2347] border-t border-slate-700 shadow-[0_-10px_40px_rgba(0,0,0,0.2)] z-50 p-3">
+                                <div class="max-w-[1900px] mx-auto flex justify-between items-center gap-4">
+                                    <div class="flex items-center gap-2 border-r border-slate-700 pr-6"><div class="bg-amber-900/50 p-2 rounded-full text-amber-400"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg></div><div><span class="text-[10px] font-bold text-slate-400 uppercase block">Balanceamento</span><span class="text-[10px] font-bold text-indigo-400 uppercase">Categoria: EXTRUSADOS</span></div></div>
+                                    <div class="flex flex-1 gap-4"><div class="flex-1 bg-blue-900/30 border border-blue-800/50 rounded-lg p-2 flex justify-between items-center px-4"><span class="text-xs text-blue-300 font-bold">R$ FATURAMENTO</span><span class="text-sm font-bold text-red-400">Dif: - R$ 5.000</span></div><div class="flex-1 bg-orange-900/30 border border-orange-800/50 rounded-lg p-2 flex justify-between items-center px-4"><span class="text-xs text-orange-300 font-bold">VOLUME (TON)</span><span class="text-sm font-bold text-emerald-400 flex gap-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg> OK</span></div><div class="flex-1 bg-purple-900/30 border border-purple-800/50 rounded-lg p-2 flex justify-between items-center px-4"><span class="text-xs text-purple-300 font-bold">MIX</span><span class="text-sm font-bold text-emerald-400 flex gap-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg> OK</span></div></div>
+                                    <div class="border-l border-slate-700 pl-6"><button disabled class="bg-slate-700 text-slate-500 px-6 py-2.5 rounded-lg font-bold cursor-not-allowed flex items-center gap-2 text-sm shadow-inner"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg> Salvar EXTRUSADOS</button></div>
                                 </div>
                             </div>
                         </div>
