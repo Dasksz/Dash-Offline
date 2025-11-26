@@ -3563,7 +3563,7 @@
                     displayValue = formatValue(kpi.current, kpi.format);
                 }
 
-                return `<div class="bg-[#1d2347] p-4 rounded-lg text-center border border-slate-700">
+                return `<div class="bg-[#1d2347] p-4 rounded-lg text-center border border-slate-700 transition transform hover:-translate-y-1 duration-200">
                             <p class="text-slate-400 text-sm">${kpi.title}</p>
                             <p class="text-2xl font-bold text-white my-2">${displayValue}</p>
                             <p class="text-sm ${colorClass}">${variation.toFixed(2)}% vs Média do Trimestre</p>
@@ -5779,6 +5779,34 @@
             };
         }
 
+        function showLoader(text = 'Carregando...') {
+            return new Promise(resolve => {
+                const loader = document.getElementById('page-transition-loader');
+                const loaderText = document.getElementById('loader-text');
+                if (loader && loaderText) {
+                    document.body.setAttribute('data-loading', 'true');
+                    loaderText.textContent = text;
+                    loader.classList.remove('opacity-0', 'pointer-events-none');
+                    setTimeout(resolve, 50);
+                } else {
+                    resolve();
+                }
+            });
+        }
+
+        function hideLoader() {
+             return new Promise(resolve => {
+                const loader = document.getElementById('page-transition-loader');
+                if (loader) {
+                    document.body.removeAttribute('data-loading');
+                    loader.classList.add('opacity-0', 'pointer-events-none');
+                    setTimeout(resolve, 300);
+                } else {
+                    resolve();
+                }
+            });
+        }
+
         function toggleSidebar() {
             const sideMenu = document.getElementById('side-menu');
             const sidebarOverlay = document.getElementById('sidebar-overlay');
@@ -5787,136 +5815,131 @@
             if (sidebarOverlay) sidebarOverlay.classList.toggle('hidden');
         }
 
-        function navigateTo(view) {
+        async function navigateTo(view) {
             const sideMenu = document.getElementById('side-menu');
             const sidebarOverlay = document.getElementById('sidebar-overlay');
             
             if (sideMenu) sideMenu.classList.add('-translate-x-full');
             if (sidebarOverlay) sidebarOverlay.classList.add('hidden');
 
-                        [mainDashboard, cityView, weeklyView, comparisonView, stockView, innovationsMonthView, coverageView, document.getElementById('mix-view')].forEach(el => {
-                if(el) el.classList.add('hidden');
-            });
+            const viewNameMap = {
+                dashboard: 'Dashboard',
+                pedidos: 'Pedidos',
+                comparativo: 'Comparativo',
+                estoque: 'Estoque',
+                cobertura: 'Cobertura',
+                cidades: 'Cidades',
+                semanal: 'Semanal',
+                'inovacoes-mes': 'Inovações',
+                mix: 'Mix'
+            };
+            const friendlyName = viewNameMap[view] || 'a página';
 
-            document.querySelectorAll('.nav-link').forEach(link => {
-                link.classList.remove('bg-slate-700', 'text-white');
-                const icon = link.querySelector('svg');
-                if(icon) icon.classList.remove('text-white');
-            });
-            const activeLink = document.querySelector(`.nav-link[data-target="${view}"]`);
-            if (activeLink) {
-                activeLink.classList.add('bg-slate-700', 'text-white');
-                const icon = activeLink.querySelector('svg');
-                if(icon) icon.classList.add('text-white');
-            }
+            await showLoader(`Carregando ${friendlyName}...`);
 
-            switch(view) {
-                case 'dashboard':
-                    mainDashboard.classList.remove('hidden');
-                    if (chartView) chartView.classList.remove('hidden');
-                    if (tableView) tableView.classList.add('hidden');
-                    if (tablePaginationControls) tablePaginationControls.classList.add('hidden');
-                    if (viewState.dashboard.dirty) {
-                        updateAllVisuals();
-                        viewState.dashboard.dirty = false;
-                    }
-                    break;
-                case 'pedidos':
-                    mainDashboard.classList.remove('hidden');
-                    if (chartView) chartView.classList.add('hidden');
-                    if (tableView) tableView.classList.remove('hidden');
-                    if (tablePaginationControls) tablePaginationControls.classList.remove('hidden');
-                    if (viewState.pedidos.dirty) {
-                        updateAllVisuals(); // Uses same visual update but switches DOM visibility
-                        viewState.pedidos.dirty = false;
-                    }
-                    break;
-                case 'comparativo':
-                    comparisonView.classList.remove('hidden');
-                    if (viewState.comparativo.dirty) {
-                        updateAllComparisonFilters();
-                        updateComparisonView();
-                        viewState.comparativo.dirty = false;
-                    }
-                    break;
-                case 'estoque':
-                    stockView.classList.remove('hidden');
-                    const maxDaysLabel = document.getElementById('max-working-days-label');
-                    if (maxDaysLabel) maxDaysLabel.textContent = `(Máx: ${maxWorkingDaysStock})`;
-                    const daysInput = document.getElementById('stock-working-days-input');
-                    if(daysInput && parseInt(daysInput.value) === 0) daysInput.value = customWorkingDaysStock;
-                    
-                    if (viewState.estoque.dirty) {
-                        handleStockFilterChange(); 
-                        viewState.estoque.dirty = false;
-                    }
-                    break;
-                case 'cobertura':
-                    coverageView.classList.remove('hidden');
-                    customWorkingDaysCoverage = maxWorkingDaysStock;
-                    const workingDaysInputCov = document.getElementById('coverage-working-days-input');
-                    if(workingDaysInputCov) workingDaysInputCov.value = customWorkingDaysCoverage;
-                    
-                    if (viewState.cobertura.dirty) {
-                        updateAllCoverageFilters();
-                        updateCoverageView();
-                        viewState.cobertura.dirty = false;
-                    }
-                    break;
-                case 'cidades':
-                    cityView.classList.remove('hidden');
-                    const cityContent = document.getElementById('city-view-content');
-                    const cityLoader = document.getElementById('city-view-loader');
-                    
-                    if (viewState.cidades.dirty) {
-                        // Show loader only if dirty (first load or forced refresh)
-                        if (cityContent) cityContent.classList.add('hidden'); 
-                        if (cityLoader) cityLoader.classList.remove('hidden'); 
-                        
-                        setTimeout(() => { 
-                            if (cityLoader) cityLoader.classList.add('hidden'); 
-                            if (cityContent) cityContent.classList.remove('hidden'); 
+            // This function now runs after the loader is visible
+            const updateContent = () => {
+                [mainDashboard, cityView, weeklyView, comparisonView, stockView, innovationsMonthView, coverageView, document.getElementById('mix-view')].forEach(el => {
+                    if(el) el.classList.add('hidden');
+                });
 
-                            selectedCitySupervisors = updateSupervisorFilter(document.getElementById('city-supervisor-filter-dropdown'), document.getElementById('city-supervisor-filter-text'), selectedCitySupervisors, allSalesData);
-                            selectedCitySellers = updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData); 
-                            selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData); 
-                            updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData); 
+                document.querySelectorAll('.nav-link').forEach(link => {
+                    link.classList.remove('bg-slate-700', 'text-white');
+                    const icon = link.querySelector('svg');
+                    if(icon) icon.classList.remove('text-white');
+                });
+
+                const activeLink = document.querySelector(`.nav-link[data-target="${view}"]`);
+                if (activeLink) {
+                    activeLink.classList.add('bg-slate-700', 'text-white');
+                    const icon = activeLink.querySelector('svg');
+                    if(icon) icon.classList.add('text-white');
+                }
+
+                switch(view) {
+                    case 'dashboard':
+                        mainDashboard.classList.remove('hidden');
+                        chartView.classList.remove('hidden');
+                        tableView.classList.add('hidden');
+                        tablePaginationControls.classList.add('hidden');
+                        if (viewState.dashboard.dirty) {
+                            updateAllVisuals();
+                            viewState.dashboard.dirty = false;
+                        }
+                        break;
+                    case 'pedidos':
+                        mainDashboard.classList.remove('hidden');
+                        chartView.classList.add('hidden');
+                        tableView.classList.remove('hidden');
+                        tablePaginationControls.classList.remove('hidden');
+                        if (viewState.pedidos.dirty) {
+                            updateAllVisuals();
+                            viewState.pedidos.dirty = false;
+                        }
+                        break;
+                    case 'comparativo':
+                        comparisonView.classList.remove('hidden');
+                        if (viewState.comparativo.dirty) {
+                            updateAllComparisonFilters();
+                            updateComparisonView();
+                            viewState.comparativo.dirty = false;
+                        }
+                        break;
+                    case 'estoque':
+                        stockView.classList.remove('hidden');
+                        if (viewState.estoque.dirty) {
+                            handleStockFilterChange();
+                            viewState.estoque.dirty = false;
+                        }
+                        break;
+                    case 'cobertura':
+                        coverageView.classList.remove('hidden');
+                        if (viewState.cobertura.dirty) {
+                            updateAllCoverageFilters();
+                            updateCoverageView();
+                            viewState.cobertura.dirty = false;
+                        }
+                        break;
+                    case 'cidades':
+                        cityView.classList.remove('hidden');
+                        if (viewState.cidades.dirty) {
+                            updateAllCityFilters();
                             updateCityView(); 
                             viewState.cidades.dirty = false;
-                        }, 10);
-                    } else {
-                        // Ensure content is visible if not dirty
-                        if (cityLoader) cityLoader.classList.add('hidden');
-                        if (cityContent) cityContent.classList.remove('hidden');
-                    }
-                    break;
-                case 'semanal':
-                    weeklyView.classList.remove('hidden');
-                    if (viewState.semanal.dirty) {
-                        populateWeeklyFilters(); 
-                        updateWeeklyView();
-                        viewState.semanal.dirty = false;
-                    }
-                    break;
-                case 'inovacoes-mes':
-                    innovationsMonthView.classList.remove('hidden');
-                    if (viewState.inovacoes.dirty) {
-                        selectedInnovationsSupervisors = updateSupervisorFilter(document.getElementById('innovations-month-supervisor-filter-dropdown'), document.getElementById('innovations-month-supervisor-filter-text'), selectedInnovationsSupervisors, allSalesData);
-                        updateSellerFilter('', innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
-                        selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
-                        updateInnovationsMonthView();
-                        viewState.inovacoes.dirty = false;
-                    }
-                    break;
-                case 'mix':
-                    document.getElementById('mix-view').classList.remove('hidden');
-                    if (viewState.mix.dirty) {
-                        updateAllMixFilters();
-                        updateMixView();
-                        viewState.mix.dirty = false;
-                    }
-                    break;
-            }
+                        }
+                        break;
+                    case 'semanal':
+                        weeklyView.classList.remove('hidden');
+                        if (viewState.semanal.dirty) {
+                            populateWeeklyFilters();
+                            updateWeeklyView();
+                            viewState.semanal.dirty = false;
+                        }
+                        break;
+                    case 'inovacoes-mes':
+                        innovationsMonthView.classList.remove('hidden');
+                        if (viewState.inovacoes.dirty) {
+                            selectedInnovationsSupervisors = updateSupervisorFilter(document.getElementById('innovations-month-supervisor-filter-dropdown'), document.getElementById('innovations-month-supervisor-filter-text'), selectedInnovationsSupervisors, allSalesData);
+                            updateSellerFilter(selectedInnovationsSupervisors, innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
+                            selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
+                            updateInnovationsMonthView();
+                            viewState.inovacoes.dirty = false;
+                        }
+                        break;
+                    case 'mix':
+                        document.getElementById('mix-view').classList.remove('hidden');
+                        if (viewState.mix.dirty) {
+                            updateAllMixFilters();
+                            updateMixView();
+                            viewState.mix.dirty = false;
+                        }
+                        break;
+                }
+            };
+
+            updateContent();
+
+            await hideLoader();
         }
 
         function setupEventListeners() {
@@ -7204,6 +7227,16 @@
                         </aside>
                         <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-40 hidden glass-effect"></div>
                         
+                        <div id="page-transition-loader" class="fixed inset-0 bg-black/30 backdrop-blur-sm z-[9999] flex items-center justify-center transition-opacity duration-300 opacity-0 pointer-events-none">
+                            <div class="flex flex-col items-center">
+                                <svg class="animate-spin -ml-1 mr-3 h-10 w-10 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                <span id="loader-text" class="text-white text-lg mt-4">Carregando...</span>
+                            </div>
+                        </div>
+
                         <div id="content-wrapper" class="min-h-screen transition-all duration-300">
                             <div id="main-dashboard">
                                 <div class="container mx-auto p-4 sm:p-6 lg:p-8">
@@ -7224,19 +7257,19 @@
 
                                 <!-- KPIs com bordas e cores atualizadas -->
                                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                                    <div class="kpi-card border-t-4 border-indigo-500">
+                                    <div class="kpi-card border-t-4 border-indigo-500 transition transform hover:-translate-y-1 duration-200">
                                         <h3 class="text-slate-400 font-medium uppercase text-sm">Volume Tons</h3>
                                         <p id="total-peso" class="text-4xl font-bold text-white my-2">0,0</p>
                                     </div>
-                                    <div class="kpi-card border-t-4 border-teal-500">
+                                    <div class="kpi-card border-t-4 border-teal-500 transition transform hover:-translate-y-1 duration-200">
                                         <h3 class="text-slate-400 font-medium uppercase text-sm">Faturamento R$</h3>
                                         <p id="total-vendas" class="text-4xl font-bold text-white my-2">R$ 0,00</p>
                                     </div>
-                                    <div class="kpi-card border-t-4 border-green-500">
+                                    <div class="kpi-card border-t-4 border-green-500 transition transform hover:-translate-y-1 duration-200">
                                         <h3 class="text-slate-400 font-medium uppercase text-sm">SKU/PDV</h3>
                                         <p id="kpi-sku-pdv" class="text-4xl font-bold text-white my-2">0,0</p>
                                     </div>
-                                    <div class="kpi-card border-t-4 border-purple-500">
+                                    <div class="kpi-card border-t-4 border-purple-500 transition transform hover:-translate-y-1 duration-200">
                                         <h3 class="text-slate-400 font-medium uppercase text-sm">Cobertura PDVs</h3>
                                         <p id="kpi-positivacao" class="text-4xl font-bold text-white my-2">0,0%</p>
                                         <p id="kpi-positivacao-percent" class="text-sm text-slate-400 -mt-1">0 PDVs</p>
@@ -7355,8 +7388,7 @@
                                     <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Análise de Vendas por Cidade</p></div>
                                 </div>
                             </header>
-                            <div id="city-view-loader" class="text-center p-16"><p class="text-lg text-slate-400">Carregando dados...</p></div>
-                            <div id="city-view-content" class="hidden">
+                            <div id="city-view-content">
                                 <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
                                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
                                         <!-- Filtro de Rede (Cidades) -->
@@ -7709,12 +7741,12 @@
                                 </div>
                             </header>
                              <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6 mb-6">
-                                <div class="kpi-card"><p class="text-slate-400 text-sm font-medium">Clientes Ativos (Filtro)</p><p id="innovations-month-active-clients-kpi" class="text-3xl font-bold text-teal-400 my-1">0</p><p class="text-xs text-slate-500">Base para os KPIs</p></div>
-                                <div class="kpi-card"><p class="text-slate-400 text-sm font-medium">Cobertura Mês Anterior</p><p id="innovations-month-selection-coverage-value-kpi-previous" class="text-3xl font-bold text-orange-400 my-1">0%</p><p id="innovations-month-selection-coverage-count-kpi-previous" class="text-xs text-slate-500">0 de 0 clientes</p></div>
-                                <div class="kpi-card"><p class="text-slate-400 text-sm font-medium">Cobertura Mês Atual</p><p id="innovations-month-selection-coverage-value-kpi" class="text-3xl font-bold text-cyan-400 my-1">0%</p><p id="innovations-month-selection-coverage-count-kpi" class="text-xs text-slate-500">0 de 0 clientes</p></div>
-                                <div class="kpi-card"><p class="text-slate-400 text-sm font-medium">Cobertura Bonificação Ant.</p><p id="innovations-month-bonus-coverage-value-kpi-previous" class="text-3xl font-bold text-orange-400 my-1">0%</p><p id="innovations-month-bonus-coverage-count-kpi-previous" class="text-xs text-slate-500">0 de 0 clientes</p></div>
-                                <div class="kpi-card"><p class="text-slate-400 text-sm font-medium">Cobertura Bonificação Atual</p><p id="innovations-month-bonus-coverage-value-kpi" class="text-3xl font-bold text-cyan-400 my-1">0%</p><p id="innovations-month-bonus-coverage-count-kpi" class="text-xs text-slate-500">0 de 0 clientes</p></div>
-                                <div class="kpi-card"><p id="innovations-month-top-coverage-title" class="text-slate-400 text-sm font-medium">Item com Maior Cobertura</p><p id="innovations-month-top-coverage-value-kpi" class="text-3xl font-bold text-purple-400 my-1">0%</p><p id="innovations-month-top-coverage-kpi" class="text-xs text-slate-500 truncate" title="Nenhum item analisado">-</p><p id="innovations-month-top-coverage-count-kpi" class="text-xs text-slate-500">0 PDVs</p></div>
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p class="text-slate-400 text-sm font-medium">Clientes Ativos (Filtro)</p><p id="innovations-month-active-clients-kpi" class="text-3xl font-bold text-teal-400 my-1">0</p><p class="text-xs text-slate-500">Base para os KPIs</p></div>
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p class="text-slate-400 text-sm font-medium">Cobertura Mês Anterior</p><p id="innovations-month-selection-coverage-value-kpi-previous" class="text-3xl font-bold text-orange-400 my-1">0%</p><p id="innovations-month-selection-coverage-count-kpi-previous" class="text-xs text-slate-500">0 de 0 clientes</p></div>
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p class="text-slate-400 text-sm font-medium">Cobertura Mês Atual</p><p id="innovations-month-selection-coverage-value-kpi" class="text-3xl font-bold text-cyan-400 my-1">0%</p><p id="innovations-month-selection-coverage-count-kpi" class="text-xs text-slate-500">0 de 0 clientes</p></div>
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p class="text-slate-400 text-sm font-medium">Cobertura Bonificação Ant.</p><p id="innovations-month-bonus-coverage-value-kpi-previous" class="text-3xl font-bold text-orange-400 my-1">0%</p><p id="innovations-month-bonus-coverage-count-kpi-previous" class="text-xs text-slate-500">0 de 0 clientes</p></div>
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p class="text-slate-400 text-sm font-medium">Cobertura Bonificação Atual</p><p id="innovations-month-bonus-coverage-value-kpi" class="text-3xl font-bold text-cyan-400 my-1">0%</p><p id="innovations-month-bonus-coverage-count-kpi" class="text-xs text-slate-500">0 de 0 clientes</p></div>
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p id="innovations-month-top-coverage-title" class="text-slate-400 text-sm font-medium">Item com Maior Cobertura</p><p id="innovations-month-top-coverage-value-kpi" class="text-3xl font-bold text-purple-400 my-1">0%</p><p id="innovations-month-top-coverage-kpi" class="text-xs text-slate-500 truncate" title="Nenhum item analisado">-</p><p id="innovations-month-top-coverage-count-kpi" class="text-xs text-slate-500">0 PDVs</p></div>
                             </div>
                             <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
                                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
@@ -7809,7 +7841,7 @@
 
                             <!-- KPIs -->
                             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                                <div class="kpi-card">
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200">
                                     <div class="grid grid-cols-3 items-center mb-1">
                                         <div class="col-span-1"></div> <!-- Spacer -->
                                         <div class="col-span-1 text-center">
@@ -7828,17 +7860,17 @@
                                     <p id="mix-total-clients-kpi" class="text-3xl font-bold text-white my-1">0</p>
                                     <p class="text-xs text-slate-500">Base para análise</p>
                                 </div>
-                                <div class="kpi-card border-t-4 border-teal-500">
+                                <div class="kpi-card border-t-4 border-teal-500 transition transform hover:-translate-y-1 duration-200">
                                     <p class="text-slate-400 text-sm font-medium">Positivados Salty</p>
                                     <p id="mix-salty-kpi" class="text-3xl font-bold text-teal-400 my-1">0%</p>
                                     <p id="mix-salty-count-kpi" class="text-xs text-slate-500">0 clientes</p>
                                 </div>
-                                <div class="kpi-card border-t-4 border-yellow-500">
+                                <div class="kpi-card border-t-4 border-yellow-500 transition transform hover:-translate-y-1 duration-200">
                                     <p class="text-slate-400 text-sm font-medium">Positivados Foods</p>
                                     <p id="mix-foods-kpi" class="text-3xl font-bold text-yellow-400 my-1">0%</p>
                                     <p id="mix-foods-count-kpi" class="text-xs text-slate-500">0 clientes</p>
                                 </div>
-                                <div class="kpi-card border-t-4 border-purple-500">
+                                <div class="kpi-card border-t-4 border-purple-500 transition transform hover:-translate-y-1 duration-200">
                                     <p class="text-slate-400 text-sm font-medium">Mix Ideal (Ambos)</p>
                                     <p id="mix-both-kpi" class="text-3xl font-bold text-purple-400 my-1">0%</p>
                                     <p id="mix-both-count-kpi" class="text-xs text-slate-500">0 clientes</p>
@@ -7966,22 +7998,22 @@
                             </header>
                             <!-- KPIs (Cobertura) -->
                              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                                <div class="kpi-card">
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200">
                                     <p class="text-slate-400 text-sm font-medium">Clientes Ativos (Filtro)</p>
                                     <p id="coverage-active-clients-kpi" class="text-3xl font-bold text-teal-400 my-1">0</p>
                                     <p class="text-xs text-slate-500">Base para os KPIs</p>
                                 </div>
-                                <div class="kpi-card">
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200">
                                     <p class="text-slate-400 text-sm font-medium">Cobertura Mês Anterior</p>
                                     <p id="coverage-selection-coverage-value-kpi-previous" class="text-3xl font-bold text-orange-400 my-1">0%</p>
                                     <p id="coverage-selection-coverage-count-kpi-previous" class="text-xs text-slate-500">0 de 0 clientes</p>
                                 </div>
-                                <div class="kpi-card">
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200">
                                     <p class="text-slate-400 text-sm font-medium">Cobertura Mês Atual</p>
                                     <p id="coverage-selection-coverage-value-kpi" class="text-3xl font-bold text-cyan-400 my-1">0%</p>
                                     <p id="coverage-selection-coverage-count-kpi" class="text-xs text-slate-500">0 de 0 clientes</p>
                                 </div>
-                                <div class="kpi-card">
+                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200">
                                     <p class="text-slate-400 text-sm font-medium">Item com Maior Cobertura</p>
                                     <p id="coverage-top-coverage-value-kpi" class="text-3xl font-bold text-purple-400 my-1">0%</p>
                                     <p id="coverage-top-coverage-product-kpi" class="text-xs text-slate-500 truncate" title="Nenhum item analisado">-</p>
