@@ -1368,6 +1368,13 @@
             filteredData: [],
             totalPages: 1
         };
+        
+        let mixTableState = {
+            currentPage: 1,
+            itemsPerPage: 100,
+            filteredData: [],
+            totalPages: 1
+        };
 
         const getFirstName = (fullName) => (fullName || '').split(' ')[0];
 
@@ -1708,13 +1715,25 @@
             });
 
             mixTableDataForExport = tableData;
+            
+            mixTableState.filteredData = tableData;
+            mixTableState.totalPages = Math.ceil(tableData.length / mixTableState.itemsPerPage);
+            if (mixTableState.currentPage > mixTableState.totalPages && mixTableState.totalPages > 0) {
+                mixTableState.currentPage = mixTableState.totalPages;
+            } else if (mixTableState.totalPages === 0) {
+                 mixTableState.currentPage = 1;
+            }
+
+            const startIndex = (mixTableState.currentPage - 1) * mixTableState.itemsPerPage;
+            const endIndex = startIndex + mixTableState.itemsPerPage;
+            const pageData = tableData.slice(startIndex, endIndex);
 
             const checkIcon = `<svg class="w-4 h-4 text-green-400 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>`;
             const dashIcon = `<span class="text-slate-600 text-xs">-</span>`;
 
             const xIcon = `<svg class="w-3 h-3 text-red-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>`;
 
-            let tableHTML = tableData.slice(0, 500).map(row => {
+            let tableHTML = pageData.map(row => {
                 let saltyCols = MIX_SALTY_CATEGORIES.map(b => `<td class="px-1 py-2 text-center border-l border-slate-500">${row.brands.has(b) ? checkIcon : xIcon}</td>`).join('');
                 let foodsCols = MIX_FOODS_CATEGORIES.map(b => `<td class="px-1 py-2 text-center border-l border-slate-500">${row.brands.has(b) ? checkIcon : xIcon}</td>`).join('');
                 
@@ -1739,6 +1758,20 @@
             `;
 
             document.getElementById('mix-table-body').innerHTML = tableHTML;
+            
+            const controls = document.getElementById('mix-pagination-controls');
+            const infoText = document.getElementById('mix-page-info-text');
+            const prevBtn = document.getElementById('mix-prev-page-btn');
+            const nextBtn = document.getElementById('mix-next-page-btn');
+
+            if (tableData.length > 0 && mixTableState.totalPages > 1) {
+                infoText.textContent = `Página ${mixTableState.currentPage} de ${mixTableState.totalPages} (Total: ${tableData.length} clientes)`;
+                prevBtn.disabled = mixTableState.currentPage === 1;
+                nextBtn.disabled = mixTableState.currentPage === mixTableState.totalPages;
+                controls.classList.remove('hidden');
+            } else {
+                controls.classList.add('hidden');
+            }
         }
 
         async function exportMixPDF() {
@@ -1747,7 +1780,7 @@
             
             const supervisor = document.getElementById('mix-supervisor-filter-text').textContent;
             const vendedor = document.getElementById('mix-vendedor-filter-text').textContent;
-            const city = document.getElementById('mix-city-filter').value || 'Todas';
+            const city = document.getElementById('mix-city-filter').value.trim();
             const generationDate = new Date().toLocaleString('pt-BR');
 
             doc.setFontSize(18);
@@ -1755,7 +1788,7 @@
             doc.setFontSize(10);
             doc.setTextColor(10);
             doc.text(`Data de Emissão: ${generationDate}`, 14, 30);
-            doc.text(`Filtros: Supervisor: ${supervisor} | Vendedor: ${vendedor} | Cidade: ${city}`, 14, 36);
+            doc.text(`Filtros: Supervisor: ${supervisor} | Vendedor: ${vendedor} | Cidade: ${city || 'Todas'}`, 14, 36);
 
             // Determine dynamic columns
             const saltyCols = MIX_SALTY_CATEGORIES.map(c => c.substring(0, 8)); // Truncate headers
@@ -1828,7 +1861,14 @@
                 doc.text(`Página ${i} de ${pageCount}`, doc.internal.pageSize.width / 2, doc.internal.pageSize.height - 10, { align: 'center' });
             }
 
-            doc.save(`relatorio_mix_detalhado_${new Date().toISOString().slice(0,10)}.pdf`);
+            let fileNameParam = 'geral';
+            if (selectedMixSellers.length === 1) {
+                fileNameParam = getFirstName(selectedMixSellers[0]);
+            } else if (city) {
+                fileNameParam = city;
+            }
+            const safeFileNameParam = fileNameParam.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            doc.save(`relatorio_mix_detalhado_${safeFileNameParam}_${new Date().toISOString().slice(0,10)}.pdf`);
         }
 
         // <!-- INÍCIO DO CÓDIGO RESTAURADO -->
@@ -2648,10 +2688,23 @@
 
             const intersectSets = (sets) => {
                 if (sets.length === 0) return new Set();
+                
+                // --- OPTIMIZATION START ---
+                // Sort sets by size to intersect the smallest sets first.
+                sets.sort((a, b) => a.size - b.size);
+
                 let result = new Set(sets[0]);
                 for (let i = 1; i < sets.length; i++) {
-                    result = new Set([...result].filter(item => sets[i].has(item)));
+                    if (result.size === 0) break; // Stop early if the result is already empty
+                    
+                    const currentSet = sets[i];
+                    for (const id of result) {
+                        if (!currentSet.has(id)) {
+                            result.delete(id);
+                        }
+                    }
                 }
+                // --- OPTIMIZATION END ---
                 return result;
             };
 
@@ -3849,17 +3902,26 @@
 
             let resultIds;
             if (setsToIntersect.length > 0) {
+                // --- OPTIMIZATION START ---
+                // Sort sets by size to intersect the smallest sets first.
                 setsToIntersect.sort((a, b) => a.size - b.size);
+                
+                // Start with the smallest set.
                 resultIds = new Set(setsToIntersect[0]);
+
+                // Intersect with the rest of the sets.
                 for (let i = 1; i < setsToIntersect.length; i++) {
+                    // Stop early if the result is already empty.
+                    if (resultIds.size === 0) break;
+
                     const currentSet = setsToIntersect[i];
                     for (const id of resultIds) {
                         if (!currentSet.has(id)) {
                             resultIds.delete(id);
                         }
                     }
-                    if (resultIds.size === 0) break;
                 }
+                // --- OPTIMIZATION END ---
             } else if (filters.clientCodes) {
                  const allData = Array.from(dataMap.values());
                  return allData.filter(s => filters.clientCodes.has(s.CODCLI));
@@ -5377,10 +5439,10 @@
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF('landscape');
 
-            const supervisor = innovationsMonthSupervisorFilter.value || 'Todos';
-            const vendedor = selectedInnovationsMonthSellers.length > 0 ? selectedInnovationsMonthSellers.join(', ') : 'Todos';
+            const supervisor = document.getElementById('innovations-month-supervisor-filter-text').textContent;
+            const vendedor = document.getElementById('innovations-month-vendedor-filter-text').textContent;
             const filial = innovationsMonthFilialFilter.options[innovationsMonthFilialFilter.selectedIndex].text;
-            const cidade = innovationsMonthCityFilter.value || 'Todas';
+            const cidade = innovationsMonthCityFilter.value.trim();
             const categoria = innovationsMonthCategoryFilter.value || 'Todas';
             const generationDate = new Date().toLocaleString('pt-BR');
 
@@ -5390,7 +5452,7 @@
             doc.setTextColor(10);
             doc.text(`Data de Emissão: ${generationDate}`, 14, 30);
 
-            let filterText = `Filtros Aplicados: Supervisor: ${supervisor} | Vendedor: ${vendedor} | Filial: ${filial} | Cidade: ${cidade} | Categoria: ${categoria}`;
+            let filterText = `Filtros Aplicados: Supervisor: ${supervisor} | Vendedor: ${vendedor} | Filial: ${filial} | Cidade: ${cidade || 'Todas'} | Categoria: ${categoria}`;
             const splitFilters = doc.splitTextToSize(filterText, 270);
             doc.text(splitFilters, 14, 36);
 
@@ -5533,8 +5595,14 @@
                 doc.text(`Página ${i} de ${pageCount}`, doc.internal.pageSize.width / 2, doc.internal.pageSize.height - 10, { align: 'center' });
             }
 
-            const fileNameParam = vendedor.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'geral';
-            doc.save(`relatorio_inovacoes_mes_${fileNameParam}_${new Date().toISOString().slice(0,10)}.pdf`);
+            let fileNameParam = 'geral';
+            if (selectedInnovationsMonthSellers.length === 1) {
+                fileNameParam = getFirstName(selectedInnovationsMonthSellers[0]);
+            } else if (cidade) {
+                fileNameParam = cidade;
+            }
+            const safeFileNameParam = fileNameParam.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            doc.save(`relatorio_inovacoes_mes_${safeFileNameParam}_${new Date().toISOString().slice(0,10)}.pdf`);
         }
 
 
@@ -5542,14 +5610,11 @@
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF('landscape');
 
-            const supervisor = coverageSupervisorFilter.value || 'Todos';
-            const vendedor = selectedCoverageSellers.length > 0 ? selectedCoverageSellers.join(', ') : 'Todos';
+            const supervisor = document.getElementById('coverage-supervisor-filter-text').textContent;
+            const vendedor = document.getElementById('coverage-vendedor-filter-text').textContent;
             const filial = coverageFilialFilter.options[coverageFilialFilter.selectedIndex].text;
-            const cidade = coverageCityFilter.value || 'Todas';
-            // Fornecedor
-            const supplierBtn = document.querySelector('#coverage-supplier-filter-btn span');
-            const supplierText = supplierBtn ? supplierBtn.textContent : 'Todos';
-
+            const cidade = coverageCityFilter.value.trim();
+            const supplierText = document.getElementById('coverage-supplier-filter-text').textContent;
             const generationDate = new Date().toLocaleString('pt-BR');
 
             doc.setFontSize(18);
@@ -5558,7 +5623,7 @@
             doc.setTextColor(10);
             doc.text(`Data de Emissão: ${generationDate}`, 14, 30);
 
-            let filterText = `Filtros Aplicados: Supervisor: ${supervisor} | Vendedor: ${vendedor} | Filial: ${filial} | Cidade: ${cidade} | Fornecedor: ${supplierText}`;
+            let filterText = `Filtros Aplicados: Supervisor: ${supervisor} | Vendedor: ${vendedor} | Filial: ${filial} | Cidade: ${cidade || 'Todas'} | Fornecedor: ${supplierText}`;
             const splitFilters = doc.splitTextToSize(filterText, 270);
             doc.text(splitFilters, 14, 36);
 
@@ -5653,8 +5718,14 @@
                 doc.text(`Página ${i} de ${pageCount}`, doc.internal.pageSize.width / 2, doc.internal.pageSize.height - 10, { align: 'center' });
             }
 
-            const fileNameParam = vendedor.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'geral';
-            doc.save(`relatorio_cobertura_${fileNameParam}_${new Date().toISOString().slice(0,10)}.pdf`);
+            let fileNameParam = 'geral';
+            if (selectedCoverageSellers.length === 1) {
+                fileNameParam = getFirstName(selectedCoverageSellers[0]);
+            } else if (cidade) {
+                fileNameParam = cidade;
+            }
+            const safeFileNameParam = fileNameParam.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            doc.save(`relatorio_cobertura_${safeFileNameParam}_${new Date().toISOString().slice(0,10)}.pdf`);
         }
 
 
@@ -5682,14 +5753,17 @@
         function exportClientsPDF(clientList, title, filename, includeFaturamento) {
              if (clientList.length === 0) return;
             const { jsPDF } = window.jspdf; const doc = new jsPDF();
-            const supervisor = citySupervisorFilter.value || 'Todos'; const vendedor = selectedCitySellers.length > 0 ? selectedCitySellers.join(', ') : 'Todos';
+            const supervisor = document.getElementById('city-supervisor-filter-text').textContent;
+            const vendedor = document.getElementById('city-vendedor-filter-text').textContent;
+            const city = cityNameFilter.value.trim();
             const generationDate = new Date().toLocaleString('pt-BR'); const today = new Date();
             const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toLocaleDateString('pt-BR');
             const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toLocaleDateString('pt-BR');
             doc.setFontSize(18); doc.text(title, 14, 22); doc.setFontSize(11); doc.setTextColor(10);
             doc.text(`Período de Análise: ${firstDay} a ${lastDay}`, 14, 32);
             doc.text(`Supervisor: ${supervisor}`, 14, 38); doc.text(`Vendedor: ${vendedor}`, 14, 44);
-            doc.text(`Data de Emissão: ${generationDate}`, 14, 50);
+            doc.text(`Cidade: ${city || 'Todas'}`, 14, 50);
+            doc.text(`Data de Emissão: ${generationDate}`, 14, 56);
             const tableColumn = ["Código", "Cliente", "Bairro", "Cidade", "Últ. Compra"];
             if (includeFaturamento) tableColumn.splice(2, 0, "Faturamento");
 
@@ -5714,8 +5788,15 @@
             doc.autoTable({ head: [tableColumn], body: tableRows, startY: 60, theme: 'grid', styles: { fontSize: 8, cellPadding: 1.5, textColor: [0, 0, 0] }, headStyles: { fillColor: [41, 128, 185], textColor: 255, fontSize: 8, fontStyle: 'bold' }, alternateRowStyles: { fillColor: [240, 248, 255] }, margin: { top: 10 } });
             const pageCount = doc.internal.getNumberOfPages();
             for(let i = 1; i <= pageCount; i++) { doc.setPage(i); doc.setFontSize(9); doc.setTextColor(10); doc.text(`Página ${i} de ${pageCount}`, doc.internal.pageSize.width / 2, doc.internal.pageSize.height - 10, { align: 'center' }); }
-            const fileNameVendedor = vendedor.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'geral';
-            doc.save(`${filename}_${fileNameVendedor}_${new Date().toISOString().slice(0,10)}.pdf`);
+            
+            let fileNameParam = 'geral';
+            if (selectedCitySellers.length === 1) {
+                fileNameParam = getFirstName(selectedCitySellers[0]);
+            } else if (city) {
+                fileNameParam = city;
+            }
+            const safeFileNameParam = fileNameParam.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            doc.save(`${filename}_${safeFileNameParam}_${new Date().toISOString().slice(0,10)}.pdf`);
         }
 
         function renderCalendar(year, month) {
@@ -5779,6 +5860,34 @@
             };
         }
 
+        function showLoader(text = 'Carregando...') {
+            return new Promise(resolve => {
+                const loader = document.getElementById('page-transition-loader');
+                const loaderText = document.getElementById('loader-text');
+                if (loader && loaderText) {
+                    document.body.setAttribute('data-loading', 'true');
+                    loaderText.textContent = text;
+                    loader.classList.remove('opacity-0', 'pointer-events-none');
+                    setTimeout(resolve, 50); 
+                } else {
+                    resolve();
+                }
+            });
+        }
+
+        function hideLoader() {
+             return new Promise(resolve => {
+                const loader = document.getElementById('page-transition-loader');
+                if (loader) {
+                    document.body.removeAttribute('data-loading');
+                    loader.classList.add('opacity-0', 'pointer-events-none');
+                    setTimeout(resolve, 300);
+                } else {
+                    resolve();
+                }
+            });
+        }
+
         function toggleSidebar() {
             const sideMenu = document.getElementById('side-menu');
             const sidebarOverlay = document.getElementById('sidebar-overlay');
@@ -5787,136 +5896,131 @@
             if (sidebarOverlay) sidebarOverlay.classList.toggle('hidden');
         }
 
-        function navigateTo(view) {
+        async function navigateTo(view) {
             const sideMenu = document.getElementById('side-menu');
             const sidebarOverlay = document.getElementById('sidebar-overlay');
             
             if (sideMenu) sideMenu.classList.add('-translate-x-full');
             if (sidebarOverlay) sidebarOverlay.classList.add('hidden');
 
-                        [mainDashboard, cityView, weeklyView, comparisonView, stockView, innovationsMonthView, coverageView, document.getElementById('mix-view')].forEach(el => {
-                if(el) el.classList.add('hidden');
-            });
+            const viewNameMap = {
+                dashboard: 'Dashboard',
+                pedidos: 'Pedidos',
+                comparativo: 'Comparativo',
+                estoque: 'Estoque',
+                cobertura: 'Cobertura',
+                cidades: 'Cidades',
+                semanal: 'Semanal',
+                'inovacoes-mes': 'Inovações',
+                mix: 'Mix'
+            };
+            const friendlyName = viewNameMap[view] || 'a página';
+            
+            await showLoader(`Carregando ${friendlyName}...`);
 
-            document.querySelectorAll('.nav-link').forEach(link => {
-                link.classList.remove('bg-slate-700', 'text-white');
-                const icon = link.querySelector('svg');
-                if(icon) icon.classList.remove('text-white');
-            });
-            const activeLink = document.querySelector(`.nav-link[data-target="${view}"]`);
-            if (activeLink) {
-                activeLink.classList.add('bg-slate-700', 'text-white');
-                const icon = activeLink.querySelector('svg');
-                if(icon) icon.classList.add('text-white');
-            }
+            // This function now runs after the loader is visible
+            const updateContent = () => {
+                [mainDashboard, cityView, weeklyView, comparisonView, stockView, innovationsMonthView, coverageView, document.getElementById('mix-view')].forEach(el => {
+                    if(el) el.classList.add('hidden');
+                });
 
-            switch(view) {
-                case 'dashboard':
-                    mainDashboard.classList.remove('hidden');
-                    if (chartView) chartView.classList.remove('hidden');
-                    if (tableView) tableView.classList.add('hidden');
-                    if (tablePaginationControls) tablePaginationControls.classList.add('hidden');
-                    if (viewState.dashboard.dirty) {
-                        updateAllVisuals();
-                        viewState.dashboard.dirty = false;
-                    }
-                    break;
-                case 'pedidos':
-                    mainDashboard.classList.remove('hidden');
-                    if (chartView) chartView.classList.add('hidden');
-                    if (tableView) tableView.classList.remove('hidden');
-                    if (tablePaginationControls) tablePaginationControls.classList.remove('hidden');
-                    if (viewState.pedidos.dirty) {
-                        updateAllVisuals(); // Uses same visual update but switches DOM visibility
-                        viewState.pedidos.dirty = false;
-                    }
-                    break;
-                case 'comparativo':
-                    comparisonView.classList.remove('hidden');
-                    if (viewState.comparativo.dirty) {
-                        updateAllComparisonFilters();
-                        updateComparisonView();
-                        viewState.comparativo.dirty = false;
-                    }
-                    break;
-                case 'estoque':
-                    stockView.classList.remove('hidden');
-                    const maxDaysLabel = document.getElementById('max-working-days-label');
-                    if (maxDaysLabel) maxDaysLabel.textContent = `(Máx: ${maxWorkingDaysStock})`;
-                    const daysInput = document.getElementById('stock-working-days-input');
-                    if(daysInput && parseInt(daysInput.value) === 0) daysInput.value = customWorkingDaysStock;
-                    
-                    if (viewState.estoque.dirty) {
-                        handleStockFilterChange(); 
-                        viewState.estoque.dirty = false;
-                    }
-                    break;
-                case 'cobertura':
-                    coverageView.classList.remove('hidden');
-                    customWorkingDaysCoverage = maxWorkingDaysStock;
-                    const workingDaysInputCov = document.getElementById('coverage-working-days-input');
-                    if(workingDaysInputCov) workingDaysInputCov.value = customWorkingDaysCoverage;
-                    
-                    if (viewState.cobertura.dirty) {
-                        updateAllCoverageFilters();
-                        updateCoverageView();
-                        viewState.cobertura.dirty = false;
-                    }
-                    break;
-                case 'cidades':
-                    cityView.classList.remove('hidden');
-                    const cityContent = document.getElementById('city-view-content');
-                    const cityLoader = document.getElementById('city-view-loader');
-                    
-                    if (viewState.cidades.dirty) {
-                        // Show loader only if dirty (first load or forced refresh)
-                        if (cityContent) cityContent.classList.add('hidden'); 
-                        if (cityLoader) cityLoader.classList.remove('hidden'); 
-                        
-                        setTimeout(() => { 
-                            if (cityLoader) cityLoader.classList.add('hidden'); 
-                            if (cityContent) cityContent.classList.remove('hidden'); 
+                document.querySelectorAll('.nav-link').forEach(link => {
+                    link.classList.remove('bg-slate-700', 'text-white');
+                    const icon = link.querySelector('svg');
+                    if(icon) icon.classList.remove('text-white');
+                });
+                
+                const activeLink = document.querySelector(`.nav-link[data-target="${view}"]`);
+                if (activeLink) {
+                    activeLink.classList.add('bg-slate-700', 'text-white');
+                    const icon = activeLink.querySelector('svg');
+                    if(icon) icon.classList.add('text-white');
+                }
 
-                            selectedCitySupervisors = updateSupervisorFilter(document.getElementById('city-supervisor-filter-dropdown'), document.getElementById('city-supervisor-filter-text'), selectedCitySupervisors, allSalesData);
-                            selectedCitySellers = updateSellerFilter('', cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData); 
-                            selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, allSalesData); 
-                            updateRedeFilter(cityRedeFilterDropdown, cityComRedeBtnText, selectedCityRedes, allClientsData); 
+                switch(view) {
+                    case 'dashboard':
+                        mainDashboard.classList.remove('hidden');
+                        chartView.classList.remove('hidden');
+                        tableView.classList.add('hidden');
+                        tablePaginationControls.classList.add('hidden');
+                        if (viewState.dashboard.dirty) {
+                            updateAllVisuals();
+                            viewState.dashboard.dirty = false;
+                        }
+                        break;
+                    case 'pedidos':
+                        mainDashboard.classList.remove('hidden');
+                        chartView.classList.add('hidden');
+                        tableView.classList.remove('hidden');
+                        tablePaginationControls.classList.remove('hidden');
+                        if (viewState.pedidos.dirty) {
+                            updateAllVisuals();
+                            viewState.pedidos.dirty = false;
+                        }
+                        break;
+                    case 'comparativo':
+                        comparisonView.classList.remove('hidden');
+                        if (viewState.comparativo.dirty) {
+                            updateAllComparisonFilters();
+                            updateComparisonView();
+                            viewState.comparativo.dirty = false;
+                        }
+                        break;
+                    case 'estoque':
+                        stockView.classList.remove('hidden');
+                        if (viewState.estoque.dirty) {
+                            handleStockFilterChange(); 
+                            viewState.estoque.dirty = false;
+                        }
+                        break;
+                    case 'cobertura':
+                        coverageView.classList.remove('hidden');
+                        if (viewState.cobertura.dirty) {
+                            updateAllCoverageFilters();
+                            updateCoverageView();
+                            viewState.cobertura.dirty = false;
+                        }
+                        break;
+                    case 'cidades':
+                        cityView.classList.remove('hidden');
+                        if (viewState.cidades.dirty) {
+                            updateAllCityFilters();
                             updateCityView(); 
                             viewState.cidades.dirty = false;
-                        }, 10);
-                    } else {
-                        // Ensure content is visible if not dirty
-                        if (cityLoader) cityLoader.classList.add('hidden');
-                        if (cityContent) cityContent.classList.remove('hidden');
-                    }
-                    break;
-                case 'semanal':
-                    weeklyView.classList.remove('hidden');
-                    if (viewState.semanal.dirty) {
-                        populateWeeklyFilters(); 
-                        updateWeeklyView();
-                        viewState.semanal.dirty = false;
-                    }
-                    break;
-                case 'inovacoes-mes':
-                    innovationsMonthView.classList.remove('hidden');
-                    if (viewState.inovacoes.dirty) {
-                        selectedInnovationsSupervisors = updateSupervisorFilter(document.getElementById('innovations-month-supervisor-filter-dropdown'), document.getElementById('innovations-month-supervisor-filter-text'), selectedInnovationsSupervisors, allSalesData);
-                        updateSellerFilter('', innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
-                        selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
-                        updateInnovationsMonthView();
-                        viewState.inovacoes.dirty = false;
-                    }
-                    break;
-                case 'mix':
-                    document.getElementById('mix-view').classList.remove('hidden');
-                    if (viewState.mix.dirty) {
-                        updateAllMixFilters();
-                        updateMixView();
-                        viewState.mix.dirty = false;
-                    }
-                    break;
-            }
+                        }
+                        break;
+                    case 'semanal':
+                        weeklyView.classList.remove('hidden');
+                        if (viewState.semanal.dirty) {
+                            populateWeeklyFilters(); 
+                            updateWeeklyView();
+                            viewState.semanal.dirty = false;
+                        }
+                        break;
+                    case 'inovacoes-mes':
+                        innovationsMonthView.classList.remove('hidden');
+                        if (viewState.inovacoes.dirty) {
+                            selectedInnovationsSupervisors = updateSupervisorFilter(document.getElementById('innovations-month-supervisor-filter-dropdown'), document.getElementById('innovations-month-supervisor-filter-text'), selectedInnovationsSupervisors, allSalesData);
+                            updateSellerFilter(selectedInnovationsSupervisors, innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
+                            selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
+                            updateInnovationsMonthView();
+                            viewState.inovacoes.dirty = false;
+                        }
+                        break;
+                    case 'mix':
+                        document.getElementById('mix-view').classList.remove('hidden');
+                        if (viewState.mix.dirty) {
+                            updateAllMixFilters();
+                            updateMixView();
+                            viewState.mix.dirty = false;
+                        }
+                        break;
+                }
+            };
+            
+            updateContent();
+            
+            await hideLoader();
         }
 
         function setupEventListeners() {
@@ -6001,8 +6105,12 @@
             });
 
             posicaoFilter.addEventListener('change', () => { mainTableState.currentPage = 1; updateDashboard(); });
-            codcliFilter.addEventListener('input', (e) => e.target.value = e.target.value.replace(/[^0-9]/g, ''));
-            codcliFilter.addEventListener('change', () => { mainTableState.currentPage = 1; updateDashboard(); });
+            const debouncedUpdateDashboard = debounce(updateDashboard, 400);
+            codcliFilter.addEventListener('input', (e) => {
+                e.target.value = e.target.value.replace(/[^0-9]/g, '');
+                mainTableState.currentPage = 1;
+                debouncedUpdateDashboard();
+            });
             clearFiltersBtn.addEventListener('click', () => { resetMainFilters(); markDirty('dashboard'); markDirty('pedidos'); });
             
             prevPageBtn.addEventListener('click', () => {
@@ -6121,8 +6229,11 @@
             });
 
             clearCityFiltersBtn.addEventListener('click', () => { resetCityFilters(); markDirty('cidades'); });
-            cityCodCliFilter.addEventListener('input', (e) => e.target.value = e.target.value.replace(/[^0-9]/g, ''));
-            cityCodCliFilter.addEventListener('change', updateCity);
+            const debouncedUpdateCity = debounce(updateCity, 400);
+            cityCodCliFilter.addEventListener('input', (e) => {
+                e.target.value = e.target.value.replace(/[^0-9]/g, '');
+                debouncedUpdateCity();
+            });
 
             cityNameFilter.addEventListener('input', (e) => { 
                 e.target.value = e.target.value.replace(/[0-9]/g, ''); 
@@ -6735,6 +6846,19 @@
                 markDirty('mix');
                 updateMixView();
             });
+            
+            document.getElementById('mix-prev-page-btn').addEventListener('click', () => {
+                if (mixTableState.currentPage > 1) {
+                    mixTableState.currentPage--;
+                    updateMixView();
+                }
+            });
+            document.getElementById('mix-next-page-btn').addEventListener('click', () => {
+                if (mixTableState.currentPage < mixTableState.totalPages) {
+                    mixTableState.currentPage++;
+                    updateMixView();
+                }
+            });
 
             document.addEventListener('click', (e) => {
                 // Close Mix Dropdowns
@@ -7204,6 +7328,16 @@
                         </aside>
                         <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-40 hidden glass-effect"></div>
                         
+                        <div id="page-transition-loader" class="fixed inset-0 bg-black/30 backdrop-blur-sm z-[9999] flex items-center justify-center transition-opacity duration-300 opacity-0 pointer-events-none">
+                            <div class="flex flex-col items-center">
+                                <svg class="animate-spin -ml-1 mr-3 h-10 w-10 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                <span id="loader-text" class="text-white text-lg mt-4">Carregando...</span>
+                            </div>
+                        </div>
+
                         <div id="content-wrapper" class="min-h-screen transition-all duration-300">
                             <div id="main-dashboard">
                                 <div class="container mx-auto p-4 sm:p-6 lg:p-8">
@@ -7355,8 +7489,7 @@
                                     <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Análise de Vendas por Cidade</p></div>
                                 </div>
                             </header>
-                            <div id="city-view-loader" class="text-center p-16"><p class="text-lg text-slate-400">Carregando dados...</p></div>
-                            <div id="city-view-content" class="hidden">
+                            <div id="city-view-content">
                                 <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
                                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
                                         <!-- Filtro de Rede (Cidades) -->
@@ -7401,7 +7534,7 @@
                                 </div>
                                 <!-- Gráficos (Cidades) -->
                                 <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                                    <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]">
+                                    <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
                                         <div class="flex justify-between items-center mb-4">
                                             <div class="w-1/4"><span class="text-xl font-bold text-indigo-400">Top 10</span></div>
                                             <div class="w-1/2 text-center"><h2 id="city-chart-title" class="text-lg font-semibold text-white"></h2></div>
@@ -7409,7 +7542,7 @@
                                         </div>
                                         <div id="salesByClientInCityChartContainer" class="relative h-96"></div>
                                     </div>
-                                    <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]">
+                                    <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
                                         <div class="flex justify-between items-center mb-4">
                                             <div class="w-1/4"></div>
                                             <div class="w-1/2 text-center"><h2 class="text-lg font-semibold text-white">Status dos Clientes</h2></div>
@@ -7445,11 +7578,11 @@
                                 <div class="mt-4"><label class="block text-sm font-medium text-slate-400 mb-2">Filtrar Supervisores</label><div id="weekly-supervisor-filter" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 text-slate-300"></div></div>
                             </div>
                             <div class="grid grid-cols-1 gap-6">
-                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]">
+                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
                                     <div class="flex justify-between items-center mb-4"><h2 class="text-lg font-semibold text-white text-center">Faturamento Mensal por Dia da Semana</h2><div class="text-right"><p class="text-slate-400 text-sm">Total do Mês</p><p id="total-mes-semanal" class="text-xl font-bold text-green-400">R$ 0,00</p></div></div><div id="weeklySalesChartContainer" class="relative h-96"></div>
                                     <div class="mt-6 border-t border-slate-700 pt-4"><h3 class="text-md font-semibold text-white mb-3 text-center">Resumo de Faturamento Semanal</h3><div class="overflow-x-auto"><table class="min-w-full text-sm text-left text-slate-300"><thead class="text-xs text-slate-400 uppercase"><tr><th class="px-4 py-2 bg-slate-800 rounded-l-lg">Semana</th><th class="px-4 py-2 bg-slate-800 text-right rounded-r-lg">Faturamento Total</th></tr></thead><tbody id="weekly-summary-table-body" class="divide-y divide-slate-700"></tbody></table></div></div>
                                 </div>
-                                <div class="grid grid-cols-1 gap-6"><div class="grid grid-cols-1 lg:grid-cols-2 gap-6"><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]"><h2 class="text-lg font-semibold text-white mb-4 text-center">Ranking de Positivação</h2><div id="positivacaoChartContainer" class="relative h-80"></div></div><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]"><h2 class="text-lg font-semibold text-white mb-4 text-center">Ranking de Mix de Produtos (Por PDV)</h2><div id="mixChartContainer" class="relative h-80"></div></div></div><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]"><h2 class="text-lg font-semibold text-white mb-4 text-center">Top 10 Vendedores (Faturamento)</h2><div id="topSellersChartContainer" class="relative h-80"></div></div></div>
+                                <div class="grid grid-cols-1 gap-6"><div class="grid grid-cols-1 lg:grid-cols-2 gap-6"><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 class="text-lg font-semibold text-white mb-4 text-center">Ranking de Positivação</h2><div id="positivacaoChartContainer" class="relative h-80"></div></div><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 class="text-lg font-semibold text-white mb-4 text-center">Ranking de Mix de Produtos (Por PDV)</h2><div id="mixChartContainer" class="relative h-80"></div></div></div><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 class="text-lg font-semibold text-white mb-4 text-center">Top 10 Vendedores (Faturamento)</h2><div id="topSellersChartContainer" class="relative h-80"></div></div></div>
                             </div>
                         </div>
                         
@@ -7533,7 +7666,7 @@
                             </div>
                             <!-- Gráficos (Comparativo) -->
                             <div class="grid grid-cols-1 gap-6">
-                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]">
+                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
                                     <div class="flex justify-center items-center mb-4 relative">
                                         <h2 id="comparison-chart-title" class="text-lg font-semibold text-white text-center">Comparativo de Faturamento Semanal</h2>
                                         <div class="absolute right-0 top-0 bottom-0 flex items-center">
@@ -7546,12 +7679,12 @@
                                     <div id="weeklyComparisonChartContainer" class="relative h-96"></div>
                                     <div id="monthlyComparisonChartContainer" class="relative h-96 hidden"></div>
                                 </div>
-                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]">
+                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
                                     <h2 class="text-lg font-semibold text-white text-center mb-4">Faturamento por Dia da Semana</h2>
                                     <div id="dailyWeeklyComparisonChartContainer" class="relative h-96"></div>
                                 </div>
                                 <!-- Tabela (Comparativo) -->
-                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]"><h2 class="text-lg font-semibold text-white text-center mb-4">Variação de Faturamento por Supervisor</h2><div class="overflow-x-auto custom-scrollbar" style="max-height: 40vh;"><table class="min-w-full text-sm text-left text-slate-300"><thead class="text-xs text-slate-400 uppercase sticky-header"><tr><th class="px-4 py-3">Supervisor</th><th class="px-4 py-3 text-right">Média Trim.</th><th class="px-4 py-3 text-right">Fat. Mês Atual</th><th class="px-4 py-3 text-right">Variação</th></tr></thead><tbody id="supervisorComparisonTableBody" class="divide-y divide-slate-700"></tbody></table></div></div>
+                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 class="text-lg font-semibold text-white text-center mb-4">Variação de Faturamento por Supervisor</h2><div class="overflow-x-auto custom-scrollbar" style="max-height: 40vh;"><table class="min-w-full text-sm text-left text-slate-300"><thead class="text-xs text-slate-400 uppercase sticky-header"><tr><th class="px-4 py-3">Supervisor</th><th class="px-4 py-3 text-right">Média Trim.</th><th class="px-4 py-3 text-right">Fat. Mês Atual</th><th class="px-4 py-3 text-right">Variação</th></tr></thead><tbody id="supervisorComparisonTableBody" class="divide-y divide-slate-700"></tbody></table></div></div>
                             </div>
                         </div>
                         
@@ -7744,7 +7877,7 @@
                                     <select id="innovations-month-category-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="">Todas as Categorias</option></select>
                                 </div>
                             </div>
-                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm mb-6 transition-transform duration-300 ease-in-out hover:scale-[1.02]">
+                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm mb-6">
                                 <div id="innovations-month-chartContainer" class="relative h-96"></div>
                             </div>
                             <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm mb-6">
@@ -7907,11 +8040,11 @@
 
                             <!-- Gráficos -->
                             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-                                <div class="lg:col-span-1 bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]">
+                                <div class="lg:col-span-1 bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
                                     <h2 class="text-lg font-semibold text-white mb-4 text-center">Distribuição do Mix</h2>
                                     <div id="mixDistributionChartContainer" class="relative h-64 flex items-center justify-center"></div>
                                 </div>
-                                <div class="lg:col-span-2 bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out hover:scale-[1.02]">
+                                <div class="lg:col-span-2 bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
                                     <h2 class="text-lg font-semibold text-white mb-4 text-center">Eficiência por Vendedor (Top 10)</h2>
                                     <div id="mixSellerChartContainer" class="relative h-64"></div>
                                 </div>
@@ -7947,6 +8080,12 @@
                                         </thead>
                                         <tbody id="mix-table-body" class="divide-y divide-slate-700"></tbody>
                                     </table>
+                                </div>
+                                <!-- Paginação da Tabela Mix -->
+                                <div id="mix-pagination-controls" class="hidden mt-4 flex justify-between items-center">
+                                    <button id="mix-prev-page-btn" class="bg-slate-700 border border-slate-600 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg disabled:opacity-50" disabled>Anterior</button>
+                                    <span id="mix-page-info-text" class="text-slate-400">Página 1 de 1</span>
+                                    <button id="mix-next-page-btn" class="bg-slate-700 border border-slate-600 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg disabled:opacity-50" disabled>Próxima</button>
                                 </div>
                             </div>
                         </div>
@@ -8027,7 +8166,7 @@
                                     <button id="clear-coverage-filters-btn" class="w-full bg-slate-600 hover:bg-slate-500 text-white font-bold py-2.5 px-4 rounded-lg">Limpar Filtros</button>
                                 </div>
                             </div>
-                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm mb-6 transition-transform duration-300 ease-in-out hover:scale-[1.02]">
+                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm mb-6">
                                 <div class="flex justify-between items-center mb-4 relative">
                                     <div class="absolute left-0 top-0 bottom-0 flex items-center">
                                         <div class="text-left">
