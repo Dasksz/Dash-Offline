@@ -5952,6 +5952,144 @@
             return { byClient: historicalDataByClient, bySeller: historicalDataBySeller };
         }
 
+        function updateMetasGvView(category = 'EXTRUSADOS', globalGoals = { revenue: 2000000, volume: 45500, mix: 1250 }) {
+            const tableBody = document.querySelector("#page-gv tbody");
+            let tableHTML = "";
+
+            const clientData = Object.entries(metasHistoricalData.byClient).map(([clientID, clientCategories]) => {
+                const clientInfo = clientMap.get(clientID);
+                const categoryData = clientCategories[category] || { revenue: 0, volume: 0, mix: new Set() };
+                return {
+                    clientID,
+                    clientName: clientInfo ? clientInfo.nomeCliente : 'N/A',
+                    sellerName: clientInfo ? (optimizedData.rcaNameByCode.get(clientInfo.rca1) || 'N/A') : 'N/A',
+                    ...categoryData
+                };
+            });
+
+            const totalRevenue = clientData.reduce((sum, client) => sum + client.revenue, 0);
+            const totalVolume = clientData.reduce((sum, client) => sum + client.volume, 0);
+            const totalMix = clientData.reduce((sum, client) => sum + client.mix.size, 0);
+
+            clientData.forEach(client => {
+                const revenueShare = totalRevenue > 0 ? (client.revenue / totalRevenue) : 0;
+                const volumeShare = totalVolume > 0 ? (client.volume / totalVolume) : 0;
+                const mixShare = totalMix > 0 ? (client.mix.size / totalMix) : 0;
+
+                const suggestedRevenue = globalGoals.revenue * revenueShare;
+                const suggestedVolume = globalGoals.volume * volumeShare;
+                const suggestedMix = globalGoals.mix * mixShare;
+
+                tableHTML += `
+                    <tr class="hover:bg-slate-800 transition-colors">
+                        <td class="px-2 py-2 sticky left-0 bg-[#1d2347] border-r border-slate-800 z-10 text-xs font-bold text-slate-300 text-center w-16" title="Código: ${client.clientID}">
+                            ${client.clientID}
+                        </td>
+                        <td class="px-2 py-2 sticky left-16 bg-[#1d2347] border-r border-slate-800 z-10 text-xs text-slate-300 truncate w-48 max-w-[12rem]" title="${client.clientName}">
+                            ${client.clientName}
+                        </td>
+                        <td class="px-2 py-2 sticky left-64 bg-[#1d2347] border-r border-slate-800 z-10 text-xs text-slate-400 truncate w-32 max-w-[8rem]" title="${client.sellerName}">
+                            ${client.sellerName}
+                        </td>
+                        <td class="px-2 py-2 text-right text-slate-400">${client.revenue.toFixed(2)}</td>
+                        <td class="px-2 py-2 text-center text-xs text-blue-400">${(revenueShare * 100).toFixed(2)}%</td>
+                        <td class="px-2 py-2 text-right font-bold text-blue-400 bg-blue-900/20 border-r border-blue-800">${suggestedRevenue.toFixed(2)}</td>
+                        <td class="px-2 py-2 text-right text-slate-400">${(client.volume / 1000).toFixed(3)}</td>
+                        <td class="px-2 py-2 text-center text-xs text-orange-400">${(volumeShare * 100).toFixed(2)}%</td>
+                        <td class="px-2 py-2 text-right font-bold text-orange-400 bg-orange-900/20 border-r border-orange-800">${(suggestedVolume / 1000).toFixed(3)}</td>
+                        <td class="px-2 py-2 text-right text-slate-400">${client.mix.size}</td>
+                        <td class="px-2 py-2 text-center text-xs text-purple-400">${(mixShare * 100).toFixed(2)}%</td>
+                        <td class="px-2 py-2 text-right font-bold text-purple-400 bg-purple-900/20">${Math.round(suggestedMix)}</td>
+                    </tr>
+                `;
+            });
+
+            tableBody.innerHTML = tableHTML;
+        }
+
+        function updateMetasSvView(category = 'EXTRUSADOS', globalGoals = { revenue: 2000000, volume: 45500, mix: 1250 }) {
+            const tableBody = document.querySelector("#page-sv tbody");
+            const supervisorSelect = document.querySelector("#page-sv select");
+            let tableHTML = "";
+
+            const supervisors = [...new Set(Object.values(metasHistoricalData.bySeller).flatMap(Object.keys).map(seller => {
+                const rcaCode = optimizedData.rcaCodeByName.get(seller);
+                const sellerDetails = optimizedData.clientsByRca.get(rcaCode);
+                return sellerDetails ? sellerDetails[0].SUPERV : null;
+            }))].filter(Boolean).sort();
+
+            if (supervisorSelect.options.length <= 1) {
+                supervisors.forEach(sup => {
+                    const option = document.createElement('option');
+                    option.value = sup;
+                    option.textContent = sup;
+                    supervisorSelect.appendChild(option);
+                });
+            }
+
+            const selectedSupervisor = supervisorSelect.value;
+            const sellerData = {};
+
+            Object.entries(metasHistoricalData.byClient).forEach(([clientID, clientCategories]) => {
+                const clientInfo = clientMap.get(clientID);
+                const sellerName = clientInfo ? (optimizedData.rcaNameByCode.get(clientInfo.rca1) || 'N/A') : 'N/A';
+
+                if (!sellerData[sellerName]) {
+                    sellerData[sellerName] = {
+                        revenue: 0,
+                        volume: 0,
+                        mix: 0,
+                        clients: new Set()
+                    };
+                }
+
+                const categoryData = clientCategories[category] || { revenue: 0, volume: 0, mix: new Set() };
+                sellerData[sellerName].revenue += categoryData.revenue;
+                sellerData[sellerName].volume += categoryData.volume;
+                sellerData[sellerName].mix += categoryData.mix.size;
+                sellerData[sellerName].clients.add(clientID);
+            });
+
+            const totalRevenue = Object.values(sellerData).reduce((sum, seller) => sum + seller.revenue, 0);
+            const totalVolume = Object.values(sellerData).reduce((sum, seller) => sum + seller.volume, 0);
+            const totalMix = Object.values(sellerData).reduce((sum, seller) => sum + seller.mix, 0);
+
+            Object.entries(sellerData).forEach(([sellerName, data]) => {
+                const revenueShare = totalRevenue > 0 ? (data.revenue / totalRevenue) : 0;
+                const volumeShare = totalVolume > 0 ? (data.volume / totalVolume) : 0;
+                const mixShare = totalMix > 0 ? (data.mix / totalMix) : 0;
+
+                const suggestedRevenue = globalGoals.revenue * revenueShare;
+                const suggestedVolume = globalGoals.volume * volumeShare;
+                const suggestedMix = globalGoals.mix * mixShare;
+
+                tableHTML += `
+                    <tr class="hover:bg-slate-800 transition-colors">
+                        <td class="px-4 py-2 font-semibold text-slate-300 sticky left-0 bg-[#1d2347] border-r border-slate-800 z-10">${sellerName}</td>
+                        <td class="px-2 py-2 text-right text-slate-400">${(data.revenue / 1000).toFixed(1)}k</td>
+                        <td class="px-2 py-2 text-center text-xs text-slate-500">${(revenueShare * 100).toFixed(1)}%</td>
+                        <td class="px-2 py-2 text-right font-bold text-blue-400 bg-blue-900/20 border-r border-blue-800">${suggestedRevenue.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
+                        <td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" placeholder="-"></td>
+                        <td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50 border-r border-slate-700">${suggestedRevenue.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
+
+                        <td class="px-2 py-2 text-right text-slate-400">${(data.volume / 1000).toFixed(1)}</td>
+                        <td class="px-2 py-2 text-center text-xs text-slate-500">${(volumeShare * 100).toFixed(1)}%</td>
+                        <td class="px-2 py-2 text-right font-bold text-orange-400 bg-orange-900/20 border-r border-orange-800">${(suggestedVolume).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
+                        <td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-orange-500" placeholder="-"></td>
+                        <td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50 border-r border-slate-700">${(suggestedVolume).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
+
+                        <td class="px-2 py-2 text-right text-slate-400">${data.mix}</td>
+                        <td class="px-2 py-2 text-center text-xs text-slate-500">${(mixShare * 100).toFixed(1)}%</td>
+                        <td class="px-2 py-2 text-right font-bold text-purple-400 bg-purple-900/20 border-r border-purple-800">${Math.round(suggestedMix)}</td>
+                        <td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-purple-500" placeholder="-"></td>
+                        <td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50">${Math.round(suggestedMix)}</td>
+                    </tr>
+                `;
+            });
+
+            tableBody.innerHTML = tableHTML;
+        }
+
         async function navigateTo(view) {
             const sideMenu = document.getElementById('side-menu');
             const sidebarOverlay = document.getElementById('sidebar-overlay');
@@ -6531,138 +6669,6 @@
                 }
             });
 
-            function updateMetasGvView(category = 'EXTRUSADOS', globalGoals = { revenue: 2000000, volume: 45500, mix: 1250 }) {
-                const tableBody = document.querySelector("#page-gv tbody");
-                let tableHTML = "";
-
-                const clientData = Object.entries(metasHistoricalData.byClient).map(([clientID, clientCategories]) => {
-                    const clientInfo = clientMap.get(clientID);
-                    const categoryData = clientCategories[category] || { revenue: 0, volume: 0, mix: new Set() };
-                    return {
-                        clientID,
-                        clientName: clientInfo ? clientInfo.nomeCliente : 'N/A',
-                        sellerName: clientInfo ? (optimizedData.rcaNameByCode.get(clientInfo.rca1) || 'N/A') : 'N/A',
-                        ...categoryData
-                    };
-                });
-
-                const totalRevenue = clientData.reduce((sum, client) => sum + client.revenue, 0);
-                const totalVolume = clientData.reduce((sum, client) => sum + client.volume, 0);
-                const totalMix = clientData.reduce((sum, client) => sum + client.mix.size, 0);
-
-                clientData.forEach(client => {
-                    const revenueShare = totalRevenue > 0 ? (client.revenue / totalRevenue) : 0;
-                    const volumeShare = totalVolume > 0 ? (client.volume / totalVolume) : 0;
-                    const mixShare = totalMix > 0 ? (client.mix.size / totalMix) : 0;
-
-                    const suggestedRevenue = globalGoals.revenue * revenueShare;
-                    const suggestedVolume = globalGoals.volume * volumeShare;
-                    const suggestedMix = globalGoals.mix * mixShare;
-
-                    tableHTML += `
-                        <tr class="hover:bg-slate-800 transition-colors">
-                            <td class="px-4 py-2 sticky left-0 bg-[#1d2347] border-r border-slate-800 z-10">
-                                <div class="font-bold text-slate-300">${client.clientID} - ${client.clientName}</div>
-                                <div class="text-xs text-slate-400">Vend: ${client.sellerName}</div>
-                            </td>
-                            <td class="px-2 py-2 text-right text-slate-400">${client.revenue.toFixed(2)}</td>
-                            <td class="px-2 py-2 text-center text-xs text-blue-400">${(revenueShare * 100).toFixed(2)}%</td>
-                            <td class="px-2 py-2 text-right font-bold text-blue-400 bg-blue-900/20 border-r border-blue-800">${suggestedRevenue.toFixed(2)}</td>
-                            <td class="px-2 py-2 text-right text-slate-400">${(client.volume / 1000).toFixed(3)}</td>
-                            <td class="px-2 py-2 text-center text-xs text-orange-400">${(volumeShare * 100).toFixed(2)}%</td>
-                            <td class="px-2 py-2 text-right font-bold text-orange-400 bg-orange-900/20 border-r border-orange-800">${(suggestedVolume / 1000).toFixed(3)}</td>
-                            <td class="px-2 py-2 text-right text-slate-400">${client.mix.size}</td>
-                            <td class="px-2 py-2 text-center text-xs text-purple-400">${(mixShare * 100).toFixed(2)}%</td>
-                            <td class="px-2 py-2 text-right font-bold text-purple-400 bg-purple-900/20">${Math.round(suggestedMix)}</td>
-                        </tr>
-                    `;
-                });
-
-                tableBody.innerHTML = tableHTML;
-            }
-
-            function updateMetasSvView(category = 'EXTRUSADOS', globalGoals = { revenue: 2000000, volume: 45500, mix: 1250 }) {
-                const tableBody = document.querySelector("#page-sv tbody");
-                const supervisorSelect = document.querySelector("#page-sv select");
-                let tableHTML = "";
-
-                const supervisors = [...new Set(Object.values(metasHistoricalData.bySeller).flatMap(Object.keys).map(seller => {
-                    const rcaCode = optimizedData.rcaCodeByName.get(seller);
-                    const sellerDetails = optimizedData.clientsByRca.get(rcaCode);
-                    return sellerDetails ? sellerDetails[0].SUPERV : null;
-                }))].filter(Boolean).sort();
-
-                if (supervisorSelect.options.length <= 1) {
-                    supervisors.forEach(sup => {
-                        const option = document.createElement('option');
-                        option.value = sup;
-                        option.textContent = sup;
-                        supervisorSelect.appendChild(option);
-                    });
-                }
-
-                const selectedSupervisor = supervisorSelect.value;
-                const sellerData = {};
-
-                Object.entries(metasHistoricalData.byClient).forEach(([clientID, clientCategories]) => {
-                    const clientInfo = clientMap.get(clientID);
-                    const sellerName = clientInfo ? (optimizedData.rcaNameByCode.get(clientInfo.rca1) || 'N/A') : 'N/A';
-
-                    if (!sellerData[sellerName]) {
-                        sellerData[sellerName] = {
-                            revenue: 0,
-                            volume: 0,
-                            mix: 0,
-                            clients: new Set()
-                        };
-                    }
-
-                    const categoryData = clientCategories[category] || { revenue: 0, volume: 0, mix: new Set() };
-                    sellerData[sellerName].revenue += categoryData.revenue;
-                    sellerData[sellerName].volume += categoryData.volume;
-                    sellerData[sellerName].mix += categoryData.mix.size;
-                    sellerData[sellerName].clients.add(clientID);
-                });
-
-                const totalRevenue = Object.values(sellerData).reduce((sum, seller) => sum + seller.revenue, 0);
-                const totalVolume = Object.values(sellerData).reduce((sum, seller) => sum + seller.volume, 0);
-                const totalMix = Object.values(sellerData).reduce((sum, seller) => sum + seller.mix, 0);
-
-                Object.entries(sellerData).forEach(([sellerName, data]) => {
-                    const revenueShare = totalRevenue > 0 ? (data.revenue / totalRevenue) : 0;
-                    const volumeShare = totalVolume > 0 ? (data.volume / totalVolume) : 0;
-                    const mixShare = totalMix > 0 ? (data.mix / totalMix) : 0;
-
-                    const suggestedRevenue = globalGoals.revenue * revenueShare;
-                    const suggestedVolume = globalGoals.volume * volumeShare;
-                    const suggestedMix = globalGoals.mix * mixShare;
-
-                    tableHTML += `
-                        <tr class="hover:bg-slate-800 transition-colors">
-                            <td class="px-4 py-2 font-semibold text-slate-300 sticky left-0 bg-[#1d2347] border-r border-slate-800 z-10">${sellerName}</td>
-                            <td class="px-2 py-2 text-right text-slate-400">${(data.revenue / 1000).toFixed(1)}k</td>
-                            <td class="px-2 py-2 text-center text-xs text-slate-500">${(revenueShare * 100).toFixed(1)}%</td>
-                            <td class="px-2 py-2 text-right font-bold text-blue-400 bg-blue-900/20 border-r border-blue-800">${suggestedRevenue.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
-                            <td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-blue-500" placeholder="-"></td>
-                            <td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50 border-r border-slate-700">${suggestedRevenue.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
-
-                            <td class="px-2 py-2 text-right text-slate-400">${(data.volume / 1000).toFixed(1)}</td>
-                            <td class="px-2 py-2 text-center text-xs text-slate-500">${(volumeShare * 100).toFixed(1)}%</td>
-                            <td class="px-2 py-2 text-right font-bold text-orange-400 bg-orange-900/20 border-r border-orange-800">${(suggestedVolume).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
-                            <td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-orange-500" placeholder="-"></td>
-                            <td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50 border-r border-slate-700">${(suggestedVolume).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</td>
-
-                            <td class="px-2 py-2 text-right text-slate-400">${data.mix}</td>
-                            <td class="px-2 py-2 text-center text-xs text-slate-500">${(mixShare * 100).toFixed(1)}%</td>
-                            <td class="px-2 py-2 text-right font-bold text-purple-400 bg-purple-900/20 border-r border-purple-800">${Math.round(suggestedMix)}</td>
-                            <td class="px-2 py-1 border-r border-slate-700"><input type="text" class="w-full text-right bg-slate-900/50 border border-slate-600 rounded px-1 py-0.5 text-sm outline-none focus:ring-1 focus:ring-purple-500" placeholder="-"></td>
-                            <td class="px-2 py-2 text-right font-bold text-slate-300 bg-slate-800/50">${Math.round(suggestedMix)}</td>
-                        </tr>
-                    `;
-                });
-
-                tableBody.innerHTML = tableHTML;
-            }
 
             function switchPage(pageId) {
                 // Esconde todas
@@ -8566,8 +8572,8 @@
                                     </div>
                                     <div class="bg-[#1d2347] rounded-xl border border-slate-700 shadow-sm flex-1 overflow-hidden flex flex-col">
                                         <div class="overflow-auto custom-scrollbar flex-1">
-                                            <table class="w-full text-left border-collapse text-xs whitespace-nowrap"><thead class="sticky top-0 z-20 shadow-sm"><tr class="uppercase font-bold text-slate-400 bg-slate-800"><th class="px-4 py-2 border-b border-r border-slate-700 sticky left-0 z-30 bg-slate-800 min-w-[300px]">Dados do Cliente</th><th colspan="3" class="px-4 py-1 border-b border-r border-blue-700 bg-blue-900/30 text-blue-300 text-center">FATURAMENTO (R$)</th><th colspan="3" class="px-4 py-1 border-b border-r border-orange-700 bg-orange-900/30 text-orange-300 text-center">VOLUME (TON)</th><th colspan="3" class="px-4 py-1 border-b border-slate-700 bg-purple-900/30 text-purple-300 text-center">MIX (POSIT)</th></tr><tr class="bg-slate-900/50 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-700"><th class="px-4 py-3 sticky left-0 z-30 bg-slate-900/50 border-r border-slate-700">Cód | Cliente | Vendedor</th><th class="px-2 py-2 text-right bg-blue-900/20">Média</th><th class="px-2 py-2 text-center bg-blue-900/20">% Share</th><th class="px-2 py-2 text-right bg-blue-900/40 text-blue-300 border-r border-blue-700">Meta Auto</th><th class="px-2 py-2 text-right bg-orange-900/20">Média KG</th><th class="px-2 py-2 text-center bg-orange-900/20">% Share</th><th class="px-2 py-2 text-right bg-orange-900/40 text-orange-300 border-r border-orange-700">Meta KG</th><th class="px-2 py-2 text-right bg-purple-900/20">Média</th><th class="px-2 py-2 text-center bg-purple-900/20">% Share</th><th class="px-2 py-2 text-right bg-purple-900/40 text-purple-300">Meta Mix</th></tr></thead>
-                                                <tbody class="divide-y divide-slate-800 text-sm"><tr class="hover:bg-slate-800 transition-colors"><td class="px-4 py-2 sticky left-0 bg-[#1d2347] border-r border-slate-800 z-10"><div class="font-bold text-slate-300">10452 - MERCADINHO ESTRELA</div><div class="text-xs text-slate-400">Vend: 224 - JOÃO SILVA</div></td><td class="px-2 py-2 text-right text-slate-400">10.000</td><td class="px-2 py-2 text-center text-xs text-blue-400">0.5%</td><td class="px-2 py-2 text-right font-bold text-blue-400 bg-blue-900/20 border-r border-blue-800">10.000</td><td class="px-2 py-2 text-right text-slate-400">0.250</td><td class="px-2 py-2 text-center text-xs text-orange-400">0.55%</td><td class="px-2 py-2 text-right font-bold text-orange-400 bg-orange-900/20 border-r border-orange-800">0.252</td><td class="px-2 py-2 text-right text-slate-400">12</td><td class="px-2 py-2 text-center text-xs text-purple-400">0.9%</td><td class="px-2 py-2 text-right font-bold text-purple-400 bg-purple-900/20">12</td></tr></tbody>
+                                            <table class="w-full text-left border-collapse text-xs whitespace-nowrap"><thead class="sticky top-0 z-20 shadow-sm"><tr class="uppercase font-bold text-slate-400 bg-slate-800"><th colspan="3" class="px-4 py-2 border-b border-r border-slate-700 sticky left-0 z-40 bg-slate-800">Dados do Cliente</th><th colspan="3" class="px-4 py-1 border-b border-r border-blue-700 bg-blue-900/30 text-blue-300 text-center">FATURAMENTO (R$)</th><th colspan="3" class="px-4 py-1 border-b border-r border-orange-700 bg-orange-900/30 text-orange-300 text-center">VOLUME (TON)</th><th colspan="3" class="px-4 py-1 border-b border-slate-700 bg-purple-900/30 text-purple-300 text-center">MIX (POSIT)</th></tr><tr class="bg-slate-900/50 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-700"><th class="px-2 py-3 sticky left-0 z-30 bg-slate-900/50 border-r border-slate-700 w-16">Cód</th><th class="px-2 py-3 sticky left-16 z-30 bg-slate-900/50 border-r border-slate-700 w-48">Cliente</th><th class="px-2 py-3 sticky left-64 z-30 bg-slate-900/50 border-r border-slate-700 w-32">Vendedor</th><th class="px-2 py-2 text-right bg-blue-900/20">Média</th><th class="px-2 py-2 text-center bg-blue-900/20">% Share</th><th class="px-2 py-2 text-right bg-blue-900/40 text-blue-300 border-r border-blue-700">Meta Auto</th><th class="px-2 py-2 text-right bg-orange-900/20">Média KG</th><th class="px-2 py-2 text-center bg-orange-900/20">% Share</th><th class="px-2 py-2 text-right bg-orange-900/40 text-orange-300 border-r border-orange-700">Meta KG</th><th class="px-2 py-2 text-right bg-purple-900/20">Média</th><th class="px-2 py-2 text-center bg-purple-900/20">% Share</th><th class="px-2 py-2 text-right bg-purple-900/40 text-purple-300">Meta Mix</th></tr></thead>
+                                                <tbody class="divide-y divide-slate-800 text-sm"><tr class="hover:bg-slate-800 transition-colors"><td class="px-2 py-2 sticky left-0 bg-[#1d2347] border-r border-slate-800 z-10 text-center w-16 font-bold text-slate-300">10452</td><td class="px-2 py-2 sticky left-16 bg-[#1d2347] border-r border-slate-800 z-10 text-slate-300 truncate w-48">MERCADINHO ESTRELA</td><td class="px-2 py-2 sticky left-64 bg-[#1d2347] border-r border-slate-800 z-10 text-slate-400 truncate w-32">224 - JOÃO SILVA</td><td class="px-2 py-2 text-right text-slate-400">10.000</td><td class="px-2 py-2 text-center text-xs text-blue-400">0.5%</td><td class="px-2 py-2 text-right font-bold text-blue-400 bg-blue-900/20 border-r border-blue-800">10.000</td><td class="px-2 py-2 text-right text-slate-400">0.250</td><td class="px-2 py-2 text-center text-xs text-orange-400">0.55%</td><td class="px-2 py-2 text-right font-bold text-orange-400 bg-orange-900/20 border-r border-orange-800">0.252</td><td class="px-2 py-2 text-right text-slate-400">12</td><td class="px-2 py-2 text-center text-xs text-purple-400">0.9%</td><td class="px-2 py-2 text-right font-bold text-purple-400 bg-purple-900/20">12</td></tr></tbody>
                                             </table>
                                         </div>
                                     </div>
