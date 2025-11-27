@@ -1245,6 +1245,28 @@
 
         const coverageTableBody = document.getElementById('coverage-table-body');
 
+        // --- Goals View Elements ---
+        const goalsView = document.getElementById('goals-view');
+        const goalsGvContent = document.getElementById('goals-gv-content');
+        const goalsSvContent = document.getElementById('goals-sv-content');
+        const goalsGvTableBody = document.getElementById('goals-gv-table-body');
+        const goalsGvTotalValueEl = document.getElementById('goals-gv-total-value');
+
+        const goalsGvSupervisorFilterBtn = document.getElementById('goals-gv-supervisor-filter-btn');
+        const goalsGvSupervisorFilterText = document.getElementById('goals-gv-supervisor-filter-text');
+        const goalsGvSupervisorFilterDropdown = document.getElementById('goals-gv-supervisor-filter-dropdown');
+
+        const goalsGvSellerFilterBtn = document.getElementById('goals-gv-seller-filter-btn');
+        const goalsGvSellerFilterText = document.getElementById('goals-gv-seller-filter-text');
+        const goalsGvSellerFilterDropdown = document.getElementById('goals-gv-seller-filter-dropdown');
+
+        const goalsGvCodcliFilter = document.getElementById('goals-gv-codcli-filter');
+        const clearGoalsGvFiltersBtn = document.getElementById('clear-goals-gv-filters-btn');
+
+        const goalsSvSupervisorFilterBtn = document.getElementById('goals-sv-supervisor-filter-btn');
+        const goalsSvSupervisorFilterText = document.getElementById('goals-sv-supervisor-filter-text');
+        const goalsSvSupervisorFilterDropdown = document.getElementById('goals-sv-supervisor-filter-dropdown');
+
 
         const modal = document.getElementById('order-details-modal');
         const modalCloseBtn = document.getElementById('modal-close-btn');
@@ -1279,7 +1301,8 @@
             cidades: { dirty: true },
             semanal: { dirty: true },
             inovacoes: { dirty: true, cache: null, lastTypesKey: '' },
-            mix: { dirty: true }
+            mix: { dirty: true },
+            goals: { dirty: true }
         };
 
         let charts = {};
@@ -1335,6 +1358,10 @@
         let selectedMixTiposVenda = [];
         let mixTableDataForExport = [];
         let mixKpiMode = 'total'; // 'total' ou 'atendidos'
+
+        let selectedGoalsGvSupervisors = [];
+        let selectedGoalsGvSellers = [];
+        let selectedGoalsSvSupervisors = [];
 
         // let innovationsIncludeBonus = true; // REMOVED
         // let innovationsMonthIncludeBonus = true; // REMOVED
@@ -1869,6 +1896,161 @@
             }
             const safeFileNameParam = fileNameParam.replace(/[^a-z0-9]/gi, '_').toLowerCase();
             doc.save(`relatorio_mix_detalhado_${safeFileNameParam}_${new Date().toISOString().slice(0,10)}.pdf`);
+        }
+
+        // --- GOALS VIEW LOGIC ---
+
+        function getGoalsFilteredData() {
+            const sellersSet = new Set(selectedGoalsGvSellers);
+            const supervisorsSet = new Set(selectedGoalsGvSupervisors);
+            const codCli = goalsGvCodcliFilter.value.trim();
+
+            let clients = allClientsData;
+
+            // Apply "Active" Filter: Americanas OR (RCA1 != 53 AND Sales This Month)
+            // Correction per instructions: "clientes cadastrados na planilha de clientes que tem o codigo do RCA 1 diferente de 53, isso depois da atribuição do vendedor americanas, ou seja, os clientes do vendedor americanas devem aparecer"
+            // Reusing the standard logic:
+            clients = clients.filter(c => {
+                const rca1 = String(c.rca1 || '').trim();
+                const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
+
+                // If Americanas, always include (rca1 is forced to 1001 in initialization)
+                if (isAmericanas) return true;
+
+                // Otherwise, exclude RCA 53
+                if (rca1 === '53') return false;
+
+                return true;
+            });
+
+            // Filter by Supervisor
+            if (supervisorsSet.size > 0) {
+                const rcasSet = new Set();
+                supervisorsSet.forEach(sup => {
+                    (optimizedData.rcasBySupervisor.get(sup) || []).forEach(rca => rcasSet.add(rca));
+                });
+                clients = clients.filter(c => c.rcas.some(r => rcasSet.has(r)));
+            }
+
+            // Filter by Seller
+            if (sellersSet.size > 0) {
+                const rcasSet = new Set();
+                sellersSet.forEach(name => {
+                    const code = optimizedData.rcaCodeByName.get(name);
+                    if(code) rcasSet.add(code);
+                });
+                clients = clients.filter(c => c.rcas.some(r => rcasSet.has(r)));
+            }
+
+            // Filter by Client Code
+            if (codCli) {
+                clients = clients.filter(c => String(c['Código']) === codCli);
+            }
+
+            return clients;
+        }
+
+        function updateGoalsView() {
+            // Logic for "Sugestão GV"
+            const filteredClients = getGoalsFilteredData();
+
+            // Calculate Quarterly Average for these clients
+            // Formula: Sum of VLVENDA (Type 1 & 9) in History / 3
+            // Optimization: We iterate history once or use indices?
+            // Since we need it for *filtered* clients, iterating history for each client might be slow if filtered list is large.
+            // Better: Iterate filtered History data? No, history index by client is fast.
+
+            const quarterlyAvgs = [];
+            let totalAverageSum = 0;
+
+            filteredClients.forEach(client => {
+                const codCli = client['Código'];
+
+                // Use history index for this client
+                const clientHistoryIds = optimizedData.indices.history.byClient.get(codCli);
+                let clientTotal = 0;
+
+                if (clientHistoryIds) {
+                    clientHistoryIds.forEach(id => {
+                        const sale = optimizedData.historyById.get(id);
+                        if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
+                            clientTotal += sale.VLVENDA;
+                        }
+                    });
+                }
+
+                const avg = clientTotal / QUARTERLY_DIVISOR;
+                if (avg > 0) {
+                    totalAverageSum += avg;
+
+                    // Resolve Seller Name
+                    let sellerName = 'N/A';
+                    const rcaCode = client.rcas[0];
+                    if (rcaCode) {
+                        sellerName = optimizedData.rcaNameByCode.get(rcaCode) || rcaCode;
+                    }
+
+                    quarterlyAvgs.push({
+                        cod: codCli,
+                        name: client.fantasia || client.razaoSocial,
+                        seller: sellerName,
+                        avg: avg
+                    });
+                }
+            });
+
+            // Sort by Average Descending
+            quarterlyAvgs.sort((a, b) => b.avg - a.avg);
+
+            // Render Table
+            const rows = quarterlyAvgs.map(item => {
+                const percent = totalAverageSum > 0 ? (item.avg / totalAverageSum) * 100 : 0;
+                return `
+                    <tr class="hover:bg-slate-700/50 border-b border-slate-700 last:border-0">
+                        <td class="px-4 py-2 font-medium text-slate-300 text-xs">${item.cod}</td>
+                        <td class="px-4 py-2 text-xs truncate max-w-[200px]" title="${item.name}">${item.name}</td>
+                        <td class="px-4 py-2 text-xs text-slate-400">${getFirstName(item.seller)}</td>
+                        <td class="px-4 py-2 text-xs text-right font-medium text-slate-200">${item.avg.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                        <td class="px-4 py-2 text-xs text-right text-teal-400">${percent.toFixed(2)}%</td>
+                    </tr>
+                `;
+            }).join('');
+
+            if (quarterlyAvgs.length === 0) {
+                goalsGvTableBody.innerHTML = '<tr><td colspan="5" class="text-center p-4 text-slate-500">Nenhum cliente com histórico encontrado nos filtros.</td></tr>';
+            } else {
+                goalsGvTableBody.innerHTML = rows;
+            }
+
+            goalsGvTotalValueEl.textContent = totalAverageSum.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        }
+
+        function handleGoalsFilterChange() {
+            // Update Dropdown Lists based on available data?
+            // Standard pattern: Update filter lists based on selection of others?
+            // For now, simpler: Just update the view.
+            if (window.goalsUpdateTimeout) clearTimeout(window.goalsUpdateTimeout);
+            window.goalsUpdateTimeout = setTimeout(() => {
+                // Update Seller Filter options based on Supervisor
+                // Get all clients matching supervisor filter, extract sellers.
+                // This is slightly different from sales-based filtering.
+                // But we can stick to standard updateSellerFilter using 'allSalesData' or 'allClientsData'?
+                // updateSellerFilter uses a sales/data array.
+                // Let's use allSalesData for consistency with other views to populate seller lists.
+
+                updateGoalsView();
+            }, 50);
+        }
+
+        function resetGoalsGvFilters() {
+            selectedGoalsGvSupervisors = [];
+            selectedGoalsGvSellers = [];
+            goalsGvCodcliFilter.value = '';
+
+            selectedGoalsGvSupervisors = updateSupervisorFilter(goalsGvSupervisorFilterDropdown, goalsGvSupervisorFilterText, selectedGoalsGvSupervisors, allSalesData);
+            selectedGoalsGvSellers = updateSellerFilter(selectedGoalsGvSupervisors, goalsGvSellerFilterDropdown, goalsGvSellerFilterText, selectedGoalsGvSellers, allSalesData);
+
+            updateGoalsView();
         }
 
         // <!-- INÍCIO DO CÓDIGO RESTAURADO -->
@@ -5920,7 +6102,7 @@
 
             // This function now runs after the loader is visible
             const updateContent = () => {
-                [mainDashboard, cityView, weeklyView, comparisonView, stockView, innovationsMonthView, coverageView, document.getElementById('mix-view')].forEach(el => {
+                [mainDashboard, cityView, weeklyView, comparisonView, stockView, innovationsMonthView, coverageView, document.getElementById('mix-view'), goalsView].forEach(el => {
                     if(el) el.classList.add('hidden');
                 });
 
@@ -6013,6 +6195,13 @@
                             updateAllMixFilters();
                             updateMixView();
                             viewState.mix.dirty = false;
+                        }
+                        break;
+                    case 'goals':
+                        goalsView.classList.remove('hidden');
+                        if (viewState.goals.dirty) {
+                            updateGoalsView();
+                            viewState.goals.dirty = false;
                         }
                         break;
                 }
@@ -6732,6 +6921,83 @@
             }
 
             // --- Mix View Event Listeners ---
+            // --- Goals View Event Listeners ---
+            const updateGoals = () => {
+                markDirty('goals');
+                handleGoalsFilterChange();
+            };
+
+            const debouncedUpdateGoals = debounce(updateGoals, 400);
+
+            // Tab Switching
+            document.getElementById('goals-tabs').addEventListener('click', (e) => {
+                if (e.target.tagName === 'BUTTON') {
+                    const tab = e.target.dataset.tab;
+                    document.querySelectorAll('#goals-tabs button').forEach(btn => {
+                        btn.classList.remove('border-teal-500', 'text-teal-500', 'active');
+                        btn.classList.add('border-transparent', 'hover:text-slate-300', 'hover:border-slate-300', 'text-slate-400');
+                    });
+                    e.target.classList.remove('border-transparent', 'hover:text-slate-300', 'hover:border-slate-300', 'text-slate-400');
+                    e.target.classList.add('border-teal-500', 'text-teal-500', 'active');
+
+                    if (tab === 'gv') {
+                        goalsGvContent.classList.remove('hidden');
+                        goalsSvContent.classList.add('hidden');
+                        updateGoals(); // Refresh GV view
+                    } else if (tab === 'sv') {
+                        goalsGvContent.classList.add('hidden');
+                        goalsSvContent.classList.remove('hidden');
+                        // Initialize SV filters if needed
+                        // selectedGoalsSvSupervisors = updateSupervisorFilter(goalsSvSupervisorFilterDropdown, goalsSvSupervisorFilterText, selectedGoalsSvSupervisors, allSalesData);
+                    }
+                }
+            });
+
+            // GV Filters
+            goalsGvSupervisorFilterBtn.addEventListener('click', () => goalsGvSupervisorFilterDropdown.classList.toggle('hidden'));
+            goalsGvSupervisorFilterDropdown.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox') {
+                    const { value, checked } = e.target;
+                    if (checked) selectedGoalsGvSupervisors.push(value);
+                    else selectedGoalsGvSupervisors = selectedGoalsGvSupervisors.filter(s => s !== value);
+
+                    // Reset sellers or keep intersection?
+                    // Standard: Update Seller Options based on Supervisor
+                    selectedGoalsGvSellers = [];
+                    selectedGoalsGvSellers = updateSellerFilter(selectedGoalsGvSupervisors, goalsGvSellerFilterDropdown, goalsGvSellerFilterText, selectedGoalsGvSellers, allSalesData);
+
+                    updateGoals();
+                }
+            });
+
+            goalsGvSellerFilterBtn.addEventListener('click', () => goalsGvSellerFilterDropdown.classList.toggle('hidden'));
+            goalsGvSellerFilterDropdown.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox') {
+                    const { value, checked } = e.target;
+                    if (checked) selectedGoalsGvSellers.push(value);
+                    else selectedGoalsGvSellers = selectedGoalsGvSellers.filter(s => s !== value);
+                    updateGoals();
+                }
+            });
+
+            goalsGvCodcliFilter.addEventListener('input', (e) => {
+                e.target.value = e.target.value.replace(/[^0-9]/g, '');
+                debouncedUpdateGoals();
+            });
+
+            clearGoalsGvFiltersBtn.addEventListener('click', () => { resetGoalsGvFilters(); markDirty('goals'); });
+
+            // SV Filters (Placeholder)
+            goalsSvSupervisorFilterBtn.addEventListener('click', () => goalsSvSupervisorFilterDropdown.classList.toggle('hidden'));
+            // Add change listener when SV logic is implemented
+
+            document.addEventListener('click', (e) => {
+                if (!goalsGvSupervisorFilterBtn.contains(e.target) && !goalsGvSupervisorFilterDropdown.contains(e.target)) goalsGvSupervisorFilterDropdown.classList.add('hidden');
+                if (!goalsGvSellerFilterBtn.contains(e.target) && !goalsGvSellerFilterDropdown.contains(e.target)) goalsGvSellerFilterDropdown.classList.add('hidden');
+                if (!goalsSvSupervisorFilterBtn.contains(e.target) && !goalsSvSupervisorFilterDropdown.contains(e.target)) goalsSvSupervisorFilterDropdown.classList.add('hidden');
+            });
+
+
             const updateMix = () => {
                 markDirty('mix');
                 handleMixFilterChange();
@@ -7061,6 +7327,13 @@
         updateRedeFilter(comparisonRedeFilterDropdown, comparisonComRedeBtnText, selectedComparisonRedes, allClientsData);
         updateRedeFilter(stockRedeFilterDropdown, stockComRedeBtnText, selectedStockRedes, allClientsData, 'Com Rede');
 
+        // Initial Population for Goals Filters
+        selectedGoalsGvSupervisors = updateSupervisorFilter(goalsGvSupervisorFilterDropdown, goalsGvSupervisorFilterText, selectedGoalsGvSupervisors, allSalesData);
+        selectedGoalsGvSellers = updateSellerFilter(selectedGoalsGvSupervisors, goalsGvSellerFilterDropdown, goalsGvSellerFilterText, selectedGoalsGvSellers, allSalesData);
+        // Initialize SV Supervisor filter just in case
+        selectedGoalsSvSupervisors = updateSupervisorFilter(goalsSvSupervisorFilterDropdown, goalsSvSupervisorFilterText, selectedGoalsSvSupervisors, allSalesData);
+
+
         updateAllComparisonFilters();
 
         updateStockSellerFilter();
@@ -7321,6 +7594,12 @@
                                         <button data-target="mix" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
                                             <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"></path></svg>
                                             <span class="ml-3">Mix Salty & Foods</span>
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button data-target="goals" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
+                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                                            <span class="ml-3">Metas</span>
                                         </button>
                                     </li>
                                 </ul>
@@ -7823,6 +8102,106 @@
                                     <div class="overflow-auto custom-scrollbar" style="max-height: 40vh;">
                                         <table class="min-w-full text-sm text-slate-300"><thead class="text-xs text-slate-400 uppercase sticky-header"><tr><th class="px-2 py-2 text-left">Produto</th><th class="px-2 py-2 text-right">Vendido (Atual)</th><th class="px-2 py-2 text-right">Média Trim.</th><th class="px-2 py-2 text-right">Estoque</th></tr></thead><tbody id="lost-products-table-body" class="divide-y divide-slate-700"></tbody></table>
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Ecrã Metas (Goals) -->
+                        <div id="goals-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
+                            <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
+                                <div class="flex items-center gap-4">
+                                    <button class="sidebar-toggle text-white focus:outline-none">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                                    </button>
+                                    <div>
+                                        <h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1>
+                                        <p class="text-lg text-slate-300 -mt-1">Gestão de Metas</p>
+                                    </div>
+                                </div>
+                            </header>
+
+                            <!-- Tabs -->
+                            <div class="mb-6 border-b border-slate-700">
+                                <ul class="flex flex-wrap -mb-px text-sm font-medium text-center" id="goals-tabs">
+                                    <li class="mr-2">
+                                        <button class="inline-block p-4 rounded-t-lg border-b-2 border-teal-500 text-teal-500 active" data-tab="gv">Sugestão GV</button>
+                                    </li>
+                                    <li class="mr-2">
+                                        <button class="inline-block p-4 rounded-t-lg border-b-2 border-transparent hover:text-slate-300 hover:border-slate-300 text-slate-400" data-tab="sv">Meta SV</button>
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <!-- Tab Content: Sugestão GV -->
+                            <div id="goals-gv-content">
+                                <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
+                                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                                        <div class="relative">
+                                            <label for="goals-gv-supervisor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label>
+                                            <button id="goals-gv-supervisor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
+                                                <span id="goals-gv-supervisor-filter-text">Todos</span>
+                                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
+                                            </button>
+                                            <div id="goals-gv-supervisor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
+                                        </div>
+                                        <div class="relative">
+                                            <label for="goals-gv-seller-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Vendedor</label>
+                                            <button id="goals-gv-seller-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
+                                                <span id="goals-gv-seller-filter-text">Todos</span>
+                                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
+                                            </button>
+                                            <div id="goals-gv-seller-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
+                                        </div>
+                                        <div>
+                                            <label for="goals-gv-codcli-filter" class="block mb-2 text-sm font-medium text-slate-400">Cód. Cliente</label>
+                                            <input type="text" id="goals-gv-codcli-filter" placeholder="Digite o código..." class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5">
+                                        </div>
+                                        <button id="clear-goals-gv-filters-btn" class="w-full bg-slate-600 hover:bg-slate-500 text-white font-bold py-2.5 px-4 rounded-lg">Limpar Filtros</button>
+                                    </div>
+                                </div>
+
+                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
+                                    <h2 class="text-lg font-semibold text-white mb-4">Sugestão de Metas (Base Trimestral)</h2>
+                                    <div class="overflow-auto custom-scrollbar" style="max-height: 60vh;">
+                                        <table class="min-w-full text-sm text-left text-slate-300">
+                                            <thead class="text-xs text-slate-400 uppercase sticky top-0 z-20 bg-slate-800">
+                                                <tr>
+                                                    <th class="px-4 py-3 border-b border-slate-500">Cód. Cliente</th>
+                                                    <th class="px-4 py-3 border-b border-slate-500">Nome Cliente</th>
+                                                    <th class="px-4 py-3 border-b border-slate-500">Vendedor</th>
+                                                    <th class="px-4 py-3 border-b border-slate-500 text-right">Média Trimestral (R$)</th>
+                                                    <th class="px-4 py-3 border-b border-slate-500 text-right">% Repres.</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="goals-gv-table-body" class="divide-y divide-slate-700"></tbody>
+                                            <tfoot class="bg-slate-800 font-bold sticky bottom-0 z-20">
+                                                <tr>
+                                                    <td colspan="3" class="px-4 py-3 text-right text-white border-t border-slate-500">TOTAL:</td>
+                                                    <td id="goals-gv-total-value" class="px-4 py-3 text-right text-teal-400 border-t border-slate-500">R$ 0,00</td>
+                                                    <td class="px-4 py-3 text-right text-white border-t border-slate-500">100%</td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Tab Content: Meta SV -->
+                            <div id="goals-sv-content" class="hidden">
+                                <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
+                                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                                        <div class="relative">
+                                            <label for="goals-sv-supervisor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label>
+                                            <button id="goals-sv-supervisor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
+                                                <span id="goals-sv-supervisor-filter-text">Todos</span>
+                                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
+                                            </button>
+                                            <div id="goals-sv-supervisor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="p-8 text-center text-slate-500">
+                                    <p>Conteúdo da aba "Meta SV" em desenvolvimento...</p>
                                 </div>
                             </div>
                         </div>
