@@ -1490,7 +1490,7 @@
                 city: city,
                 filial: filial,
                 tipoVenda: tiposVendaSet,
-                clientCodes: clientCodes
+                // clientCodes: clientCodes // Disabled to allow orphan sales if IDs mismatch
             };
             
             const sales = getFilteredDataFromIndices(optimizedData.indices.current, optimizedData.salesById, filters, excludeFilter);
@@ -1926,7 +1926,7 @@
                 tipoVenda: tiposVendaSet,
                 city: city,
                 filial: filial,
-                clientCodes: clientCodes // Pass client universe to correctly scope sales
+                // clientCodes: clientCodes // Disabled to allow orphan sales if IDs mismatch
             };
 
             let sales = getFilteredDataFromIndices(optimizedData.indices.current, optimizedData.salesById, filters, excludeFilter);
@@ -3108,7 +3108,7 @@
                 seller: sellersSet,
                 city: cityInput,
                 tipoVenda: tiposVendaSet,
-                clientCodes: clientCodes
+                // clientCodes: clientCodes // Disabled to allow orphan sales if IDs mismatch
             };
             
             const sales = getFilteredDataFromIndices(optimizedData.indices.current, optimizedData.salesById, filters, excludeFilter);
@@ -5043,7 +5043,7 @@
             const processMap = (salesMap, isCurrent, isBonus) => {
                 salesMap.forEach((productsMap, codCli) => {
                     // Only count if client is in the filtered active list
-                    if (!activeClientCodes.has(codCli)) return;
+                    // if (!activeClientCodes.has(codCli)) return; // Disabled to allow orphan sales
 
                     productsMap.forEach((rcas, prodCode) => {
                         const category = globalProductToCategoryMap ? globalProductToCategoryMap.get(prodCode) : null;
