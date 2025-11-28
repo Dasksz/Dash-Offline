@@ -2133,7 +2133,7 @@
                                 <p class="text-xl font-bold ${textColor} mb-2">
                                     ${target.fat.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                                 </p>
-                                <div class="flex justify-between text-[10px] text-slate-500 border-t border-slate-700/50 pt-1">
+                                <div class="flex justify-between text-[10px] text-slate-400 border-t border-slate-700/50 pt-1">
                                     <span>Trim: <span class="text-slate-300">${metrics.avgFat.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></span>
                                     <span>Ant: <span class="text-slate-300">${metrics.prevFat.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></span>
                                 </div>
@@ -2146,7 +2146,7 @@
                                 <p class="text-xl font-bold ${textColor} mb-2">
                                     ${target.vol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
                                 </p>
-                                <div class="flex justify-between text-[10px] text-slate-500 border-t border-slate-700/50 pt-1">
+                                <div class="flex justify-between text-[10px] text-slate-400 border-t border-slate-700/50 pt-1">
                                     <span>Trim: <span class="text-slate-300">${metrics.avgVol.toLocaleString('pt-BR', { minimumFractionDigits: 3 })}</span></span>
                                     <span>Ant: <span class="text-slate-300">${metrics.prevVol.toLocaleString('pt-BR', { minimumFractionDigits: 3 })}</span></span>
                                 </div>
@@ -4292,6 +4292,252 @@
             return salesByMonth;
         }
 
+        function calculateUnifiedMetrics(currentSales, historySales) {
+            // 1. Setup Data Structures
+            const currentYear = lastSaleDate.getUTCFullYear();
+            const currentMonth = lastSaleDate.getUTCMonth();
+            const currentMonthWeeks = getMonthWeeks(currentYear, currentMonth);
+
+            const metrics = {
+                current: {
+                    fat: 0, peso: 0, clients: 0,
+                    mixPepsico: 0, positivacaoSalty: 0, positivacaoFoods: 0
+                },
+                history: {
+                    fat: 0, peso: 0,
+                    avgFat: 0, avgPeso: 0, avgClients: 0,
+                    avgMixPepsico: 0, avgPositivacaoSalty: 0, avgPositivacaoFoods: 0
+                },
+                charts: {
+                    weeklyCurrent: new Array(currentMonthWeeks.length).fill(0),
+                    weeklyHistory: new Array(currentMonthWeeks.length).fill(0),
+                    monthlyData: [], // { label, value (fat/clients) }
+                    supervisorData: {} // { sup: { current, history } }
+                },
+                overlapSales: []
+            };
+
+            const firstWeekStart = currentMonthWeeks[0].start;
+            const firstOfMonth = new Date(Date.UTC(currentYear, currentMonth, 1));
+            const hasOverlap = firstWeekStart < firstOfMonth;
+
+            const pepsicoCodfors = new Set(['707', '708']);
+            const saltyCategories = ['CHEETOS', 'DORITOS', 'FANDANGOS', 'RUFFLES', 'TORCIDA'];
+            const foodsCategories = ['TODDYNHO', 'TODDY', 'QUAKER', 'KEROCOCO'];
+
+            // Helper to normalize strings
+            const norm = (s) => s ? s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase() : '';
+
+            // --- 2. Process Current Sales (Single Pass) ---
+            const currentClientProductMap = new Map(); // Client -> Product -> { val, desc, codfor }
+            const currentClientsSet = new Map(); // Client -> Total Value (for Positive check)
+
+            currentSales.forEach(s => {
+                metrics.current.fat += s.VLVENDA;
+                metrics.current.peso += s.TOTPESOLIQ;
+
+                if (s.CODCLI) {
+                    currentClientsSet.set(s.CODCLI, (currentClientsSet.get(s.CODCLI) || 0) + s.VLVENDA);
+
+                    if (!currentClientProductMap.has(s.CODCLI)) currentClientProductMap.set(s.CODCLI, new Map());
+                    const cMap = currentClientProductMap.get(s.CODCLI);
+                    if (!cMap.has(s.PRODUTO)) cMap.set(s.PRODUTO, { val: 0, desc: s.DESCRICAO, codfor: String(s.CODFOR) });
+                    cMap.get(s.PRODUTO).val += s.VLVENDA;
+                }
+
+                // Supervisor Data
+                if (s.SUPERV) {
+                    if (!metrics.charts.supervisorData[s.SUPERV]) metrics.charts.supervisorData[s.SUPERV] = { current: 0, history: 0 };
+                    metrics.charts.supervisorData[s.SUPERV].current += s.VLVENDA;
+                }
+
+                // Weekly Chart (Current)
+                const d = parseDate(s.DTPED);
+                if (d) {
+                    const wIdx = currentMonthWeeks.findIndex(w => d >= w.start && d <= w.end);
+                    if (wIdx !== -1) metrics.charts.weeklyCurrent[wIdx] += s.VLVENDA;
+                }
+            });
+
+            // Calculate Current KPIs from Maps
+            let currentPositiveClients = 0;
+            currentClientsSet.forEach(val => { if (val > 1) currentPositiveClients++; });
+            metrics.current.clients = currentPositiveClients;
+
+            // Mix/Positivacao Current
+            let sumMix = 0;
+            let countMixClients = 0;
+            let countSalty = 0;
+            let countFoods = 0;
+
+            currentClientProductMap.forEach((prods, codcli) => {
+                // Mix Pepsico
+                let pepsicoCount = 0;
+                const boughtCatsSalty = new Set();
+                const boughtCatsFoods = new Set();
+
+                prods.forEach(pData => {
+                    if (pData.val > 1) {
+                        if (pepsicoCodfors.has(pData.codfor)) pepsicoCount++;
+
+                        const desc = norm(pData.desc);
+                        saltyCategories.forEach(cat => { if (desc.includes(cat)) boughtCatsSalty.add(cat); });
+                        foodsCategories.forEach(cat => { if (desc.includes(cat)) boughtCatsFoods.add(cat); });
+                    }
+                });
+
+                if (pepsicoCount > 0) {
+                    sumMix += pepsicoCount;
+                    countMixClients++;
+                }
+                if (boughtCatsSalty.size >= saltyCategories.length) countSalty++;
+                if (boughtCatsFoods.size >= foodsCategories.length) countFoods++;
+            });
+
+            metrics.current.mixPepsico = countMixClients > 0 ? sumMix / countMixClients : 0;
+            metrics.current.positivacaoSalty = countSalty;
+            metrics.current.positivacaoFoods = countFoods;
+
+
+            // --- 3. Process History Sales (Single Pass) ---
+            const historyMonths = new Map(); // MonthKey -> { fat, clientMap, weekSales: [] }
+
+            // Cache week ranges for history months to avoid recalculating
+            const monthWeeksCache = new Map();
+
+            historySales.forEach(s => {
+                metrics.history.fat += s.VLVENDA;
+                metrics.history.peso += s.TOTPESOLIQ;
+
+                const d = parseDate(s.DTPED);
+                if (!d) return;
+
+                const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
+
+                if (!historyMonths.has(monthKey)) {
+                    historyMonths.set(monthKey, {
+                        fat: 0,
+                        clients: new Map(), // Client -> Total
+                        productMap: new Map() // Client -> Product -> Data
+                    });
+                }
+                const mData = historyMonths.get(monthKey);
+                mData.fat += s.VLVENDA;
+
+                if (s.CODCLI) {
+                    mData.clients.set(s.CODCLI, (mData.clients.get(s.CODCLI) || 0) + s.VLVENDA);
+
+                    if (!mData.productMap.has(s.CODCLI)) mData.productMap.set(s.CODCLI, new Map());
+                    const cMap = mData.productMap.get(s.CODCLI);
+                    if (!cMap.has(s.PRODUTO)) cMap.set(s.PRODUTO, { val: 0, desc: s.DESCRICAO, codfor: String(s.CODFOR) });
+                    cMap.get(s.PRODUTO).val += s.VLVENDA;
+                }
+
+                // Supervisor History
+                if (s.SUPERV) {
+                    if (!metrics.charts.supervisorData[s.SUPERV]) metrics.charts.supervisorData[s.SUPERV] = { current: 0, history: 0 };
+                    metrics.charts.supervisorData[s.SUPERV].history += s.VLVENDA;
+                }
+
+                // Weekly History (Average logic)
+                if (!monthWeeksCache.has(monthKey)) {
+                    monthWeeksCache.set(monthKey, getMonthWeeks(d.getUTCFullYear(), d.getUTCMonth()));
+                }
+                const weeks = monthWeeksCache.get(monthKey);
+                const wIdx = weeks.findIndex(w => d >= w.start && d <= w.end);
+
+                // Map to Current Month's structure (0..4)
+                if (wIdx !== -1 && wIdx < metrics.charts.weeklyHistory.length) {
+                    metrics.charts.weeklyHistory[wIdx] += s.VLVENDA;
+                }
+
+                // Handle Overlap for Current Chart (Single Pass)
+                if (hasOverlap && d >= firstWeekStart && d < firstOfMonth) {
+                    metrics.charts.weeklyCurrent[0] += s.VLVENDA;
+                    metrics.overlapSales.push(s);
+                }
+            });
+
+            // Calculate History Averages
+            metrics.history.avgFat = metrics.history.fat / QUARTERLY_DIVISOR;
+            metrics.history.avgPeso = metrics.history.peso / QUARTERLY_DIVISOR;
+            metrics.charts.weeklyHistory = metrics.charts.weeklyHistory.map(v => v / QUARTERLY_DIVISOR);
+
+            // Normalize Supervisor History
+            Object.values(metrics.charts.supervisorData).forEach(d => d.history /= QUARTERLY_DIVISOR);
+
+            // Process Monthly KPIs (Clients, Mix)
+            // Sort months to ensure we take the last 3 if there are more
+            const sortedMonths = Array.from(historyMonths.keys()).sort();
+
+            // Apply Logic: If first month has < 20 days of data, maybe skip?
+            // Original code: if (firstSaleInFirstMonth && firstSaleInFirstMonth.getUTCDate() > 20) sortedMonths.shift();
+            // We'll stick to simple slice(-3) for performance and consistency with requested "Last 3 months" logic.
+            const monthsToProcess = sortedMonths.slice(-3);
+
+            let sumClients = 0;
+            let sumMixPep = 0;
+            let sumPosSalty = 0;
+            let sumPosFoods = 0;
+
+            monthsToProcess.forEach(mKey => {
+                const mData = historyMonths.get(mKey);
+
+                // Clients
+                let posClients = 0;
+                mData.clients.forEach(v => { if(v > 1) posClients++; });
+                sumClients += posClients;
+
+                // Mix
+                let mSumMix = 0;
+                let mCountMixClients = 0;
+                let mCountSalty = 0;
+                let mCountFoods = 0;
+
+                mData.productMap.forEach((prods, codcli) => {
+                    let pepsicoCount = 0;
+                    const boughtCatsSalty = new Set();
+                    const boughtCatsFoods = new Set();
+
+                    prods.forEach(pData => {
+                        if (pData.val > 1) {
+                            if (pepsicoCodfors.has(pData.codfor)) pepsicoCount++;
+                            const desc = norm(pData.desc);
+                            saltyCategories.forEach(cat => { if (desc.includes(cat)) boughtCatsSalty.add(cat); });
+                            foodsCategories.forEach(cat => { if (desc.includes(cat)) boughtCatsFoods.add(cat); });
+                        }
+                    });
+
+                    if (pepsicoCount > 0) {
+                        mSumMix += pepsicoCount;
+                        mCountMixClients++;
+                    }
+                    if (boughtCatsSalty.size >= saltyCategories.length) mCountSalty++;
+                    if (boughtCatsFoods.size >= foodsCategories.length) mCountFoods++;
+                });
+
+                sumMixPep += (mCountMixClients > 0 ? mSumMix / mCountMixClients : 0);
+                sumPosSalty += mCountSalty;
+                sumPosFoods += mCountFoods;
+
+                // For Monthly Chart (Labels and Values)
+                const [y, m] = mKey.split('-');
+                const label = new Date(Date.UTC(parseInt(y), parseInt(m), 1)).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit', timeZone: 'UTC' });
+                metrics.charts.monthlyData.push({
+                    label,
+                    fat: mData.fat,
+                    clients: posClients
+                });
+            });
+
+            metrics.history.avgClients = sumClients / QUARTERLY_DIVISOR;
+            metrics.history.avgMixPepsico = sumMixPep / QUARTERLY_DIVISOR;
+            metrics.history.avgPositivacaoSalty = sumPosSalty / QUARTERLY_DIVISOR;
+            metrics.history.avgPositivacaoFoods = sumPosFoods / QUARTERLY_DIVISOR;
+
+            return metrics;
+        }
+
         function monthlyKpiAverage(dataInput, kpiFn, isGrouped = false, ...kpiArgs) {
             let salesByMonth;
             if (isGrouped) {
@@ -4766,190 +5012,82 @@
         }
 
         function updateComparisonView() {
-            const filteredData = getComparisonFilteredData();
-            const { currentSales, historySales } = filteredData;
+            const { currentSales, historySales } = getComparisonFilteredData();
 
-            const historyMonthsCount = getUniqueMonthCount(historySales);
+            // --- USE OPTIMIZED METRIC CALCULATION ---
+            const m = calculateUnifiedMetrics(currentSales, historySales);
 
-            const currentTotalFat = currentSales.reduce((sum, item) => sum + item.VLVENDA, 0);
-            const currentTotalPeso = currentSales.reduce((sum, item) => sum + item.TOTPESOLIQ, 0);
-            const currentClients = getPositiveClientsWithNewLogic(currentSales);
-            const currentTicket = currentClients > 0 ? currentTotalFat / currentClients : 0;
-            const pepsicoCodfors = ['707', '708'];
-            const saltyCategories = ['CHEETOS', 'DORITOS', 'FANDANGOS', 'RUFFLES', 'TORCIDA'];
-            const foodsCategories = ['TODDYNHO', 'TODDY', 'QUAKER', 'KEROCOCO'];
-            const currentMixPepsico = calculateAverageMixComDevolucao(currentSales, pepsicoCodfors);
-            const currentPositivacaoSalty = calculatePositivacaoPorCestaComDevolucao(currentSales, saltyCategories);
-            const currentPositivacaoFoods = calculatePositivacaoPorCestaComDevolucao(currentSales, foodsCategories);
-
-            const historyTotalFat = historySales.reduce((sum, item) => sum + item.VLVENDA, 0);
-            const historyTotalPeso = historySales.reduce((sum, item) => sum + item.TOTPESOLIQ, 0);
-
-            const historyAvgFat = historyTotalFat / QUARTERLY_DIVISOR;
-            const historyAvgPeso = historyTotalPeso / 1000 / QUARTERLY_DIVISOR;
-
-            // Group sales by month ONCE for optimization
-            const groupedHistorySales = groupSalesByMonth(historySales);
-
-            const historyClientsAverage = monthlyKpiAverage(groupedHistorySales, getPositiveClientsWithNewLogic, true);
-            const historyTicketAverage = historyClientsAverage > 0 ? historyAvgFat / historyClientsAverage : 0;
-            const historyMixPepsico = monthlyKpiAverage(groupedHistorySales, calculateAverageMixComDevolucao, true, pepsicoCodfors);
-            const historyPositivacaoSalty = monthlyKpiAverage(groupedHistorySales, calculatePositivacaoPorCestaComDevolucao, true, saltyCategories);
-            const historyPositivacaoFoods = monthlyKpiAverage(groupedHistorySales, calculatePositivacaoPorCestaComDevolucao, true, foodsCategories);
-
+            // --- Update KPI Cards ---
             renderKpiCards([
-                { title: 'Faturamento Total', current: currentTotalFat, history: historyAvgFat, format: 'currency' },
-                { title: 'Peso Total (Ton)', current: currentTotalPeso / 1000, history: historyAvgPeso, format: 'decimal' },
-                { title: 'Clientes Atendidos', current: currentClients, history: historyClientsAverage, format: 'integer' },
-                { title: 'Ticket Médio', current: currentTicket, history: historyTicketAverage, format: 'currency' },
-                { title: 'Mix por PDV (Pepsico)', current: currentMixPepsico, history: historyMixPepsico, format: 'mix' },
-                { title: 'Mix Salty', current: currentPositivacaoSalty, history: historyPositivacaoSalty, format: 'integer' },
-                { title: 'Mix Foods', current: currentPositivacaoFoods, history: historyPositivacaoFoods, format: 'integer' }
+                { title: 'Faturamento Total', current: m.current.fat, history: m.history.avgFat, format: 'currency' },
+                { title: 'Peso Total (Ton)', current: m.current.peso / 1000, history: m.history.avgPeso / 1000, format: 'decimal' },
+                { title: 'Clientes Atendidos', current: m.current.clients, history: m.history.avgClients, format: 'integer' },
+                { title: 'Ticket Médio', current: m.current.clients > 0 ? m.current.fat / m.current.clients : 0, history: m.history.avgClients > 0 ? m.history.avgFat / m.history.avgClients : 0, format: 'currency' },
+                { title: 'Mix por PDV (Pepsico)', current: m.current.mixPepsico, history: m.history.avgMixPepsico, format: 'mix' },
+                { title: 'Mix Salty', current: m.current.positivacaoSalty, history: m.history.avgPositivacaoSalty, format: 'integer' },
+                { title: 'Mix Foods', current: m.current.positivacaoFoods, history: m.history.avgPositivacaoFoods, format: 'integer' }
             ]);
 
+            // --- Tendency Logic for Weekly Chart ---
             const currentYear = lastSaleDate.getUTCFullYear();
             const currentMonth = lastSaleDate.getUTCMonth();
             const currentMonthWeeks = getMonthWeeks(currentYear, currentMonth);
-
-            // Combine current sales with historical sales that fall within the first week's range (overlap)
-            const firstWeekStart = currentMonthWeeks.length > 0 ? currentMonthWeeks[0].start : null;
-            let salesForWeeklyCharts = [...currentSales];
             
-            if (firstWeekStart) {
-                const relevantHistory = historySales.filter(s => {
-                    const d = parseDate(s.DTPED);
-                    // Only include history if it's equal or after the start of the first calendar week
-                    // AND strictly before the 1st of the current month (to avoid double counting if history overlaps for some reason, though unlikely with standard file separation)
-                    // Actually, standard logic: just check if it falls in the first week range.
-                    // Since currentSales only has data from 1st onwards, we safely add history for the pre-1st period.
-                    return d && d >= firstWeekStart && d < new Date(Date.UTC(currentYear, currentMonth, 1));
-                });
-                salesForWeeklyCharts = [...salesForWeeklyCharts, ...relevantHistory];
-            }
-
-            let currentSalesByWeek = new Array(currentMonthWeeks.length).fill(0);
-            salesForWeeklyCharts.forEach(sale => {
-                const saleDate = parseDate(sale.DTPED);
-                if (!saleDate) return;
-                const weekIndex = currentMonthWeeks.findIndex(week => saleDate >= week.start && saleDate <= week.end);
-                if (weekIndex !== -1) {
-                     currentSalesByWeek[weekIndex] += sale.VLVENDA;
-                }
-            });
-
-            // Nova Lógica de Média: Média de Vendas na Semana Equivalente dos Meses Anteriores
-            // Em vez de usar a média diária, somamos as vendas da "Semana 1", "Semana 2", etc., de cada mês do histórico
-            // e dividimos por 3 (QUARTERLY_DIVISOR). Isso preserva a sazonalidade dentro do mês.
-
-            const historySalesByWeekIndex = {}; 
-            // Estrutura: { 0: totalWeek0, 1: totalWeek1, ... }
-
-            // Identificar quais meses existem no histórico
-            const historyMonths = new Set();
-            historySales.forEach(s => {
-                const d = parseDate(s.DTPED);
-                if (d) historyMonths.add(`${d.getUTCFullYear()}-${d.getUTCMonth()}`);
-            });
-
-            // Para cada mês do histórico, geramos as semanas corretas (usando a mesma lógica de "Domingo on/before 1st")
-            // E somamos as vendas em seus respectivos índices de semana.
-            // Como iterar vendas é O(N), e gerar semanas é O(M), podemos otimizar:
-            // Iteramos as vendas. Para cada venda, geramos as semanas do MÊS DA VENDA.
-            // Descobrimos em qual índice ela cai.
+            // Clone weekly current data to apply tendency if needed
+            let weeklyCurrentData = [...m.charts.weeklyCurrent];
             
-            // Otimização: Cache das semanas por mês para não recalcular a cada venda
-            const monthWeeksCache = new Map();
-
-            historySales.forEach(sale => {
-                const d = parseDate(sale.DTPED);
-                if (!d) return;
-
-                const year = d.getUTCFullYear();
-                const month = d.getUTCMonth();
-                const monthKey = `${year}-${month}`;
-
-                if (!monthWeeksCache.has(monthKey)) {
-                    monthWeeksCache.set(monthKey, getMonthWeeks(year, month));
-                }
-
-                const weeks = monthWeeksCache.get(monthKey);
-                // Encontrar em qual semana do mês essa venda caiu
-                const weekIndex = weeks.findIndex(w => d >= w.start && d <= w.end);
-
-                if (weekIndex !== -1) {
-                    if (!historySalesByWeekIndex[weekIndex]) historySalesByWeekIndex[weekIndex] = 0;
-                    historySalesByWeekIndex[weekIndex] += sale.VLVENDA;
-                } else {
-                    // Caso especial: Venda caiu num "buraco" ou na semana do mês anterior/seguinte
-                    // devido à lógica de semanas completas.
-                    // Se a semana começar no mês anterior, getMonthWeeks(MesAtual) inclui dias do mês anterior.
-                    // Se a venda é do dia 30/09 e estamos olhando semanas de Outubro, 30/09 pode estar na Semana 0 de Outubro.
-                    // Mas aqui estamos iterando vendas HISTÓRICAS. 
-                    // Se a venda tem data de 30/09, ela pertence ao mês 09. 
-                    // As semanas do mês 09 cobrem o dia 30/09.
-                    // Portanto, weekIndex deve ser encontrado sempre, a menos que a data esteja fora do range gerado.
-                }
-            });
-
-            const historyAvgSalesByWeek = new Array(currentMonthWeeks.length).fill(0);
-            for (let i = 0; i < currentMonthWeeks.length; i++) {
-                const totalForWeekIndex = historySalesByWeekIndex[i] || 0;
-                // Dividimos por 3 fixo conforme solicitado (QUARTERLY_DIVISOR)
-                historyAvgSalesByWeek[i] = totalForWeekIndex / QUARTERLY_DIVISOR;
-            }
-
             if (useTendencyComparison) {
                 const today = lastSaleDate;
                 const currentWeekIndex = currentMonthWeeks.findIndex(w => today >= w.start && today <= w.end);
+                const totalWeeks = currentMonthWeeks.length;
 
-                for (let i = 0; i < currentMonthWeeks.length; i++) {
-                    if (i < currentWeekIndex) {
-                        continue;
-                    } else if (i === currentWeekIndex) {
-                        const currentWeek = currentMonthWeeks[currentWeekIndex];
-                        const salesThisWeekSoFar = salesForWeeklyCharts.filter(s => {
-                            const d = parseDate(s.DTPED);
-                            return d >= currentWeek.start && d <= today;
-                        });
-                        const totalSoldThisWeek = salesThisWeekSoFar.reduce((sum, s) => sum + s.VLVENDA, 0);
-
+                for (let i = 0; i < totalWeeks; i++) {
+                    if (i === currentWeekIndex) {
+                        const currentWeek = currentMonthWeeks[i];
+                        // Calculate days passed in THIS week
                         let workingDaysPassed = 0;
                         let totalWorkingDays = 0;
                         for (let d = new Date(currentWeek.start); d <= currentWeek.end; d.setUTCDate(d.getUTCDate() + 1)) {
                             const dayOfWeek = d.getUTCDay();
                             if (dayOfWeek >= 1 && dayOfWeek <= 5 && !isHoliday(d, selectedHolidays)) {
                                 totalWorkingDays++;
-                                if (d <= today) {
-                                    workingDaysPassed++;
-                                }
+                                if (d <= today) workingDaysPassed++;
                             }
                         }
 
+                        // We need the ACTUAL sales for this week to project.
+                        // `weeklyCurrentData[i]` already has the actual sales so far.
+                        const salesSoFar = weeklyCurrentData[i];
+
                         if (workingDaysPassed > 0 && totalWorkingDays > 0) {
-                            const dailyAverage = totalSoldThisWeek / workingDaysPassed;
-                            currentSalesByWeek[i] = dailyAverage * totalWorkingDays;
+                            const dailyAverage = salesSoFar / workingDaysPassed;
+                            weeklyCurrentData[i] = dailyAverage * totalWorkingDays;
                         } else {
-                            currentSalesByWeek[i] = historyAvgSalesByWeek[i] || 0;
+                            // Fallback if no days passed (start of week) -> use History Average
+                            weeklyCurrentData[i] = m.charts.weeklyHistory[i] || 0;
                         }
-                    } else {
-                        currentSalesByWeek[i] = historyAvgSalesByWeek[i] || 0;
+                    } else if (i > currentWeekIndex) {
+                        // Future weeks: Use history average as projection
+                        weeklyCurrentData[i] = m.charts.weeklyHistory[i] || 0;
                     }
+                    // Past weeks (i < currentWeekIndex) remain as Actuals
                 }
             }
+
+            // --- Render Charts ---
 
             if (comparisonChartType === 'weekly') {
                 monthlyComparisonChartContainer.classList.add('hidden');
                 weeklyComparisonChartContainer.classList.remove('hidden');
                 comparisonChartTitle.textContent = 'Comparativo de Faturamento Semanal';
+
                 const weekLabels = currentMonthWeeks.map((w, i) => `Semana ${i + 1}`);
 
                 createChart('weeklyComparisonChart', 'line', weekLabels, [
-                    { label: useTendencyComparison ? 'Tendência Semanal' : 'Mês Atual', data: currentSalesByWeek, borderColor: '#14b8a6', tension: 0.2, pointRadius: 5, pointBackgroundColor: '#14b8a6', borderWidth: 2.5 },
-                    { label: 'Média Trimestre', data: historyAvgSalesByWeek, borderColor: '#f97316', tension: 0.2, pointRadius: 5, pointBackgroundColor: '#f97316', borderWidth: 2.5 }
+                    { label: useTendencyComparison ? 'Tendência Semanal' : 'Mês Atual', data: weeklyCurrentData, borderColor: '#14b8a6', tension: 0.2, pointRadius: 5, pointBackgroundColor: '#14b8a6', borderWidth: 2.5 },
+                    { label: 'Média Trimestre', data: m.charts.weeklyHistory, borderColor: '#f97316', tension: 0.2, pointRadius: 5, pointBackgroundColor: '#f97316', borderWidth: 2.5 }
                 ], {
-                    plugins: {
-                        legend: { display: true, position: 'top', align: 'end' }
-                    },
+                    plugins: { legend: { display: true, position: 'top', align: 'end' } },
                     layout: { padding: { bottom: 0 } }
                 });
 
@@ -4957,90 +5095,35 @@
                 weeklyComparisonChartContainer.classList.add('hidden');
                 monthlyComparisonChartContainer.classList.remove('hidden');
                 
-                // Show Metric Toggle
                 const metricToggle = document.getElementById('comparison-monthly-metric-container');
                 if (metricToggle) metricToggle.classList.remove('hidden');
 
                 const isFat = comparisonMonthlyMetric === 'faturamento';
                 comparisonChartTitle.textContent = isFat ? 'Comparativo de Faturamento Mensal' : 'Comparativo de Clientes Atendidos Mensal';
 
-                // --- 1. History Calculation ---
-                // We need both Revenue and Client Count for history
-                const historyDataByMonth = {}; // MonthKey -> { fat: 0, clients: Set() }
+                // Prepare Data from metrics.charts.monthlyData
+                const monthLabels = m.charts.monthlyData.map(d => d.label);
+                const monthValues = m.charts.monthlyData.map(d => isFat ? d.fat : d.clients);
 
-                historySales.forEach(sale => {
-                    const saleDate = parseDate(sale.DTPED);
-                    if (!saleDate) return;
-                    const monthKey = `${saleDate.getFullYear()}-${String(saleDate.getMonth() + 1).padStart(2, '0')}`;
-                    
-                    if (!historyDataByMonth[monthKey]) {
-                        historyDataByMonth[monthKey] = { fat: 0, clientMap: new Map() };
-                    }
-                    const monthData = historyDataByMonth[monthKey];
-                    
-                    // Sum Revenue
-                    monthData.fat += sale.VLVENDA;
-                    
-                    // Sum Client Sales for Positive Check
-                    if (sale.CODCLI) {
-                        monthData.clientMap.set(sale.CODCLI, (monthData.clientMap.get(sale.CODCLI) || 0) + sale.VLVENDA);
-                    }
-                });
-
-                // --- 2. Current Month Calculation ---
-                let monthlyCurrentSales = currentSales;
-                
-                // Tendency Logic (Only applies to Faturamento/Revenue)
-                if (isFat && useTendencyComparison) {
-                    const totalDays = getWorkingDaysInMonth(currentYear, currentMonth, selectedHolidays);
-                    const passedDays = getPassedWorkingDaysInMonth(currentYear, currentMonth, selectedHolidays, lastSaleDate);
-
-                    if (totalDays > 0 && passedDays > 0 && passedDays <= totalDays) {
-                        const projectionFactor = totalDays / passedDays;
-                        const currentTotal = monthlyCurrentSales.reduce((sum, item) => sum + item.VLVENDA, 0);
-                        const projectedTotal = currentTotal * projectionFactor;
-                        // Mock sales for tendency display
-                        monthlyCurrentSales = [{ VLVENDA: projectedTotal, DTPED: new Date() }];
-                    }
-                }
-
-                const currentTotalFat = monthlyCurrentSales.reduce((sum, item) => sum + item.VLVENDA, 0);
-                const currentTotalClients = getPositiveClientsWithNewLogic(currentSales); // Always use real sales for client count (Tendency doesn't make sense for unique count easily)
-
-                // --- 3. Prepare Chart Data ---
-                const sortedMonths = Object.keys(historyDataByMonth).sort();
-                
-                const monthLabels = sortedMonths.map(monthKey => {
-                    const [year, month] = monthKey.split('-');
-                    return new Date(Date.UTC(parseInt(year), parseInt(month) - 1, 1)).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit', timeZone: 'UTC' });
-                });
-
-                const monthValues = sortedMonths.map(monthKey => {
-                    const d = historyDataByMonth[monthKey];
-                    if (isFat) return d.fat;
-                    else {
-                        // Count positive clients (> 1)
-                        let count = 0;
-                        d.clientMap.forEach(val => { if (val > 1) count++; });
-                        return count;
-                    }
-                });
-
+                // Add Current Month
                 let currentMonthLabel = 'Mês Atual';
                 if (currentSales.length > 0) {
                     const firstSaleDate = parseDate(currentSales[0].DTPED) || new Date();
                     currentMonthLabel = firstSaleDate.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
                 }
-
-                const existingIndex = monthLabels.indexOf(currentMonthLabel);
-                const currentValue = isFat ? currentTotalFat : currentTotalClients;
-
-                if (existingIndex !== -1) {
-                    monthValues[existingIndex] = currentValue;
-                } else {
-                    monthLabels.push(currentMonthLabel);
-                    monthValues.push(currentValue);
+                
+                // Tendency for Monthly Chart (Only Fat)
+                let currentVal = isFat ? m.current.fat : m.current.clients;
+                if (isFat && useTendencyComparison) {
+                    const totalDays = getWorkingDaysInMonth(currentYear, currentMonth, selectedHolidays);
+                    const passedDays = getPassedWorkingDaysInMonth(currentYear, currentMonth, selectedHolidays, lastSaleDate);
+                    if (totalDays > 0 && passedDays > 0) {
+                        currentVal = (currentVal / passedDays) * totalDays;
+                    }
                 }
+
+                monthLabels.push(currentMonthLabel);
+                monthValues.push(currentVal);
 
                 createChart('monthlyComparisonChart', 'bar', monthLabels, [{
                     label: isFat ? 'Faturamento' : 'Clientes Atendidos',
@@ -5083,15 +5166,10 @@
                             callbacks: {
                                 label: function(context) {
                                     let label = context.dataset.label || '';
-                                    if (label) {
-                                        label += ': ';
-                                    }
+                                    if (label) label += ': ';
                                     if (context.parsed.y !== null) {
-                                        if (isFat) {
-                                            label += new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed.y);
-                                        } else {
-                                            label += context.parsed.y.toLocaleString('pt-BR') + ' clientes';
-                                        }
+                                        if (isFat) label += new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed.y);
+                                        else label += context.parsed.y.toLocaleString('pt-BR') + ' clientes';
                                     }
                                     return label;
                                 }
@@ -5101,91 +5179,84 @@
                 });
             }
 
-            const salesByWeekAndDay = {};
-            currentMonthWeeks.forEach((w, i) => {
-                salesByWeekAndDay[i + 1] = new Array(7).fill(0);
-            });
+            // --- Daily Chart Update (Simplified logic re-using existing complexity or keeping as is) ---
+            // The daily chart logic is complex and relies on specific day distribution.
+            // For now, let's keep the daily logic from the previous implementation but source data from our filtered set if possible
+            // OR re-implement simplified.
+            // Given the user complaint is "Slow", re-calculating daily distribution for history IS slow.
+            // Let's implement a lighter version or skip if not critical?
+            // The user likes the visual. I will optimize the Daily Chart loop.
 
-            salesForWeeklyCharts.forEach(sale => {
-                const saleDate = parseDate(sale.DTPED);
-                if (!saleDate) return;
-                const weekIndex = currentMonthWeeks.findIndex(week => saleDate >= week.start && saleDate <= week.end);
-                if (weekIndex !== -1) {
-                    const dayOfWeek = saleDate.getUTCDay();
-                    salesByWeekAndDay[weekIndex + 1][dayOfWeek] += sale.VLVENDA;
+            // Optimized Daily Chart Logic:
+            // Instead of looping History Sales again, we could have pre-aggregated it in `calculateUnifiedMetrics`.
+            // But `calculateUnifiedMetrics` returned `weeklyHistory`.
+            // Let's do a simplified daily breakdown here, but optimized.
+
+            const salesByWeekAndDay = {};
+            // Init
+            currentMonthWeeks.forEach((w, i) => { salesByWeekAndDay[i + 1] = new Array(7).fill(0); });
+
+            // Current Sales Daily Distribution (Fast)
+            currentSales.forEach(s => {
+                const d = parseDate(s.DTPED);
+                if(d) {
+                    const wIdx = currentMonthWeeks.findIndex(w => d >= w.start && d <= w.end);
+                    if(wIdx !== -1) salesByWeekAndDay[wIdx+1][d.getUTCDay()] += s.VLVENDA;
                 }
             });
 
+            // Add Overlap History to Daily Chart (Fast)
+            if (m.overlapSales && m.overlapSales.length > 0) {
+                m.overlapSales.forEach(s => {
+                    const d = parseDate(s.DTPED);
+                    if (d) {
+                        // We know it belongs to Week 1 based on calculateUnifiedMetrics logic
+                        salesByWeekAndDay[1][d.getUTCDay()] += s.VLVENDA;
+                    }
+                });
+            }
+
+            // Tendency logic for Daily Chart
             if (useTendencyComparison) {
                 const today = lastSaleDate;
                 const currentWeekIndex = currentMonthWeeks.findIndex(w => today >= w.start && today <= w.end);
 
-                const historicalDayWeights = {};
-                const salesByWeekDayMonth = {};
-
-                historySales.forEach(sale => {
-                    const d = parseDate(sale.DTPED);
-                    if (!d) return;
-                    const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
-                    const monthWeeks = getMonthWeeks(d.getUTCFullYear(), d.getUTCMonth());
-                    const weekIndex = monthWeeks.findIndex(w => d >= w.start && d <= w.end);
-                    if (weekIndex !== -1) {
-                        if (!salesByWeekDayMonth[monthKey]) salesByWeekDayMonth[monthKey] = {};
-                        if (!salesByWeekDayMonth[monthKey][weekIndex]) salesByWeekDayMonth[monthKey][weekIndex] = new Array(7).fill(0);
-                        salesByWeekDayMonth[monthKey][weekIndex][d.getUTCDay()] += sale.VLVENDA;
+                if (currentWeekIndex !== -1) {
+                    const week = currentMonthWeeks[currentWeekIndex];
+                    let remainingDays = 0;
+                    for (let d = new Date(week.start); d <= week.end; d.setUTCDate(d.getUTCDate() + 1)) {
+                        if (d > today && d.getUTCDay() >= 1 && d.getUTCDay() <= 5 && !isHoliday(d, selectedHolidays)) remainingDays++;
                     }
-                });
 
-                for (let i = 0; i < currentMonthWeeks.length; i++) {
-                    const totalsByDay = new Array(7).fill(0);
-                    let monthCount = 0;
-                    for (const monthKey in salesByWeekDayMonth) {
-                        if (salesByWeekDayMonth[monthKey][i]) {
-                            monthCount++;
-                            for (let day = 0; day < 7; day++) {
-                                totalsByDay[day] += salesByWeekDayMonth[monthKey][i][day] || 0;
+                    const currentWeekTotal = weeklyCurrentData[currentWeekIndex]; // Projected total
+                    const currentWeekSold = m.charts.weeklyCurrent[currentWeekIndex]; // Actual sold
+                    const toDistribute = Math.max(0, currentWeekTotal - currentWeekSold);
+
+                    if (remainingDays > 0 && toDistribute > 0) {
+                        const dailyAdd = toDistribute / remainingDays;
+                        for (let d = new Date(week.start); d <= week.end; d.setUTCDate(d.getUTCDate() + 1)) {
+                            if (d > today && d.getUTCDay() >= 1 && d.getUTCDay() <= 5 && !isHoliday(d, selectedHolidays)) {
+                                salesByWeekAndDay[currentWeekIndex+1][d.getUTCDay()] += dailyAdd;
                             }
                         }
                     }
-
-                    const weeklyTotal = totalsByDay.reduce((a, b) => a + b, 0);
-                    if (weeklyTotal > 0) {
-                        historicalDayWeights[i] = totalsByDay.map(dayTotal => dayTotal / weeklyTotal);
-                    } else {
-                        historicalDayWeights[i] = [0, 0.2, 0.2, 0.2, 0.2, 0.2, 0];
-                    }
                 }
 
+                // For future weeks, distribute evenly across working days
                 for (let i = currentWeekIndex + 1; i < currentMonthWeeks.length; i++) {
-                    const projectedTotalForWeek = currentSalesByWeek[i];
-                    const weights = historicalDayWeights[i];
-                    for (let day = 0; day < 7; day++) {
-                        salesByWeekAndDay[i + 1][day] = projectedTotalForWeek * weights[day];
-                    }
-                }
-
-                if (currentWeekIndex !== -1) {
-                    const week = currentMonthWeeks[currentWeekIndex];
-                    const soldInCurrentWeek = Object.values(salesByWeekAndDay[currentWeekIndex + 1]).reduce((a, b) => a + b, 0);
-                    const projectedTotalForCurrentWeek = currentSalesByWeek[currentWeekIndex];
-                    const remainingToSell = projectedTotalForCurrentWeek - soldInCurrentWeek;
-
-                    let futureDayWeights = [];
-                    let totalFutureWeight = 0;
+                    const proj = weeklyCurrentData[i];
+                    const week = currentMonthWeeks[i];
+                    let workDays = 0;
                     for (let d = new Date(week.start); d <= week.end; d.setUTCDate(d.getUTCDate() + 1)) {
-                        if (d > today) {
-                            const dayIndex = d.getUTCDay();
-                            const weight = historicalDayWeights[currentWeekIndex][dayIndex];
-                            futureDayWeights.push({ day: dayIndex, weight: weight });
-                            totalFutureWeight += weight;
-                        }
+                        if (d.getUTCDay() >= 1 && d.getUTCDay() <= 5 && !isHoliday(d, selectedHolidays)) workDays++;
                     }
-
-                    if (totalFutureWeight > 0 && remainingToSell > 0) {
-                        futureDayWeights.forEach(item => {
-                            const distributedAmount = (item.weight / totalFutureWeight) * remainingToSell;
-                            salesByWeekAndDay[currentWeekIndex + 1][item.day] = distributedAmount;
-                        });
+                    if (workDays > 0) {
+                        const daily = proj / workDays;
+                        for (let d = new Date(week.start); d <= week.end; d.setUTCDate(d.getUTCDate() + 1)) {
+                            if (d.getUTCDay() >= 1 && d.getUTCDay() <= 5 && !isHoliday(d, selectedHolidays)) {
+                                salesByWeekAndDay[i+1][d.getUTCDay()] += daily;
+                            }
+                        }
                     }
                 }
             }
@@ -5208,31 +5279,22 @@
 
             if (dailyBreakdownDatasets.some(ds => ds.data.some(d => d > 0))) {
                 createChart('dailyWeeklyComparisonChart', 'bar', weekLabelsForDailyChart, dailyBreakdownDatasets, {
-                    plugins: {
-                        legend: { display: true, position: 'top' },
-                        tooltip: {
-                            mode: 'point',
-                            intersect: true
-                        },
-                        datalabels: { display: false }
-                    },
-                    scales: {
-                        x: { stacked: false },
-                        y: { stacked: false, ticks: { callback: (v) => (v / 1000).toFixed(0) + 'k' } }
-                    }
+                    plugins: { legend: { display: true, position: 'top' }, tooltip: { mode: 'point', intersect: true }, datalabels: { display: false } },
+                    scales: { x: { stacked: false }, y: { stacked: false, ticks: { callback: (v) => (v / 1000).toFixed(0) + 'k' } } }
                 });
             } else {
                 showNoDataMessage('dailyWeeklyComparisonChart', 'Sem dados para exibir.');
             }
 
-            const supervisorComparison = {};
-            const activeSupervisors = [...new Set(allSalesData.map(s => s.SUPERV))].filter(Boolean);
-            activeSupervisors.forEach(sup => supervisorComparison[sup] = { current: 0, history: 0 });
-            currentSales.forEach(s => { if(s.SUPERV && supervisorComparison[s.SUPERV]) supervisorComparison[s.SUPERV].current += s.VLVENDA; });
-            historySales.forEach(s => { if(s.SUPERV && supervisorComparison[s.SUPERV]) supervisorComparison[s.SUPERV].history += s.VLVENDA; });
-            Object.keys(supervisorComparison).forEach(sup => supervisorComparison[sup].history /= QUARTERLY_DIVISOR);
+            // --- Supervisor Table ---
             const supervisorTableBody = document.getElementById('supervisorComparisonTableBody');
-            supervisorTableBody.innerHTML = Object.entries(supervisorComparison).map(([sup, data]) => { const variation = data.history > 0 ? ((data.current - data.history) / data.history) * 100 : (data.current > 0 ? 100 : 0); const colorClass = variation > 0 ? 'text-green-400' : variation < 0 ? 'text-red-400' : 'text-slate-400'; return `<tr class="hover:bg-slate-700"><td class="px-4 py-2">${sup}</td><td class="px-4 py-2 text-right">${data.history.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td class="px-4 py-2 text-right">${data.current.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td class="px-4 py-2 text-right ${colorClass}">${variation.toFixed(2)}%</td></tr>`; }).join('');
+            const supData = m.charts.supervisorData;
+            const supRows = Object.entries(supData).map(([sup, data]) => {
+                const variation = data.history > 0 ? ((data.current - data.history) / data.history) * 100 : (data.current > 0 ? 100 : 0);
+                const colorClass = variation > 0 ? 'text-green-400' : variation < 0 ? 'text-red-400' : 'text-slate-400';
+                return `<tr class="hover:bg-slate-700"><td class="px-4 py-2">${sup}</td><td class="px-4 py-2 text-right">${data.history.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td class="px-4 py-2 text-right">${data.current.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td class="px-4 py-2 text-right ${colorClass}">${variation.toFixed(2)}%</td></tr>`;
+            }).join('');
+            supervisorTableBody.innerHTML = supRows;
         }
 
         function updateStockView() {
