@@ -1360,6 +1360,7 @@
         let mixKpiMode = 'total'; // 'total' ou 'atendidos'
 
         let currentGoalsSupplier = '707';
+        let currentGoalsBrand = null;
         let goalsTableState = {
             currentPage: 1,
             itemsPerPage: 100,
@@ -1965,14 +1966,17 @@
             const goalVol = parseInputMoney('goal-global-vol');
             const goalMix = parseInputMoney('goal-global-mix');
 
-            // --- CÁLCULO DOS TOTAIS GLOBAIS (EMPRESA) PARA O FORNECEDOR ATUAL ---
+            // Cache Key Logic (Supplier + Brand)
+            const cacheKey = currentGoalsSupplier + (currentGoalsBrand ? `_${currentGoalsBrand}` : '');
+
+            // --- CÁLCULO DOS TOTAIS GLOBAIS (EMPRESA) PARA O FORNECEDOR/MARCA ATUAL ---
             // Isso garante que o % SHARE seja sobre o total da empresa, não do filtro.
             let globalTotalAvgFat = 0;
             let globalTotalAvgVol = 0;
 
-            if (globalGoalsTotalsCache[currentGoalsSupplier]) {
-                globalTotalAvgFat = globalGoalsTotalsCache[currentGoalsSupplier].fat;
-                globalTotalAvgVol = globalGoalsTotalsCache[currentGoalsSupplier].vol;
+            if (globalGoalsTotalsCache[cacheKey]) {
+                globalTotalAvgFat = globalGoalsTotalsCache[cacheKey].fat;
+                globalTotalAvgVol = globalGoalsTotalsCache[cacheKey].vol;
             } else {
                 // Calcular totais globais varrendo todos os clientes ativos
                 const allActiveClients = allClientsData.filter(c => {
@@ -1991,7 +1995,22 @@
                         let sumVol = 0;
                         clientHistoryIds.forEach(id => {
                             const sale = optimizedData.historyById.get(id);
+
+                            // Check Supplier
                             if (String(sale.CODFOR) !== currentGoalsSupplier) return;
+
+                            // Check Brand (if needed)
+                            if (currentGoalsBrand) {
+                                const desc = normalize(sale.DESCRICAO || '');
+                                if (currentGoalsBrand === 'TODDYNHO') {
+                                    if (!desc.includes('TODDYNHO')) return;
+                                } else if (currentGoalsBrand === 'TODDY') {
+                                    if (!desc.includes('TODDY')) return;
+                                } else if (currentGoalsBrand === 'QUAKER_KEROCOCO') {
+                                    if (!desc.includes('QUAKER') && !desc.includes('KEROCOCO')) return;
+                                }
+                            }
+
                             if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
                                 sumFat += sale.VLVENDA;
                                 sumVol += sale.TOTPESOLIQ;
@@ -2002,7 +2021,7 @@
                     }
                 });
                 
-                globalGoalsTotalsCache[currentGoalsSupplier] = { fat: globalTotalAvgFat, vol: globalTotalAvgVol };
+                globalGoalsTotalsCache[cacheKey] = { fat: globalTotalAvgFat, vol: globalTotalAvgVol };
             }
             // ---------------------------------------------------------------------
 
@@ -2025,6 +2044,18 @@
                         
                         // Filter by current supplier tab
                         if (String(sale.CODFOR) !== currentGoalsSupplier) return;
+
+                        // Filter by Brand (if needed)
+                        if (currentGoalsBrand) {
+                            const desc = normalize(sale.DESCRICAO || '');
+                            if (currentGoalsBrand === 'TODDYNHO') {
+                                if (!desc.includes('TODDYNHO')) return;
+                            } else if (currentGoalsBrand === 'TODDY') {
+                                if (!desc.includes('TODDY')) return;
+                            } else if (currentGoalsBrand === 'QUAKER_KEROCOCO') {
+                                if (!desc.includes('QUAKER') && !desc.includes('KEROCOCO')) return;
+                            }
+                        }
 
                         if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
                             sumFat += sale.VLVENDA;
@@ -7041,12 +7072,13 @@
             const debouncedUpdateGoals = debounce(updateGoals, 400);
 
             // Sub-tabs Switching
-            const goalsSubTabs = document.getElementById('goals-sub-tabs');
-            if (goalsSubTabs) {
-                goalsSubTabs.addEventListener('click', (e) => {
+            const goalsSubTabsContainer = document.getElementById('goals-sub-tabs-container');
+            if (goalsSubTabsContainer) {
+                goalsSubTabsContainer.addEventListener('click', (e) => {
                     const btn = e.target.closest('.goals-sub-tab');
                     if (!btn) return;
 
+                    // Remove active styles from ALL sub-tabs across both groups
                     document.querySelectorAll('.goals-sub-tab').forEach(b => {
                         b.classList.remove('active', 'text-teal-400', 'font-bold', 'border-b-2', 'border-teal-400');
                         b.classList.add('text-slate-400', 'font-medium');
@@ -7062,8 +7094,52 @@
                     btn.prepend(indicator);
 
                     currentGoalsSupplier = btn.dataset.supplier;
+                    currentGoalsBrand = btn.dataset.brand || null;
+
                     goalsTableState.currentPage = 1;
                     updateGoals();
+                });
+            }
+
+            // Category Toggle Logic
+            const btnElmaChips = document.getElementById('goals-category-elmachips-btn');
+            const btnFoods = document.getElementById('goals-category-foods-btn');
+            const subTabsElmaChips = document.getElementById('goals-sub-tabs-elmachips');
+            const subTabsFoods = document.getElementById('goals-sub-tabs-foods');
+
+            if (btnElmaChips && btnFoods) {
+                btnElmaChips.addEventListener('click', () => {
+                    // Update Styles
+                    btnElmaChips.classList.remove('bg-[#334155]', 'text-slate-400', 'border-slate-700');
+                    btnElmaChips.classList.add('bg-[#0d9488]', 'text-white', 'shadow-lg', 'border-teal-500/50');
+
+                    btnFoods.classList.remove('bg-[#0d9488]', 'text-white', 'shadow-lg', 'border-teal-500/50');
+                    btnFoods.classList.add('bg-[#334155]', 'text-slate-400', 'border-slate-700');
+
+                    // Toggle Sub-tabs
+                    subTabsElmaChips.classList.remove('hidden');
+                    subTabsFoods.classList.add('hidden');
+
+                    // Select First Tab of Elma Chips
+                    const firstTab = subTabsElmaChips.querySelector('.goals-sub-tab');
+                    if (firstTab) firstTab.click();
+                });
+
+                btnFoods.addEventListener('click', () => {
+                    // Update Styles
+                    btnFoods.classList.remove('bg-[#334155]', 'text-slate-400', 'border-slate-700');
+                    btnFoods.classList.add('bg-[#0d9488]', 'text-white', 'shadow-lg', 'border-teal-500/50');
+
+                    btnElmaChips.classList.remove('bg-[#0d9488]', 'text-white', 'shadow-lg', 'border-teal-500/50');
+                    btnElmaChips.classList.add('bg-[#334155]', 'text-slate-400', 'border-slate-700');
+
+                    // Toggle Sub-tabs
+                    subTabsFoods.classList.remove('hidden');
+                    subTabsElmaChips.classList.add('hidden');
+
+                    // Select First Tab of Foods
+                    const firstTab = subTabsFoods.querySelector('.goals-sub-tab');
+                    if (firstTab) firstTab.click();
                 });
             }
 
@@ -8294,16 +8370,27 @@
                                 <!-- Category Selection Toggles -->
                                 <div class="flex flex-col gap-4 mb-6">
                                     <div class="flex gap-4">
-                                        <button class="px-8 py-3 bg-[#0d9488] text-white font-bold rounded hover:bg-teal-700 transition-colors uppercase tracking-wider text-sm shadow-lg border border-teal-500/50">ELMA CHIPS</button>
-                                        <button class="px-8 py-3 bg-[#334155] text-slate-400 font-bold rounded hover:bg-slate-700 transition-colors uppercase tracking-wider text-sm border border-slate-700">FOODS</button>
+                                        <button id="goals-category-elmachips-btn" class="px-8 py-3 bg-[#0d9488] text-white font-bold rounded hover:bg-teal-700 transition-colors uppercase tracking-wider text-sm shadow-lg border border-teal-500/50">ELMA CHIPS</button>
+                                        <button id="goals-category-foods-btn" class="px-8 py-3 bg-[#334155] text-slate-400 font-bold rounded hover:bg-slate-700 transition-colors uppercase tracking-wider text-sm border border-slate-700">FOODS</button>
                                     </div>
-                                    <!-- Sub-tabs -->
-                                    <div class="flex border-b border-slate-700 overflow-x-auto" id="goals-sub-tabs">
-                                        <button data-supplier="707" class="goals-sub-tab px-6 py-3 text-teal-400 font-bold text-sm border-b-2 border-teal-400 flex items-center gap-2 whitespace-nowrap active">
-                                            <span class="w-2 h-2 rounded-full bg-teal-400 inline-block indicator"></span> EXTRUSADOS
-                                        </button>
-                                        <button data-supplier="708" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">NÃO EXTRUSADOS</button>
-                                        <button data-supplier="752" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">TORCIDA</button>
+
+                                    <!-- Sub-tabs Container -->
+                                    <div id="goals-sub-tabs-container">
+                                        <!-- Elma Chips Sub-tabs -->
+                                        <div class="flex border-b border-slate-700 overflow-x-auto" id="goals-sub-tabs-elmachips">
+                                            <button data-supplier="707" class="goals-sub-tab px-6 py-3 text-teal-400 font-bold text-sm border-b-2 border-teal-400 flex items-center gap-2 whitespace-nowrap active">
+                                                <span class="w-2 h-2 rounded-full bg-teal-400 inline-block indicator"></span> EXTRUSADOS
+                                            </button>
+                                            <button data-supplier="708" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">NÃO EXTRUSADOS</button>
+                                            <button data-supplier="752" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">TORCIDA</button>
+                                        </div>
+
+                                        <!-- Foods Sub-tabs -->
+                                        <div class="hidden flex border-b border-slate-700 overflow-x-auto" id="goals-sub-tabs-foods">
+                                            <button data-supplier="1119" data-brand="TODDYNHO" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">TODDYNHO</button>
+                                            <button data-supplier="1119" data-brand="TODDY" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">TODDY</button>
+                                            <button data-supplier="1119" data-brand="QUAKER_KEROCOCO" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">QUAKER / KEROCOCO</button>
+                                        </div>
                                     </div>
                                 </div>
 
