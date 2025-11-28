@@ -1366,6 +1366,7 @@
             filteredData: [],
             totalPages: 1
         };
+        let globalGoalsTotalsCache = {};
         let selectedGoalsGvSupervisors = [];
         let selectedGoalsGvSellers = [];
         let selectedGoalsSvSupervisors = [];
@@ -1964,6 +1965,47 @@
             const goalVol = parseInputMoney('goal-global-vol');
             const goalMix = parseInputMoney('goal-global-mix');
 
+            // --- CÁLCULO DOS TOTAIS GLOBAIS (EMPRESA) PARA O FORNECEDOR ATUAL ---
+            // Isso garante que o % SHARE seja sobre o total da empresa, não do filtro.
+            let globalTotalAvgFat = 0;
+            let globalTotalAvgVol = 0;
+
+            if (globalGoalsTotalsCache[currentGoalsSupplier]) {
+                globalTotalAvgFat = globalGoalsTotalsCache[currentGoalsSupplier].fat;
+                globalTotalAvgVol = globalGoalsTotalsCache[currentGoalsSupplier].vol;
+            } else {
+                // Calcular totais globais varrendo todos os clientes ativos
+                const allActiveClients = allClientsData.filter(c => {
+                    const rca1 = String(c.rca1 || '').trim();
+                    const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
+                    if (isAmericanas) return true;
+                    if (rca1 === '53') return false;
+                    return true;
+                });
+
+                allActiveClients.forEach(client => {
+                    const codCli = client['Código'];
+                    const clientHistoryIds = optimizedData.indices.history.byClient.get(codCli);
+                    if (clientHistoryIds) {
+                        let sumFat = 0;
+                        let sumVol = 0;
+                        clientHistoryIds.forEach(id => {
+                            const sale = optimizedData.historyById.get(id);
+                            if (String(sale.CODFOR) !== currentGoalsSupplier) return;
+                            if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
+                                sumFat += sale.VLVENDA;
+                                sumVol += sale.TOTPESOLIQ;
+                            }
+                        });
+                        globalTotalAvgFat += (sumFat / QUARTERLY_DIVISOR);
+                        globalTotalAvgVol += ((sumVol / 1000) / QUARTERLY_DIVISOR);
+                    }
+                });
+                
+                globalGoalsTotalsCache[currentGoalsSupplier] = { fat: globalTotalAvgFat, vol: globalTotalAvgVol };
+            }
+            // ---------------------------------------------------------------------
+
             const clientMetrics = [];
             let totalAvgFat = 0;
             let totalAvgVol = 0;
@@ -2029,10 +2071,11 @@
             });
 
             clientMetrics.forEach(m => {
-                m.shareFat = totalAvgFat > 0 ? (m.avgFat / totalAvgFat) : 0;
+                // Share calculado sobre o TOTAL GLOBAL DA EMPRESA
+                m.shareFat = globalTotalAvgFat > 0 ? (m.avgFat / globalTotalAvgFat) : 0;
                 m.metaFat = m.shareFat * goalFat;
                 
-                m.shareVol = totalAvgVol > 0 ? (m.avgVol / totalAvgVol) : 0;
+                m.shareVol = globalTotalAvgVol > 0 ? (m.avgVol / globalTotalAvgVol) : 0;
                 m.metaVol = m.shareVol * goalVol;
                 
                 m.shareMix = totalAvgMix > 0 ? (m.avgMix / totalAvgMix) : 0;
@@ -2080,7 +2123,6 @@
                         <td class="px-2 py-2 text-right text-slate-300 font-medium bg-orange-900/10 border-r border-slate-800/50 text-xs">${item.avgVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
                         <td class="px-2 py-2 text-center text-orange-400 text-xs bg-orange-900/10 border-r border-slate-800/50">${(item.shareVol * 100).toFixed(2)}%</td>
                         <td class="px-2 py-2 text-right font-bold text-orange-200 bg-orange-900/20 border-r border-slate-800 text-xs">${item.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
-                        <td class="px-2 py-2 text-center font-bold text-purple-200 bg-purple-900/20 text-xs">1</td>
                     </tr>
                 `).join('');
                 goalsGvTableBody.innerHTML = rows;
@@ -7098,6 +7140,19 @@
                 if (!goalsSvSupervisorFilterBtn.contains(e.target) && !goalsSvSupervisorFilterDropdown.contains(e.target)) goalsSvSupervisorFilterDropdown.classList.add('hidden');
             });
 
+            document.getElementById('goals-prev-page-btn').addEventListener('click', () => {
+                if (goalsTableState.currentPage > 1) {
+                    goalsTableState.currentPage--;
+                    updateGoalsView();
+                }
+            });
+            document.getElementById('goals-next-page-btn').addEventListener('click', () => {
+                if (goalsTableState.currentPage < goalsTableState.totalPages) {
+                    goalsTableState.currentPage++;
+                    updateGoalsView();
+                }
+            });
+
 
             const updateMix = () => {
                 markDirty('mix');
@@ -8274,7 +8329,7 @@
                                     <!-- Positivação Card -->
                                     <div class="bg-[#3b0764] border border-purple-900/50 rounded-lg p-3 relative overflow-hidden group">
                                         <div class="absolute top-0 left-0 w-1 h-full bg-purple-500"></div>
-                                        <label class="text-[10px] font-bold text-purple-300 uppercase tracking-wider mb-1 block">POSITIVAÇÃO</label>
+                                        <label class="text-[10px] font-bold text-purple-300 uppercase tracking-wider mb-1 block">Oportunidades</label>
                                         <div class="flex gap-2">
                                             <input type="text" id="goal-global-mix" class="w-full bg-[#0f172a] border border-purple-900/50 text-white font-bold text-lg p-2 rounded focus:outline-none focus:border-purple-500" value="0" readonly>
                                         </div>
@@ -8295,7 +8350,7 @@
                                                 <span id="goals-gv-supervisor-filter-text">Todos</span>
                                                 <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
                                             </button>
-                                            <div id="goals-gv-supervisor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
+                                            <div id="goals-gv-supervisor-filter-dropdown" class="hidden absolute z-50 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
                                         </div>
                                         <div class="relative">
                                             <label for="goals-gv-seller-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Vendedor</label>
@@ -8303,7 +8358,7 @@
                                                 <span id="goals-gv-seller-filter-text">Todos</span>
                                                 <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
                                             </button>
-                                            <div id="goals-gv-seller-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
+                                            <div id="goals-gv-seller-filter-dropdown" class="hidden absolute z-50 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
                                         </div>
                                         <div>
                                             <label for="goals-gv-codcli-filter" class="block mb-2 text-sm font-medium text-slate-400">Cód. Cliente</label>
@@ -8324,7 +8379,6 @@
                                                     <th rowspan="2" class="px-3 py-2 text-left w-24 bg-[#0f172a] border-r border-slate-700">VENDEDOR</th>
                                                     <th colspan="3" class="px-2 py-1 text-center bg-blue-900/30 text-blue-400 border-r border-slate-700 border-b border-blue-900/50">FATURAMENTO (R$)</th>
                                     <th colspan="3" class="px-2 py-1 text-center bg-orange-900/30 text-orange-400 border-b border-orange-900/50 border-r border-slate-700">VOLUME (TON)</th>
-                                    <th rowspan="2" class="px-2 py-1 text-center bg-purple-900/30 text-purple-400 border-b border-purple-900/50 text-[10px]">Oportunidades</th>
                                                 </tr>
                                                 <tr class="bg-[#1e293b] text-slate-300 border-b border-slate-700 text-[10px]">
                                                     <!-- Fat Headers -->
@@ -8361,7 +8415,7 @@
                                                 <span id="goals-sv-supervisor-filter-text">Todos</span>
                                                 <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
                                             </button>
-                                            <div id="goals-sv-supervisor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
+                                            <div id="goals-sv-supervisor-filter-dropdown" class="hidden absolute z-50 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
                                         </div>
                                     </div>
                                 </div>
