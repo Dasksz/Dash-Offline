@@ -1360,11 +1360,20 @@
         let mixKpiMode = 'total'; // 'total' ou 'atendidos'
 
         let currentGoalsSupplier = '707';
+        let currentGoalsBrand = null;
         let goalsTableState = {
             currentPage: 1,
             itemsPerPage: 100,
             filteredData: [],
             totalPages: 1
+        };
+        let goalsTargets = {
+            '707': { fat: 0, vol: 0 },
+            '708': { fat: 0, vol: 0 },
+            '752': { fat: 0, vol: 0 },
+            '1119_TODDYNHO': { fat: 0, vol: 0 },
+            '1119_TODDY': { fat: 0, vol: 0 },
+            '1119_QUAKER_KEROCOCO': { fat: 0, vol: 0 }
         };
         let globalGoalsTotalsCache = {};
         let selectedGoalsGvSupervisors = [];
@@ -1958,21 +1967,131 @@
             return parseFloat(val) || 0;
         }
 
+        function updateGoalsSummaryView() {
+            const container = document.getElementById('goals-summary-grid');
+            if (!container) return;
+
+            const summaryItems = [
+                { title: 'Extrusados', supplier: '707', brand: null, color: 'teal' },
+                { title: 'Não Extrusados', supplier: '708', brand: null, color: 'blue' },
+                { title: 'Torcida', supplier: '752', brand: null, color: 'purple' },
+                { title: 'Toddynho', supplier: '1119', brand: 'TODDYNHO', color: 'orange' },
+                { title: 'Toddy', supplier: '1119', brand: 'TODDY', color: 'amber' },
+                { title: 'Quaker / Kerococo', supplier: '1119', brand: 'QUAKER_KEROCOCO', color: 'cyan' }
+            ];
+
+            const cardsHTML = summaryItems.map(item => {
+                const key = item.supplier + (item.brand ? `_${item.brand}` : '');
+                const target = goalsTargets[key] || { fat: 0, vol: 0 };
+
+                // Color mapping for classes
+                const colorMap = {
+                    teal: 'border-teal-500 text-teal-400 bg-teal-900/10',
+                    blue: 'border-blue-500 text-blue-400 bg-blue-900/10',
+                    purple: 'border-purple-500 text-purple-400 bg-purple-900/10',
+                    orange: 'border-orange-500 text-orange-400 bg-orange-900/10',
+                    amber: 'border-amber-500 text-amber-400 bg-amber-900/10',
+                    cyan: 'border-cyan-500 text-cyan-400 bg-cyan-900/10'
+                };
+
+                const styleClass = colorMap[item.color] || colorMap.teal;
+
+                return `
+                    <div class="bg-[#1e2a5a] border-l-4 ${styleClass.split(' ')[0]} rounded-r-lg p-4 shadow-md transition hover:-translate-y-1">
+                        <h3 class="font-bold text-lg text-white mb-3 border-b border-slate-700 pb-2">${item.title}</h3>
+                        <div class="space-y-3">
+                            <div>
+                                <p class="text-xs text-slate-400 uppercase font-semibold mb-1">Meta Faturamento</p>
+                                <p class="text-xl font-bold ${styleClass.split(' ')[1]}">
+                                    ${target.fat.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                </p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-slate-400 uppercase font-semibold mb-1">Meta Volume (Ton)</p>
+                                <p class="text-xl font-bold ${styleClass.split(' ')[1]}">
+                                    ${target.vol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = cardsHTML;
+        }
+
         function updateGoalsView() {
+            // Check if we are in Summary Mode
+            if (document.getElementById('goals-summary-content') && !document.getElementById('goals-summary-content').classList.contains('hidden')) {
+                updateGoalsSummaryView();
+                return;
+            }
+
             const filteredClients = getGoalsFilteredData();
             
+            // Determine Current Key and Load Values
+            const cacheKey = currentGoalsSupplier + (currentGoalsBrand ? `_${currentGoalsBrand}` : '');
+
+            // Only update inputs from state if not already focused/edited by user interaction (though here we just set them)
+            // Ideally, we set them when switching tabs.
+            // Here, we ensure the calculation uses the stored values.
+            // But we also need to update the DOM input fields if they don't match the current state (e.g. after tab switch)
+            const currentTargets = goalsTargets[cacheKey];
+
+            const fatInput = document.getElementById('goal-global-fat');
+            const volInput = document.getElementById('goal-global-vol');
+
+            // Check if inputs need update (avoid overwriting if user is typing? No, updateGoalsView is called on filter change/tab switch)
+            // We should have a flag or logic to know if this is a 'render' or 'calc'.
+            // For simplicity: We update inputs when switching tabs. We assume updateGoalsView is called then.
+
+            // We'll update the inputs here to match the active category.
+            // CAUTION: If updateGoalsView is called while typing (debounced), we might overwrite.
+            // But usually inputs drive the state.
+            // Let's rely on explicit tab switching to set inputs, and inputs to set state.
+            // However, updateGoalsView is the main render function.
+
+            // Let's use the Values from the DOM for calculation if they match the current state context,
+            // OR if we just switched tabs, we need to populate them.
+
+            // The issue: We don't know if we just switched tabs inside this function.
+            // Better approach: Populate inputs in the event listener for tab switching.
+            // Here we just READ from state or DOM?
+
+            // Let's read from the DOM inputs as the source of truth for the calculation BUT
+            // we must ensure they are populated correctly first.
+            // I will move the "Populate Inputs" logic to the Tab Click listeners.
+            // Here, I will read the values from the DOM to perform the distribution.
+
             const goalFat = parseInputMoney('goal-global-fat');
             const goalVol = parseInputMoney('goal-global-vol');
             const goalMix = parseInputMoney('goal-global-mix');
 
-            // --- CÁLCULO DOS TOTAIS GLOBAIS (EMPRESA) PARA O FORNECEDOR ATUAL ---
+            // Save current input values to state (Sync) - ensuring state is always up to date with what's visible
+            if (goalsTargets[cacheKey]) {
+                goalsTargets[cacheKey].fat = goalFat;
+                goalsTargets[cacheKey].vol = goalVol;
+            }
+
+            // --- CÁLCULO DOS TOTAIS GLOBAIS (EMPRESA) PARA O FORNECEDOR/MARCA ATUAL ---
             // Isso garante que o % SHARE seja sobre o total da empresa, não do filtro.
             let globalTotalAvgFat = 0;
             let globalTotalAvgVol = 0;
+            let globalTotalPrevFat = 0;
+            let globalTotalPrevVol = 0;
 
-            if (globalGoalsTotalsCache[currentGoalsSupplier]) {
-                globalTotalAvgFat = globalGoalsTotalsCache[currentGoalsSupplier].fat;
-                globalTotalAvgVol = globalGoalsTotalsCache[currentGoalsSupplier].vol;
+            // Determine Previous Month
+            const currentMonth = lastSaleDate.getUTCMonth();
+            const currentYear = lastSaleDate.getUTCFullYear();
+            let prevMonthIdx = currentMonth - 1;
+            let prevMonthYear = currentYear;
+            if (prevMonthIdx < 0) { prevMonthIdx = 11; prevMonthYear--; }
+
+            if (globalGoalsTotalsCache[cacheKey]) {
+                globalTotalAvgFat = globalGoalsTotalsCache[cacheKey].fat;
+                globalTotalAvgVol = globalGoalsTotalsCache[cacheKey].vol;
+                globalTotalPrevFat = globalGoalsTotalsCache[cacheKey].prevFat;
+                globalTotalPrevVol = globalGoalsTotalsCache[cacheKey].prevVol;
             } else {
                 // Calcular totais globais varrendo todos os clientes ativos
                 const allActiveClients = allClientsData.filter(c => {
@@ -1989,22 +2108,67 @@
                     if (clientHistoryIds) {
                         let sumFat = 0;
                         let sumVol = 0;
+                        let sumPrevFat = 0;
+                        let sumPrevVol = 0;
+
                         clientHistoryIds.forEach(id => {
                             const sale = optimizedData.historyById.get(id);
+
+                            // Check Supplier
                             if (String(sale.CODFOR) !== currentGoalsSupplier) return;
+
+                            // Check Brand (if needed)
+                            if (currentGoalsBrand) {
+                                const desc = normalize(sale.DESCRICAO || '');
+                                if (currentGoalsBrand === 'TODDYNHO') {
+                                    if (!desc.includes('TODDYNHO')) return;
+                                } else if (currentGoalsBrand === 'TODDY') {
+                                    if (!desc.includes('TODDY') || desc.includes('TODDYNHO')) return;
+                                } else if (currentGoalsBrand === 'QUAKER_KEROCOCO') {
+                                    if (!desc.includes('QUAKER') && !desc.includes('KEROCOCO')) return;
+                                }
+                            }
+
+                            // Standard Accumulation
                             if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
                                 sumFat += sale.VLVENDA;
                                 sumVol += sale.TOTPESOLIQ;
+
+                                // Previous Month check
+                                const d = parseDate(sale.DTPED);
+                                if (d && d.getUTCMonth() === prevMonthIdx && d.getUTCFullYear() === prevMonthYear) {
+                                    sumPrevFat += sale.VLVENDA;
+                                    sumPrevVol += sale.TOTPESOLIQ;
+                                }
                             }
                         });
                         globalTotalAvgFat += (sumFat / QUARTERLY_DIVISOR);
                         globalTotalAvgVol += ((sumVol / 1000) / QUARTERLY_DIVISOR);
+                        globalTotalPrevFat += sumPrevFat;
+                        globalTotalPrevVol += (sumPrevVol / 1000);
                     }
                 });
                 
-                globalGoalsTotalsCache[currentGoalsSupplier] = { fat: globalTotalAvgFat, vol: globalTotalAvgVol };
+                globalGoalsTotalsCache[cacheKey] = {
+                    fat: globalTotalAvgFat,
+                    vol: globalTotalAvgVol,
+                    prevFat: globalTotalPrevFat,
+                    prevVol: globalTotalPrevVol
+                };
             }
             // ---------------------------------------------------------------------
+
+            // Update Card Stats
+            const statFatAvg = document.getElementById('goal-stat-fat-avg');
+            const statFatPrev = document.getElementById('goal-stat-fat-prev');
+            const statVolAvg = document.getElementById('goal-stat-vol-avg');
+            const statVolPrev = document.getElementById('goal-stat-vol-prev');
+
+            if (statFatAvg) statFatAvg.textContent = globalTotalAvgFat.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            if (statFatPrev) statFatPrev.textContent = globalTotalPrevFat.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+            if (statVolAvg) statVolAvg.textContent = globalTotalAvgVol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+            if (statVolPrev) statVolPrev.textContent = globalTotalPrevVol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
             const clientMetrics = [];
             let totalAvgFat = 0;
@@ -2025,6 +2189,18 @@
                         
                         // Filter by current supplier tab
                         if (String(sale.CODFOR) !== currentGoalsSupplier) return;
+
+                        // Filter by Brand (if needed)
+                        if (currentGoalsBrand) {
+                            const desc = normalize(sale.DESCRICAO || '');
+                            if (currentGoalsBrand === 'TODDYNHO') {
+                                if (!desc.includes('TODDYNHO')) return;
+                            } else if (currentGoalsBrand === 'TODDY') {
+                                if (!desc.includes('TODDY') || desc.includes('TODDYNHO')) return;
+                            } else if (currentGoalsBrand === 'QUAKER_KEROCOCO') {
+                                if (!desc.includes('QUAKER') && !desc.includes('KEROCOCO')) return;
+                            }
+                        }
 
                         if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
                             sumFat += sale.VLVENDA;
@@ -7041,12 +7217,13 @@
             const debouncedUpdateGoals = debounce(updateGoals, 400);
 
             // Sub-tabs Switching
-            const goalsSubTabs = document.getElementById('goals-sub-tabs');
-            if (goalsSubTabs) {
-                goalsSubTabs.addEventListener('click', (e) => {
+            const goalsSubTabsContainer = document.getElementById('goals-sub-tabs-container');
+            if (goalsSubTabsContainer) {
+                goalsSubTabsContainer.addEventListener('click', (e) => {
                     const btn = e.target.closest('.goals-sub-tab');
                     if (!btn) return;
 
+                    // Remove active styles from ALL sub-tabs across both groups
                     document.querySelectorAll('.goals-sub-tab').forEach(b => {
                         b.classList.remove('active', 'text-teal-400', 'font-bold', 'border-b-2', 'border-teal-400');
                         b.classList.add('text-slate-400', 'font-medium');
@@ -7062,9 +7239,103 @@
                     btn.prepend(indicator);
 
                     currentGoalsSupplier = btn.dataset.supplier;
+                    currentGoalsBrand = btn.dataset.brand || null;
+
+                    // --- FIX: Update Inputs from State BEFORE Updating View ---
+                    const cacheKey = currentGoalsSupplier + (currentGoalsBrand ? `_${currentGoalsBrand}` : '');
+                    const target = goalsTargets[cacheKey] || { fat: 0, vol: 0 };
+
+                    const fatInput = document.getElementById('goal-global-fat');
+                    const volInput = document.getElementById('goal-global-vol');
+
+                    if (fatInput) fatInput.value = target.fat.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    if (volInput) volInput.value = target.vol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+                    // ----------------------------------------------------------
+
                     goalsTableState.currentPage = 1;
                     updateGoals();
                 });
+            }
+
+            // Category Toggle Logic
+            const btnElmaChips = document.getElementById('goals-category-elmachips-btn');
+            const btnFoods = document.getElementById('goals-category-foods-btn');
+            const btnSummary = document.getElementById('goals-category-summary-btn');
+            const subTabsElmaChips = document.getElementById('goals-sub-tabs-elmachips');
+            const subTabsFoods = document.getElementById('goals-sub-tabs-foods');
+
+            // Containers
+            const goalsMainContainer = document.getElementById('goals-input-cards');
+            const goalsTableContainer = document.querySelector('#goals-gv-content > div.bg-\\[\\#1d2347\\]'); // Main table wrapper
+            const goalsFiltersContainer = document.querySelector('#goals-gv-content > div.mb-4'); // Filters wrapper
+            const goalsSummaryContainer = document.getElementById('goals-summary-content');
+
+            const toggleGoalsView = (view) => {
+                // Reset Buttons
+                [btnElmaChips, btnFoods, btnSummary].forEach(btn => {
+                    if (btn) {
+                        btn.classList.remove('bg-[#0d9488]', 'text-white', 'shadow-lg', 'border-teal-500/50');
+                        btn.classList.add('bg-[#334155]', 'text-slate-400', 'border-slate-700');
+                    }
+                });
+
+                // Hide All Sub-tabs
+                if(subTabsElmaChips) subTabsElmaChips.classList.add('hidden');
+                if(subTabsFoods) subTabsFoods.classList.add('hidden');
+
+                // Toggle Content
+                if (view === 'summary') {
+                    if(btnSummary) {
+                        btnSummary.classList.remove('bg-[#334155]', 'text-slate-400', 'border-slate-700');
+                        btnSummary.classList.add('bg-[#0d9488]', 'text-white', 'shadow-lg', 'border-teal-500/50');
+                    }
+                    if(goalsSummaryContainer) goalsSummaryContainer.classList.remove('hidden');
+                    if(goalsMainContainer) goalsMainContainer.classList.add('hidden');
+                    if(goalsTableContainer) goalsTableContainer.classList.add('hidden');
+                    if(goalsFiltersContainer) goalsFiltersContainer.classList.add('hidden');
+
+                    updateGoalsSummaryView();
+                } else {
+                    // Show Main Content
+                    if(goalsSummaryContainer) goalsSummaryContainer.classList.add('hidden');
+                    if(goalsMainContainer) goalsMainContainer.classList.remove('hidden');
+                    if(goalsTableContainer) goalsTableContainer.classList.remove('hidden');
+                    if(goalsFiltersContainer) goalsFiltersContainer.classList.remove('hidden');
+
+                    if (view === 'elmachips') {
+                        if(btnElmaChips) {
+                            btnElmaChips.classList.remove('bg-[#334155]', 'text-slate-400', 'border-slate-700');
+                            btnElmaChips.classList.add('bg-[#0d9488]', 'text-white', 'shadow-lg', 'border-teal-500/50');
+                        }
+                        if(subTabsElmaChips) subTabsElmaChips.classList.remove('hidden');
+
+                        // Select First Tab of Elma Chips
+                        const firstTab = subTabsElmaChips.querySelector('.goals-sub-tab');
+                        if (firstTab) firstTab.click();
+                    } else if (view === 'foods') {
+                        if(btnFoods) {
+                            btnFoods.classList.remove('bg-[#334155]', 'text-slate-400', 'border-slate-700');
+                            btnFoods.classList.add('bg-[#0d9488]', 'text-white', 'shadow-lg', 'border-teal-500/50');
+                        }
+                        if(subTabsFoods) subTabsFoods.classList.remove('hidden');
+
+                        // Select First Tab of Foods
+                        const firstTab = subTabsFoods.querySelector('.goals-sub-tab');
+                        if (firstTab) firstTab.click();
+                    }
+
+                    // --- FIX: Update Inputs for Default Selection when Switching Category ---
+                    // When clicking "Elma Chips" or "Foods", we default to the first tab.
+                    // We need to ensure the inputs are loaded for that default tab.
+                    // Actually, `firstTab.click()` triggers the event listener above which handles this!
+                    // So we are covered by the `click()` call.
+                }
+            };
+
+            if (btnElmaChips && btnFoods && btnSummary) {
+                btnElmaChips.addEventListener('click', () => toggleGoalsView('elmachips'));
+                btnFoods.addEventListener('click', () => toggleGoalsView('foods'));
+                btnSummary.addEventListener('click', () => toggleGoalsView('summary'));
             }
 
             // Tab Switching
@@ -7130,8 +7401,49 @@
 
             ['btn-distribute-fat', 'btn-distribute-vol'].forEach(id => {
                 const btn = document.getElementById(id);
-                if (btn) btn.addEventListener('click', updateGoals);
+                if (btn) btn.addEventListener('click', () => {
+                    // Update state from DOM before distributing/updating
+                    const cacheKey = currentGoalsSupplier + (currentGoalsBrand ? `_${currentGoalsBrand}` : '');
+                    const goalFat = parseInputMoney('goal-global-fat');
+                    const goalVol = parseInputMoney('goal-global-vol');
+
+                    if (goalsTargets[cacheKey]) {
+                        goalsTargets[cacheKey].fat = goalFat;
+                        goalsTargets[cacheKey].vol = goalVol;
+                    }
+                    updateGoals();
+                });
             });
+
+            // Add Input Listeners for Real-time State Updates
+            const fatInput = document.getElementById('goal-global-fat');
+            const volInput = document.getElementById('goal-global-vol');
+
+            const handleInputUpdate = () => {
+                const cacheKey = currentGoalsSupplier + (currentGoalsBrand ? `_${currentGoalsBrand}` : '');
+                const goalFat = parseInputMoney('goal-global-fat');
+                const goalVol = parseInputMoney('goal-global-vol');
+
+                if (goalsTargets[cacheKey]) {
+                    goalsTargets[cacheKey].fat = goalFat;
+                    goalsTargets[cacheKey].vol = goalVol;
+                }
+            };
+
+            if (fatInput) {
+                fatInput.addEventListener('input', handleInputUpdate);
+                fatInput.addEventListener('change', () => {
+                    handleInputUpdate();
+                    updateGoals(); // Re-render table on blur/enter (change) if needed
+                });
+            }
+            if (volInput) {
+                volInput.addEventListener('input', handleInputUpdate);
+                volInput.addEventListener('change', () => {
+                    handleInputUpdate();
+                    updateGoals();
+                });
+            }
 
             clearGoalsGvFiltersBtn.addEventListener('click', () => { resetGoalsGvFilters(); markDirty('goals'); });
 
@@ -8294,41 +8606,84 @@
                                 <!-- Category Selection Toggles -->
                                 <div class="flex flex-col gap-4 mb-6">
                                     <div class="flex gap-4">
-                                        <button class="px-8 py-3 bg-[#0d9488] text-white font-bold rounded hover:bg-teal-700 transition-colors uppercase tracking-wider text-sm shadow-lg border border-teal-500/50">ELMA CHIPS</button>
-                                        <button class="px-8 py-3 bg-[#334155] text-slate-400 font-bold rounded hover:bg-slate-700 transition-colors uppercase tracking-wider text-sm border border-slate-700">FOODS</button>
+                                        <button id="goals-category-elmachips-btn" class="px-8 py-3 bg-[#0d9488] text-white font-bold rounded hover:bg-teal-700 transition-colors uppercase tracking-wider text-sm shadow-lg border border-teal-500/50">ELMA CHIPS</button>
+                                        <button id="goals-category-foods-btn" class="px-8 py-3 bg-[#334155] text-slate-400 font-bold rounded hover:bg-slate-700 transition-colors uppercase tracking-wider text-sm border border-slate-700">FOODS</button>
+                                         <button id="goals-category-summary-btn" class="px-8 py-3 bg-[#334155] text-slate-400 font-bold rounded hover:bg-slate-700 transition-colors uppercase tracking-wider text-sm border border-slate-700">RESUMO</button>
                                     </div>
-                                    <!-- Sub-tabs -->
-                                    <div class="flex border-b border-slate-700 overflow-x-auto" id="goals-sub-tabs">
-                                        <button data-supplier="707" class="goals-sub-tab px-6 py-3 text-teal-400 font-bold text-sm border-b-2 border-teal-400 flex items-center gap-2 whitespace-nowrap active">
-                                            <span class="w-2 h-2 rounded-full bg-teal-400 inline-block indicator"></span> EXTRUSADOS
-                                        </button>
-                                        <button data-supplier="708" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">NÃO EXTRUSADOS</button>
-                                        <button data-supplier="752" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">TORCIDA</button>
+
+                                    <!-- Sub-tabs Container -->
+                                    <div id="goals-sub-tabs-container">
+                                        <!-- Elma Chips Sub-tabs -->
+                                        <div class="flex border-b border-slate-700 overflow-x-auto" id="goals-sub-tabs-elmachips">
+                                            <button data-supplier="707" class="goals-sub-tab px-6 py-3 text-teal-400 font-bold text-sm border-b-2 border-teal-400 flex items-center gap-2 whitespace-nowrap active">
+                                                <span class="w-2 h-2 rounded-full bg-teal-400 inline-block indicator"></span> EXTRUSADOS
+                                            </button>
+                                            <button data-supplier="708" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">NÃO EXTRUSADOS</button>
+                                            <button data-supplier="752" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">TORCIDA</button>
+                                        </div>
+
+                                        <!-- Foods Sub-tabs -->
+                                        <div class="hidden flex border-b border-slate-700 overflow-x-auto" id="goals-sub-tabs-foods">
+                                            <button data-supplier="1119" data-brand="TODDYNHO" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">TODDYNHO</button>
+                                            <button data-supplier="1119" data-brand="TODDY" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">TODDY</button>
+                                            <button data-supplier="1119" data-brand="QUAKER_KEROCOCO" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">QUAKER / KEROCOCO</button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Summary Content -->
+                                <div id="goals-summary-content" class="hidden mb-6">
+                                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="goals-summary-grid">
+                                        <!-- Summary Cards will be injected here -->
                                     </div>
                                 </div>
 
                                 <!-- Meta Input Cards -->
-                                <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6 bg-[#161e3d] p-4 rounded-lg border border-slate-700/50">
+                                <div id="goals-input-cards" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6 bg-[#161e3d] p-4 rounded-lg border border-slate-700/50">
                                     <!-- Faturamento Card -->
-                                    <div class="bg-[#1e2a5a] border border-blue-900/50 rounded-lg p-3 relative overflow-hidden group">
+                                    <div class="bg-[#1e2a5a] border border-blue-900/50 rounded-lg p-3 relative overflow-hidden group flex flex-col justify-between">
                                         <div class="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
-                                        <label class="text-[10px] font-bold text-blue-300 uppercase tracking-wider mb-1 block">META FATURAMENTO (R$)</label>
-                                        <div class="flex gap-2">
-                                            <input type="text" id="goal-global-fat" class="w-full bg-[#0f172a] border border-blue-900/50 text-white font-bold text-lg p-2 rounded focus:outline-none focus:border-blue-500" value="2.000.000,00">
-                                            <button id="btn-distribute-fat" class="bg-blue-600 hover:bg-blue-500 text-white px-3 rounded flex items-center justify-center transition-colors">
-                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
-                                            </button>
+                                        <div>
+                                            <label class="text-[10px] font-bold text-blue-300 uppercase tracking-wider mb-1 block">META FATURAMENTO (R$)</label>
+                                            <div class="flex gap-2">
+                                                <input type="text" id="goal-global-fat" class="w-full bg-[#0f172a] border border-blue-900/50 text-white font-bold text-lg p-2 rounded focus:outline-none focus:border-blue-500" value="0,00">
+                                                <button id="btn-distribute-fat" class="bg-blue-600 hover:bg-blue-500 text-white px-3 rounded flex items-center justify-center transition-colors">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="mt-3 pt-2 border-t border-blue-800/50 flex justify-between items-end">
+                                            <div class="text-left">
+                                                <span class="block text-[10px] text-blue-300/70 uppercase">Média Trim.</span>
+                                                <span class="font-bold text-sm text-blue-200" id="goal-stat-fat-avg">R$ 0,00</span>
+                                            </div>
+                                            <div class="text-right">
+                                                <span class="block text-[10px] text-blue-300/70 uppercase">Mês Anterior</span>
+                                                <span class="font-bold text-sm text-blue-200" id="goal-stat-fat-prev">R$ 0,00</span>
+                                            </div>
                                         </div>
                                     </div>
                                     <!-- Volume Card -->
-                                    <div class="bg-[#3c2a21] border border-orange-900/50 rounded-lg p-3 relative overflow-hidden group">
+                                    <div class="bg-[#3c2a21] border border-orange-900/50 rounded-lg p-3 relative overflow-hidden group flex flex-col justify-between">
                                         <div class="absolute top-0 left-0 w-1 h-full bg-orange-500"></div>
-                                        <label class="text-[10px] font-bold text-orange-300 uppercase tracking-wider mb-1 block">META VOLUME (TON)</label>
-                                        <div class="flex gap-2">
-                                            <input type="text" id="goal-global-vol" class="w-full bg-[#0f172a] border border-orange-900/50 text-white font-bold text-lg p-2 rounded focus:outline-none focus:border-orange-500" value="45.500">
-                                            <button id="btn-distribute-vol" class="bg-orange-600 hover:bg-orange-500 text-white px-3 rounded flex items-center justify-center transition-colors">
-                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
-                                            </button>
+                                        <div>
+                                            <label class="text-[10px] font-bold text-orange-300 uppercase tracking-wider mb-1 block">META VOLUME (TON)</label>
+                                            <div class="flex gap-2">
+                                                <input type="text" id="goal-global-vol" class="w-full bg-[#0f172a] border border-orange-900/50 text-white font-bold text-lg p-2 rounded focus:outline-none focus:border-orange-500" value="0,000">
+                                                <button id="btn-distribute-vol" class="bg-orange-600 hover:bg-orange-500 text-white px-3 rounded flex items-center justify-center transition-colors">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="mt-3 pt-2 border-t border-orange-900/50 flex justify-between items-end">
+                                            <div class="text-left">
+                                                <span class="block text-[10px] text-orange-300/70 uppercase">Média Trim.</span>
+                                                <span class="font-bold text-sm text-orange-200" id="goal-stat-vol-avg">0,000</span>
+                                            </div>
+                                            <div class="text-right">
+                                                <span class="block text-[10px] text-orange-300/70 uppercase">Mês Anterior</span>
+                                                <span class="font-bold text-sm text-orange-200" id="goal-stat-vol-prev">0,000</span>
+                                            </div>
                                         </div>
                                     </div>
                                     <!-- Positivação Card -->
@@ -8373,8 +8728,8 @@
                                     </div>
                                 </div>
 
-                                <!-- Main Table -->
-                                <div class="bg-[#1d2347] border border-slate-700 shadow-sm rounded-lg overflow-hidden">
+                                <!-- Main Table (Hidden by default) -->
+                                <div class="bg-[#1d2347] border border-slate-700 shadow-sm rounded-lg overflow-hidden hidden" id="goals-table-container">
                                     <div class="overflow-auto custom-scrollbar" style="max-height: 60vh;">
                                         <table class="min-w-full text-sm text-left text-slate-300 border-collapse">
                                             <thead class="text-xs uppercase sticky top-0 z-20">
@@ -8408,7 +8763,7 @@
                                         <button id="goals-next-page-btn" class="bg-slate-700 border border-slate-600 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg disabled:opacity-50 text-xs" disabled>Próxima</button>
                                     </div>
                                 </div>
-                            </div>
+                            </div> <!-- End goals-gv-content -->
 
                             <!-- Tab Content: Meta SV -->
                             <div id="goals-sv-content" class="hidden">
