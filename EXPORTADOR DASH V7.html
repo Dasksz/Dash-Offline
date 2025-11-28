@@ -1413,6 +1413,9 @@
                 const codCli = client['Código'];
                 const clientHistoryIds = optimizedData.indices.history.byClient.get(codCli);
                 
+                // Temp accumulation for this client to ensure Positive Balance check
+                const clientTotals = {}; // key -> { prevFat: 0, monthlyFat: Map<MonthKey, val> }
+
                 if (clientHistoryIds) {
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
@@ -1434,7 +1437,7 @@
                             const d = parseDate(sale.DTPED);
                             const isPrevMonth = d && d.getUTCMonth() === prevMonthIndex && d.getUTCFullYear() === prevMonthYear;
 
-                            // 1. Revenue/Volume metrics (Types 1 & 9)
+                            // 1. Revenue/Volume metrics (Types 1 & 9) - Global Sums
                             if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
                                 globalGoalsMetrics[key].fat += sale.VLVENDA;
                                 globalGoalsMetrics[key].vol += sale.TOTPESOLIQ;
@@ -1445,22 +1448,32 @@
                                 }
                             }
 
-                            // 2. Client Metrics (Any positive sale)
-                            if (sale.VLVENDA > 0) {
-                                // Previous Month Clients
-                                if (isPrevMonth) {
-                                    globalGoalsMetrics[key].prevClientsSet.add(sale.CODCLI);
-                                }
+                            // 2. Accumulate for Client Count Check (Balance per period)
+                            if (d) {
+                                if (!clientTotals[key]) clientTotals[key] = { prevFat: 0, monthlyFat: new Map() };
                                 
-                                // Monthly Clients for Quarterly Average
-                                if (d) {
-                                    const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
-                                    if (!globalGoalsMetrics[key].monthlyClientsSets.has(monthKey)) {
-                                        globalGoalsMetrics[key].monthlyClientsSets.set(monthKey, new Set());
-                                    }
-                                    globalGoalsMetrics[key].monthlyClientsSets.get(monthKey).add(sale.CODCLI);
-                                }
+                                if (isPrevMonth) clientTotals[key].prevFat += sale.VLVENDA;
+                                
+                                const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
+                                const currentMVal = clientTotals[key].monthlyFat.get(monthKey) || 0;
+                                clientTotals[key].monthlyFat.set(monthKey, currentMVal + sale.VLVENDA);
                             }
+                        }
+                    });
+                }
+
+                // Check thresholds for this client
+                for (const key in clientTotals) {
+                    const t = clientTotals[key];
+                    if (t.prevFat > 1) {
+                        globalGoalsMetrics[key].prevClientsSet.add(codCli);
+                    }
+                    t.monthlyFat.forEach((val, mKey) => {
+                        if (val > 1) {
+                            if (!globalGoalsMetrics[key].monthlyClientsSets.has(mKey)) {
+                                globalGoalsMetrics[key].monthlyClientsSets.set(mKey, new Set());
+                            }
+                            globalGoalsMetrics[key].monthlyClientsSets.get(mKey).add(codCli);
                         }
                     });
                 }
@@ -4942,10 +4955,42 @@
             } else if (comparisonChartType === 'monthly') {
                 weeklyComparisonChartContainer.classList.add('hidden');
                 monthlyComparisonChartContainer.classList.remove('hidden');
-                comparisonChartTitle.textContent = 'Comparativo de Faturamento Mensal';
+                
+                // Show Metric Toggle
+                const metricToggle = document.getElementById('comparison-monthly-metric-container');
+                if (metricToggle) metricToggle.classList.remove('hidden');
 
+                const isFat = comparisonMonthlyMetric === 'faturamento';
+                comparisonChartTitle.textContent = isFat ? 'Comparativo de Faturamento Mensal' : 'Comparativo de Clientes Atendidos Mensal';
+
+                // --- 1. History Calculation ---
+                // We need both Revenue and Client Count for history
+                const historyDataByMonth = {}; // MonthKey -> { fat: 0, clients: Set() }
+
+                historySales.forEach(sale => {
+                    const saleDate = parseDate(sale.DTPED);
+                    if (!saleDate) return;
+                    const monthKey = `${saleDate.getFullYear()}-${String(saleDate.getMonth() + 1).padStart(2, '0')}`;
+                    
+                    if (!historyDataByMonth[monthKey]) {
+                        historyDataByMonth[monthKey] = { fat: 0, clientMap: new Map() };
+                    }
+                    const monthData = historyDataByMonth[monthKey];
+                    
+                    // Sum Revenue
+                    monthData.fat += sale.VLVENDA;
+                    
+                    // Sum Client Sales for Positive Check
+                    if (sale.CODCLI) {
+                        monthData.clientMap.set(sale.CODCLI, (monthData.clientMap.get(sale.CODCLI) || 0) + sale.VLVENDA);
+                    }
+                });
+
+                // --- 2. Current Month Calculation ---
                 let monthlyCurrentSales = currentSales;
-                if (useTendencyComparison) {
+                
+                // Tendency Logic (Only applies to Faturamento/Revenue)
+                if (isFat && useTendencyComparison) {
                     const totalDays = getWorkingDaysInMonth(currentYear, currentMonth, selectedHolidays);
                     const passedDays = getPassedWorkingDaysInMonth(currentYear, currentMonth, selectedHolidays, lastSaleDate);
 
@@ -4953,27 +4998,32 @@
                         const projectionFactor = totalDays / passedDays;
                         const currentTotal = monthlyCurrentSales.reduce((sum, item) => sum + item.VLVENDA, 0);
                         const projectedTotal = currentTotal * projectionFactor;
-
+                        // Mock sales for tendency display
                         monthlyCurrentSales = [{ VLVENDA: projectedTotal, DTPED: new Date() }];
                     }
                 }
-                const monthlyCurrentTotalFat = monthlyCurrentSales.reduce((sum, item) => sum + item.VLVENDA, 0);
 
-                const salesByMonth = {};
-                historySales.forEach(sale => {
-                    const saleDate = parseDate(sale.DTPED);
-                    if (!saleDate) return;
-                    const monthKey = `${saleDate.getFullYear()}-${String(saleDate.getMonth() + 1).padStart(2, '0')}`;
-                    salesByMonth[monthKey] = (salesByMonth[monthKey] || 0) + sale.VLVENDA;
-                });
+                const currentTotalFat = monthlyCurrentSales.reduce((sum, item) => sum + item.VLVENDA, 0);
+                const currentTotalClients = getPositiveClientsWithNewLogic(currentSales); // Always use real sales for client count (Tendency doesn't make sense for unique count easily)
 
-                const sortedMonths = Object.keys(salesByMonth).sort();
+                // --- 3. Prepare Chart Data ---
+                const sortedMonths = Object.keys(historyDataByMonth).sort();
+                
                 const monthLabels = sortedMonths.map(monthKey => {
                     const [year, month] = monthKey.split('-');
-                    // Use UTC for display formatting to avoid shifting
                     return new Date(Date.UTC(parseInt(year), parseInt(month) - 1, 1)).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit', timeZone: 'UTC' });
                 });
-                const monthValues = sortedMonths.map(monthKey => salesByMonth[monthKey]);
+
+                const monthValues = sortedMonths.map(monthKey => {
+                    const d = historyDataByMonth[monthKey];
+                    if (isFat) return d.fat;
+                    else {
+                        // Count positive clients (> 1)
+                        let count = 0;
+                        d.clientMap.forEach(val => { if (val > 1) count++; });
+                        return count;
+                    }
+                });
 
                 let currentMonthLabel = 'Mês Atual';
                 if (currentSales.length > 0) {
@@ -4982,15 +5032,17 @@
                 }
 
                 const existingIndex = monthLabels.indexOf(currentMonthLabel);
+                const currentValue = isFat ? currentTotalFat : currentTotalClients;
+
                 if (existingIndex !== -1) {
-                    monthValues[existingIndex] = monthlyCurrentTotalFat;
+                    monthValues[existingIndex] = currentValue;
                 } else {
                     monthLabels.push(currentMonthLabel);
-                    monthValues.push(monthlyCurrentTotalFat);
+                    monthValues.push(currentValue);
                 }
 
                 createChart('monthlyComparisonChart', 'bar', monthLabels, [{
-                    label: 'Faturamento Mensal',
+                    label: isFat ? 'Faturamento' : 'Clientes Atendidos',
                     data: monthValues,
                     backgroundColor: (context) => {
                         const ctx = context.chart.ctx;
@@ -5018,8 +5070,30 @@
                             offset: 4,
                             font: { weight: 'bold' },
                             formatter: (value) => {
-                                if (value >= 1000000) return 'R$ ' + (value / 1000000).toFixed(2) + ' M';
-                                return 'R$ ' + (value / 1000).toFixed(0) + 'k';
+                                if (isFat) {
+                                    if (value >= 1000000) return 'R$ ' + (value / 1000000).toFixed(2) + ' M';
+                                    return 'R$ ' + (value / 1000).toFixed(0) + 'k';
+                                } else {
+                                    return value.toLocaleString('pt-BR');
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        if (isFat) {
+                                            label += new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed.y);
+                                        } else {
+                                            label += context.parsed.y.toLocaleString('pt-BR') + ' clientes';
+                                        }
+                                    }
+                                    return label;
+                                }
                             }
                         }
                     }
@@ -7163,6 +7237,7 @@
                 comparisonChartType = 'weekly';
                 toggleWeeklyBtn.classList.add('active');
                 toggleMonthlyBtn.classList.remove('active');
+                document.getElementById('comparison-monthly-metric-container').classList.add('hidden');
                 updateComparison();
             });
 
@@ -7170,8 +7245,29 @@
                 comparisonChartType = 'monthly';
                 toggleMonthlyBtn.classList.add('active');
                 toggleWeeklyBtn.classList.remove('active');
+                // The toggle visibility is handled inside updateComparisonView based on mode
                 updateComparison();
             });
+
+            // New Metric Toggle Listeners
+            const toggleMonthlyFatBtn = document.getElementById('toggle-monthly-fat-btn');
+            const toggleMonthlyClientsBtn = document.getElementById('toggle-monthly-clients-btn');
+
+            if (toggleMonthlyFatBtn && toggleMonthlyClientsBtn) {
+                toggleMonthlyFatBtn.addEventListener('click', () => {
+                    comparisonMonthlyMetric = 'faturamento';
+                    toggleMonthlyFatBtn.classList.add('active');
+                    toggleMonthlyClientsBtn.classList.remove('active');
+                    updateComparison();
+                });
+
+                toggleMonthlyClientsBtn.addEventListener('click', () => {
+                    comparisonMonthlyMetric = 'clientes';
+                    toggleMonthlyClientsBtn.classList.add('active');
+                    toggleMonthlyFatBtn.classList.remove('active');
+                    updateComparison();
+                });
+            }
 
             mainHolidayPickerBtn.addEventListener('click', () => {
                 renderCalendar(calendarState.year, calendarState.month);
@@ -8119,7 +8215,7 @@
                             .hidden { display: none; }
                             
                             /* Estilo de botões ativos (filtros, toggles) */
-                            .metric-btn.active, .fornecedor-btn.active, .comparison-toggle-btn.active, .group-btn.active, #main-rede-group-container > div > button.active, #city-rede-group-container > div > button.active, #comparison-rede-group-container > div > button.active, #stock-rede-group-container > div > button.active { 
+                            .metric-btn.active, .monthly-metric-btn.active, .fornecedor-btn.active, .comparison-toggle-btn.active, .group-btn.active, #main-rede-group-container > div > button.active, #city-rede-group-container > div > button.active, #comparison-rede-group-container > div > button.active, #stock-rede-group-container > div > button.active { 
                                 background-color: #38b2ac; /* teal-500 */
                                 color: #FFF; 
                             }
@@ -8601,6 +8697,14 @@
                             <div class="grid grid-cols-1 gap-6">
                                 <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
                                     <div class="flex justify-center items-center mb-4 relative">
+                                        <!-- Metric Toggle (Left Side) - Only visible for Monthly View -->
+                                        <div id="comparison-monthly-metric-container" class="absolute left-0 top-0 bottom-0 flex items-center hidden">
+                                            <div class="flex bg-slate-700 rounded-lg p-1">
+                                                <button id="toggle-monthly-fat-btn" class="monthly-metric-btn active px-3 py-1 text-sm rounded-md text-white">Faturamento</button>
+                                                <button id="toggle-monthly-clients-btn" class="monthly-metric-btn px-3 py-1 text-sm rounded-md text-slate-300">Clientes</button>
+                                            </div>
+                                        </div>
+
                                         <h2 id="comparison-chart-title" class="text-lg font-semibold text-white text-center">Comparativo de Faturamento Semanal</h2>
                                         <div class="absolute right-0 top-0 bottom-0 flex items-center">
                                             <div id="comparison-chart-toggle" class="flex bg-slate-700 rounded-lg p-1">
