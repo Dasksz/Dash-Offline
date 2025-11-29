@@ -8237,7 +8237,8 @@
             });
 
             function generateReportFile(data) {
-                const jsonDataString = JSON.stringify(data);
+                // Escape closing script tags to prevent breaking the HTML structure
+                const jsonDataString = JSON.stringify(data).replace(/<\/script>/g, '<\\/script>');
                 const generationDate = new Date().toLocaleString('pt-BR');
 
                 const scriptLogic = document.getElementById('report-logic-script').textContent;
@@ -8420,13 +8421,13 @@
                         </aside>
                         <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-40 hidden glass-effect"></div>
                         
-                        <div id="page-transition-loader" class="fixed inset-0 bg-black/30 backdrop-blur-sm z-[9999] flex items-center justify-center transition-opacity duration-300 opacity-0 pointer-events-none">
+                        <div id="page-transition-loader" class="fixed inset-0 bg-black/30 backdrop-blur-sm z-[9999] flex items-center justify-center transition-opacity duration-300">
                             <div class="flex flex-col items-center">
                                 <svg class="animate-spin -ml-1 mr-3 h-10 w-10 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                 </svg>
-                                <span id="loader-text" class="text-white text-lg mt-4">Carregando...</span>
+                                <span id="loader-text" class="text-white text-lg mt-4">Processando dados...</span>
                             </div>
                         </div>
 
@@ -9532,11 +9533,42 @@
                         </div>
                         </div> <!-- End content-wrapper -->
                         
+                        <script id="embedded-data" type="application/json">
+                            ${jsonDataString}
+                        <\/script>
                         <script>
-                            const embeddedData = ${jsonDataString};
                             document.addEventListener('DOMContentLoaded', () => {
-                                ${scriptLogic}
+                                // Aguarda um momento para o navegador renderizar o Loader antes de travar a thread com o JSON.parse
+                                setTimeout(() => {
+                                    initDashboard();
+                                }, 100);
                             });
+
+                            function initDashboard() {
+                                try {
+                                    const dataElement = document.getElementById('embedded-data');
+                                    if(!dataElement) return;
+
+                                    // 1. Parse dos dados (Pesado - Bloqueia Thread)
+                                    window.embeddedData = JSON.parse(dataElement.textContent);
+
+                                    // 2. Limpeza de memória imediata
+                                    dataElement.textContent = '';
+
+                                    // 3. Execução da Lógica (Renderização)
+                                    ${scriptLogic}
+
+                                } catch(e) {
+                                    console.error("Critical Error:", e);
+                                    alert("Erro ao carregar o dashboard. Recarregue a página.");
+
+                                    // Fallback de segurança: Esconder o loader se houver erro
+                                    const loader = document.getElementById('page-transition-loader');
+                                    if(loader) {
+                                        loader.classList.add('opacity-0', 'pointer-events-none');
+                                    }
+                                }
+                            }
                         <\/script>
                     </body>
                     </html>
