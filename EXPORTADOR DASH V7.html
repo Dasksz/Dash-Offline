@@ -9548,20 +9548,20 @@
                                 try {
                                     const dataElement = document.getElementById('embedded-data');
                                     if(!dataElement) return;
-                                    
+
                                     // 1. Parse dos dados (Pesado - Bloqueia Thread)
                                     window.embeddedData = JSON.parse(dataElement.textContent);
-                                    
+
                                     // 2. Limpeza de memória imediata
-                                    dataElement.textContent = ''; 
-                                    
+                                    dataElement.textContent = '';
+
                                     // 3. Execução da Lógica (Renderização)
                                     ${scriptLogic}
-                                    
+
                                 } catch(e) {
                                     console.error("Critical Error:", e);
                                     alert("Erro ao carregar o dashboard. Recarregue a página.");
-                                    
+
                                     // Fallback de segurança: Esconder o loader se houver erro
                                     const loader = document.getElementById('page-transition-loader');
                                     if(loader) {
