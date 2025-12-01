@@ -1389,6 +1389,7 @@
             const createMetric = () => ({ 
                 fat: 0, vol: 0, prevFat: 0, prevVol: 0, 
                 prevClientsSet: new Set(), 
+                quarterlyPosClientsSet: new Set(), // New Set for Quarter Active
                 monthlyClientsSets: new Map() // Map<MonthKey, Set<CodCli>>
             });
 
@@ -2105,6 +2106,7 @@
             const createMetric = () => ({ 
                 fat: 0, vol: 0, prevFat: 0, prevVol: 0, 
                 prevClientsSet: new Set(), 
+                quarterlyPosClientsSet: new Set(), // New Set for Quarter Active
                 monthlyClientsSets: new Map() // Map<MonthKey, Set<CodCli>>
             });
 
@@ -2197,6 +2199,15 @@
                 // Check thresholds for this client
                 for (const key in clientTotals) {
                     const t = clientTotals[key];
+
+                    // Calculate Total Quarter Fat for this client/key to determine Meta Pos
+                    let totalQuarterFat = 0;
+                    t.monthlyFat.forEach(val => totalQuarterFat += val);
+
+                    if (totalQuarterFat > 1) {
+                        metricsMap[key].quarterlyPosClientsSet.add(codCli);
+                    }
+
                     if (t.prevFat > 1) {
                         metricsMap[key].prevClientsSet.add(codCli);
                     }
@@ -2220,6 +2231,7 @@
                 m.prevVol = m.prevVol / 1000; // Tons
                 
                 m.prevClients = m.prevClientsSet.size;
+                m.quarterlyPos = m.quarterlyPosClientsSet.size; // New Metric
                 
                 let sumClients = 0;
                 m.monthlyClientsSets.forEach(set => sumClients += set.size);
@@ -2341,6 +2353,18 @@
                                     <span>Ant: <span class="text-slate-300">${metrics.prevVol.toLocaleString('pt-BR', { minimumFractionDigits: 3 })}</span></span>
                                 </div>
                             </div>
+
+                            <div>
+                                <div class="flex justify-between items-baseline mb-1">
+                                    <p class="text-xs text-slate-400 uppercase font-semibold">Meta Pos. (Clientes)</p>
+                                </div>
+                                <p class="text-xl font-bold ${textColor} mb-2">
+                                    ${(metrics.quarterlyPos || 0).toLocaleString('pt-BR')}
+                                </p>
+                                <div class="flex justify-between text-[10px] text-slate-400 border-t border-slate-700/50 pt-1">
+                                    <span>Ativos no Trimestre</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -2449,6 +2473,8 @@
                     }
                 }
 
+                const metaPos = sumFat > 1 ? 1 : 0; // Positivado se venda > 1 (threshold padrão)
+
                 clientMetrics.push({
                     cod: codCli,
                     name: client.fantasia || client.razaoSocial,
@@ -2458,7 +2484,8 @@
                     shareFat: globalTotalAvgFat > 0 ? (avgFat / globalTotalAvgFat) : 0,
                     shareVol: globalTotalAvgVol > 0 ? (avgVol / globalTotalAvgVol) : 0,
                     metaFat, // Use stored value
-                    metaVol  // Use stored value
+                    metaVol,  // Use stored value
+                    metaPos
                 });
             });
             
@@ -2631,10 +2658,11 @@
 
             clientMetrics.sort((a, b) => b.metaFat - a.metaFat);
 
-            // Update Positivação Card with Client Count
+            // Update Positivação Card with Client Count (Sum of Meta Pos)
             const goalMixInput = document.getElementById('goal-global-mix');
+            const totalMetaPos = clientMetrics.reduce((sum, item) => sum + item.metaPos, 0);
             if (goalMixInput) {
-                goalMixInput.value = clientMetrics.length.toLocaleString('pt-BR');
+                goalMixInput.value = totalMetaPos.toLocaleString('pt-BR');
             }
 
             // Pagination Logic
@@ -2670,6 +2698,7 @@
                         <td class="px-2 py-2 text-right text-slate-300 font-medium bg-orange-900/10 border-r border-slate-800/50 text-xs">${item.avgVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
                         <td class="px-2 py-2 text-center text-orange-400 text-xs bg-orange-900/10 border-r border-slate-800/50">${(item.shareVol * 100).toFixed(2)}%</td>
                         <td class="px-2 py-2 text-right font-bold text-orange-200 bg-orange-900/20 border-r border-slate-800 text-xs">${item.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
+                        <td class="px-2 py-2 text-center font-bold text-purple-300 bg-purple-900/10 text-xs">${item.metaPos}</td>
                     </tr>
                 `).join('');
                 goalsGvTableBody.innerHTML = rows;
@@ -2768,6 +2797,7 @@
                         code: optimizedData.supervisorCodeByName.get(supervisorName) || '',
                         totalMetaFat: 0,
                         totalMetaVol: 0,
+                        totalMetaPos: 0, // Initialize
                         sellers: new Map() 
                     });
                 }
@@ -2775,6 +2805,7 @@
                 const supData = supervisorMap.get(supervisorName);
                 supData.totalMetaFat += c.metaFat;
                 supData.totalMetaVol += c.metaVol;
+                supData.totalMetaPos += (c.metaPos || 0); // Accumulate
                 
                 if (!supData.sellers.has(c.seller)) {
                     supData.sellers.set(c.seller, {
@@ -2785,7 +2816,8 @@
                         metaFat: 0,
                         avgVol: 0,
                         shareVol: 0,
-                        metaVol: 0
+                        metaVol: 0,
+                        metaPos: 0 // Initialize
                     });
                 }
                 
@@ -2796,6 +2828,7 @@
                 sellerData.avgVol += c.avgVol;
                 sellerData.shareVol += c.shareVol;
                 sellerData.metaVol += c.metaVol;
+                sellerData.metaPos += (c.metaPos || 0); // Accumulate
             });
             
             const sortedSupervisors = Array.from(supervisorMap.values()).sort((a, b) => b.totalMetaFat - a.totalMetaFat);
@@ -2827,7 +2860,8 @@
                                 <td class="px-2 py-2 text-right font-bold text-blue-200 bg-blue-900/20 border-r border-slate-800 text-xs">${seller.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                                 <td class="px-2 py-2 text-right text-slate-300 bg-orange-900/10 border-r border-slate-800/50 text-xs">${seller.avgVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
                                 <td class="px-2 py-2 text-center text-orange-400 text-xs bg-orange-900/10 border-r border-slate-800/50">${(seller.shareVol * 100).toFixed(2)}%</td>
-                                <td class="px-2 py-2 text-right font-bold text-orange-200 bg-orange-900/20 text-xs">${seller.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
+                                <td class="px-2 py-2 text-right font-bold text-orange-200 bg-orange-900/20 border-r border-slate-800 text-xs">${seller.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
+                                <td class="px-2 py-2 text-center font-bold text-purple-300 bg-purple-900/10 text-xs">${seller.metaPos || 0}</td>
                             </tr>
                         `;
                     });
@@ -2841,7 +2875,8 @@
                             <td class="px-2 py-2 text-right text-white text-xs">${sup.totalMetaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                             <td class="px-2 py-2 text-right text-white text-xs">${supAvgVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
                             <td class="px-2 py-2 text-center text-teal-400 text-xs">${(supShareVol * 100).toFixed(2)}%</td>
-                            <td class="px-2 py-2 text-right text-white text-xs">${sup.totalMetaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
+                            <td class="px-2 py-2 text-right text-white text-xs border-r border-slate-700">${sup.totalMetaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
+                            <td class="px-2 py-2 text-center text-purple-400 text-xs font-bold bg-purple-900/20">${(sup.totalMetaPos || 0)}</td>
                         </tr>
                     `;
                 });
@@ -9614,7 +9649,7 @@
                                     <!-- Positivação Card -->
                                     <div class="bg-[#3b0764] border border-purple-900/50 rounded-lg p-3 relative overflow-hidden group">
                                         <div class="absolute top-0 left-0 w-1 h-full bg-purple-500"></div>
-                                        <label class="text-[10px] font-bold text-purple-300 uppercase tracking-wider mb-1 block">Oportunidades</label>
+                                        <label class="text-[10px] font-bold text-purple-300 uppercase tracking-wider mb-1 block">META POSITIVAÇÃO</label>
                                         <div class="flex gap-2">
                                             <input type="text" id="goal-global-mix" class="w-full bg-[#0f172a] border border-purple-900/50 text-white font-bold text-lg p-2 rounded focus:outline-none focus:border-purple-500" value="0" readonly>
                                         </div>
@@ -9667,7 +9702,8 @@
                                                     <th rowspan="2" class="px-3 py-2 text-left w-48 bg-[#0f172a] border-r border-slate-700">CLIENTE</th>
                                                     <th rowspan="2" class="px-3 py-2 text-left w-24 bg-[#0f172a] border-r border-slate-700">VENDEDOR</th>
                                                     <th colspan="3" class="px-2 py-1 text-center bg-blue-900/30 text-blue-400 border-r border-slate-700 border-b border-blue-900/50">FATURAMENTO (R$)</th>
-                                    <th colspan="3" class="px-2 py-1 text-center bg-orange-900/30 text-orange-400 border-b border-orange-900/50 border-r border-slate-700">VOLUME (TON)</th>
+                                                    <th colspan="3" class="px-2 py-1 text-center bg-orange-900/30 text-orange-400 border-b border-orange-900/50 border-r border-slate-700">VOLUME (TON)</th>
+                                                    <th rowspan="2" class="px-2 py-2 text-center w-16 bg-purple-900/20 text-purple-300 font-bold border-b border-slate-700">META POS.</th>
                                                 </tr>
                                                 <tr class="bg-[#1e293b] text-slate-300 border-b border-slate-700 text-[10px]">
                                                     <!-- Fat Headers -->
@@ -9677,7 +9713,7 @@
                                                     <!-- Vol Headers -->
                                                     <th class="px-2 py-2 text-right w-24 bg-orange-900/20 text-orange-300 border-r border-slate-700/50">MÉDIA KG</th>
                                                     <th class="px-2 py-2 text-center w-16 bg-orange-900/20 text-orange-300 border-r border-slate-700/50">% SHARE</th>
-                                                    <th class="px-2 py-2 text-right w-24 bg-orange-900/20 text-orange-100 font-bold">META KG</th>
+                                                    <th class="px-2 py-2 text-right w-24 bg-orange-900/20 text-orange-100 font-bold border-r border-slate-700">META KG</th>
                                                 </tr>
                                             </thead>
                                             <tbody id="goals-gv-table-body" class="divide-y divide-slate-800 bg-[#151c36]">
@@ -9747,6 +9783,7 @@
                                                     <th rowspan="2" class="px-3 py-2 text-left bg-[#0f172a] border-r border-slate-700">VENDEDOR</th>
                                                     <th colspan="3" class="px-2 py-1 text-center bg-blue-900/30 text-blue-400 border-r border-slate-700 border-b border-blue-900/50">FATURAMENTO (R$)</th>
                                                     <th colspan="3" class="px-2 py-1 text-center bg-orange-900/30 text-orange-400 border-b border-orange-900/50 border-r border-slate-700">VOLUME (TON)</th>
+                                                    <th rowspan="2" class="px-2 py-1 text-center bg-purple-900/30 text-purple-400 border-b border-slate-700">POS.</th>
                                                 </tr>
                                                 <tr class="bg-[#1e293b] text-slate-300 border-b border-slate-700 text-[10px]">
                                                     <!-- Fat Headers -->
