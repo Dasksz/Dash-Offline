@@ -346,7 +346,7 @@
             });
         };
 
-        const processSalesData = (rawData, clientMap, productMasterMap, newRcaSupervisorMap, preserveOriginalSeller = false) => {
+        const processSalesData = (rawData, clientMap, productMasterMap, newRcaSupervisorMap) => {
             return rawData.map(rawRow => {
                 const codCliStr = String(rawRow['CODCLI']).trim();
                 const clientInfo = clientMap.get(codCliStr) || {};
@@ -379,9 +379,7 @@
                 }
 
                 // 3. Regra de Prioridade 2: Se NÃO for Americanas, usa a nova lógica
-                // Se preserveOriginalSeller for true, pulamos a reatribuição baseada no cadastro de clientes (RCA1)
-                // e mantemos o vendedor original da venda (Execução vs Carteira)
-                if (!isAmericanas && !preserveOriginalSeller) {
+                if (!isAmericanas) {
                     const rca1Cliente = (clientInfo.rca1 || '').trim();
                     const codUsurVenda = codUsur; // Guarda o CODUSUR original da linha de venda
                     
@@ -416,22 +414,6 @@
                         // Mantém os dados da linha (já definidos no passo 1) e o codUsur da venda.
                         codUsur = codUsurVenda;
                     }
-                }
-                // --- FIM DA MODIFICAÇÃO ---
-
-                // --- INÍCIO DA MODIFICAÇÃO: DESAMBIGUAÇÃO BALCAO ---
-                // Garante que "BALCAO" no dashboard seja estritamente o código 53.
-                // Outros códigos com nome "BALCAO" são separados visualmente.
-                let vendorNameUpper = vendorName.toUpperCase().trim();
-                if (vendorNameUpper === 'BALCAO' || vendorNameUpper === 'BALCÃO') {
-                    if (codUsur !== '53') {
-                        vendorName = `BALCAO (${codUsur})`;
-                    } else {
-                        vendorName = 'BALCAO';
-                    }
-                }
-                if (codUsur === '53') {
-                    vendorName = 'BALCAO';
                 }
                 // --- FIM DA MODIFICAÇÃO ---
 
@@ -647,9 +629,8 @@
                 });
 
                 self.postMessage({ type: 'progress', status: 'Cruzando dados de vendas...', percentage: 70 });
-                const processedSalesData = processSalesData(salesDataRaw, clientMap, productMasterMap, newRcaSupervisorMap, false);
-                // Para o histórico, passamos true para preservar o vendedor original (Execução) e não remapear para o dono atual (Carteira)
-                const processedHistoryData = processSalesData(historyDataRaw, clientMap, productMasterMap, newRcaSupervisorMap, true);
+                const processedSalesData = processSalesData(salesDataRaw, clientMap, productMasterMap, newRcaSupervisorMap);
+                const processedHistoryData = processSalesData(historyDataRaw, clientMap, productMasterMap, newRcaSupervisorMap);
 
                 self.postMessage({ type: 'progress', status: 'Aplicando regra de filial...', percentage: 75 });
 
@@ -962,9 +943,7 @@
                     if (sale.DTSAIDA && typeof sale.DTSAIDA === 'string') sale.DTSAIDA = parseDate(sale.DTSAIDA);
                     
                     try {
-                        // Remapeamento de vendedor: Apenas para dados ATUAIS (Carteira).
-                        // O histórico deve manter a fidelidade com a execução original (Quem vendeu na época).
-                        if (!isHistory && sale.CODCLI !== americanasCodCli) {
+                        if (sale.CODCLI !== americanasCodCli) {
                             const currentSellerCode = clientToCurrentSellerMap.get(sale.CODCLI);
                             if (currentSellerCode) {
                                 const sellerDetails = sellerDetailsMap.get(currentSellerCode);
@@ -2220,11 +2199,11 @@
                 // Check thresholds for this client
                 for (const key in clientTotals) {
                     const t = clientTotals[key];
-                    
+
                     // Calculate Total Quarter Fat for this client/key to determine Meta Pos
                     let totalQuarterFat = 0;
                     t.monthlyFat.forEach(val => totalQuarterFat += val);
-                    
+
                     if (totalQuarterFat > 1) {
                         metricsMap[key].quarterlyPosClientsSet.add(codCli);
                     }
@@ -2374,7 +2353,7 @@
                                     <span>Ant: <span class="text-slate-300">${metrics.prevVol.toLocaleString('pt-BR', { minimumFractionDigits: 3 })}</span></span>
                                 </div>
                             </div>
-                            
+
                             <div>
                                 <div class="flex justify-between items-baseline mb-1">
                                     <p class="text-xs text-slate-400 uppercase font-semibold">Meta Pos. (Clientes)</p>
@@ -2488,7 +2467,7 @@
                                     prevFat += sale.VLVENDA;
                                     prevVol += sale.TOTPESOLIQ;
                                 }
-                                
+
                                 // Activity per Month Calc
                                 const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
                                 monthlyActivity.set(monthKey, (monthlyActivity.get(monthKey) || 0) + sale.VLVENDA);
@@ -2502,7 +2481,7 @@
                 
                 let activeMonthsCount = 0;
                 monthlyActivity.forEach(val => { if(val > 1) activeMonthsCount++; });
-                
+
                 const isActivePrevMonth = prevFat > 1 ? 1 : 0;
 
                 let sellerName = 'N/A';
@@ -2692,7 +2671,7 @@
             // Calculate Sums for Input Fields AND Reference KPIs based on Filtered Clients
             let sumFat = 0;
             let sumVol = 0;
-            
+
             let totalAvgFat = 0;
             let totalPrevFat = 0;
             let totalAvgVol = 0;
@@ -2703,7 +2682,7 @@
             clientMetrics.forEach(m => {
                 sumFat += m.metaFat;
                 sumVol += m.metaVol;
-                
+
                 totalAvgFat += m.avgFat;
                 totalPrevFat += m.prevFat;
                 totalAvgVol += m.avgVol;
@@ -2711,7 +2690,7 @@
                 sumActiveMonths += m.activeMonthsCount;
                 totalPrevClients += m.isActivePrevMonth;
             });
-            
+
             const totalAvgClients = sumActiveMonths / QUARTERLY_DIVISOR;
 
             // Update Inputs only if not currently focused (to avoid jumping values while typing)
@@ -2724,7 +2703,7 @@
             if (volInput && document.activeElement !== volInput) {
                 volInput.value = sumVol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
             }
-            
+
             // Update Reference KPIs with Filtered Totals
             const refAvgFat = document.getElementById('ref-avg-fat');
             const refPrevFat = document.getElementById('ref-prev-fat');
@@ -4992,7 +4971,7 @@
                     });
                 }
                 const mData = historyMonths.get(monthKey);
-                
+
                 if (isValidType) {
                     mData.fat += s.VLVENDA;
                 }
