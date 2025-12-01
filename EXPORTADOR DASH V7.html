@@ -930,6 +930,7 @@
             optimizedData.salesByProduct = { current: new Map(), history: new Map() };
             optimizedData.rcaCodeByName = new Map();
             optimizedData.rcaNameByCode = new Map();
+            optimizedData.supervisorCodeByName = new Map();
             optimizedData.productPastaMap = new Map();
             const supervisorToRcaMap = new Map();
             const workingDaysSet = new Set();
@@ -982,6 +983,7 @@
                     if (sale.CODUSUR && supervisor) { if (!supervisorToRcaMap.has(supervisor)) supervisorToRcaMap.set(supervisor, new Set()); supervisorToRcaMap.get(supervisor).add(sale.CODUSUR); }
                     if (supplier && product) { if (!optimizedData.productsBySupplier.has(supplier)) optimizedData.productsBySupplier.set(supplier, new Set()); optimizedData.productsBySupplier.get(supplier).add(product); }
                     if (rca && sale.CODUSUR) { optimizedData.rcaCodeByName.set(rca, sale.CODUSUR); optimizedData.rcaNameByCode.set(sale.CODUSUR, rca); }
+                    if (supervisor && sale.CODSUPERVISOR) { optimizedData.supervisorCodeByName.set(supervisor, sale.CODSUPERVISOR); }
                     if (client && filial) { clientLastBranch.set(client, filial); }
                     if (product && pasta && !optimizedData.productPastaMap.has(product)) { optimizedData.productPastaMap.set(product, pasta); }
                     
@@ -1380,6 +1382,7 @@
         };
         let globalGoalsMetrics = {};
         let globalGoalsTotalsCache = {};
+        let globalClientGoals = new Map(); // Map<CodCli, Map<Key, {fat: 0, vol: 0}>>
 
         function calculateGoalsMetrics() {
             // Helper to init metrics structure
@@ -1448,6 +1451,14 @@
                                 if (isPrevMonth) {
                                     globalGoalsMetrics[key].prevFat += sale.VLVENDA;
                                     globalGoalsMetrics[key].prevVol += sale.TOTPESOLIQ;
+
+                                    // Initialize Client Goal with Prev Month Value
+                                    if (!globalClientGoals.has(codCli)) globalClientGoals.set(codCli, new Map());
+                                    const cGoals = globalClientGoals.get(codCli);
+                                    if (!cGoals.has(key)) cGoals.set(key, { fat: 0, vol: 0 });
+                                    const g = cGoals.get(key);
+                                    g.fat += sale.VLVENDA;
+                                    g.vol += (sale.TOTPESOLIQ / 1000); // Tons
                                 }
                             }
 
@@ -2088,14 +2099,140 @@
             return parseFloat(val) || 0;
         }
 
+        function getMetricsForSupervisors(supervisorsList) {
+            // Helper to init metrics structure
+            const createMetric = () => ({
+                fat: 0, vol: 0, prevFat: 0, prevVol: 0,
+                prevClientsSet: new Set(),
+                monthlyClientsSets: new Map() // Map<MonthKey, Set<CodCli>>
+            });
+
+            const metricsMap = {
+                '707': createMetric(),
+                '708': createMetric(),
+                '752': createMetric(),
+                '1119_TODDYNHO': createMetric(),
+                '1119_TODDY': createMetric(),
+                '1119_QUAKER_KEROCOCO': createMetric()
+            };
+
+            const currentDate = lastSaleDate;
+            const prevMonthDate = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth() - 1, 1));
+            const prevMonthIndex = prevMonthDate.getUTCMonth();
+            const prevMonthYear = prevMonthDate.getUTCFullYear();
+
+            // Filter clients to match the "Active Structure" definition (Same as Coverage/Goals Table)
+            let activeClients = allClientsData.filter(c => {
+                const rca1 = String(c.rca1 || '').trim();
+                const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
+                if (isAmericanas) return true;
+                if (rca1 === '53') return false;
+                return true;
+            });
+
+            // Filter by Supervisors if provided
+            if (supervisorsList && supervisorsList.length > 0) {
+                const supervisorsSet = new Set(supervisorsList);
+                const rcasSet = new Set();
+                supervisorsSet.forEach(sup => {
+                    (optimizedData.rcasBySupervisor.get(sup) || []).forEach(rca => rcasSet.add(rca));
+                });
+                activeClients = activeClients.filter(c => c.rcas.some(r => rcasSet.has(r)));
+            }
+
+            activeClients.forEach(client => {
+                const codCli = client['Código'];
+                const clientHistoryIds = optimizedData.indices.history.byClient.get(codCli);
+
+                // Temp accumulation for this client to ensure Positive Balance check
+                const clientTotals = {}; // key -> { prevFat: 0, monthlyFat: Map<MonthKey, val> }
+
+                if (clientHistoryIds) {
+                    clientHistoryIds.forEach(id => {
+                        const sale = optimizedData.historyById.get(id);
+
+                        let key = null;
+                        const codFor = String(sale.CODFOR);
+
+                        if (codFor === '707') key = '707';
+                        else if (codFor === '708') key = '708';
+                        else if (codFor === '752') key = '752';
+                        else if (codFor === '1119') {
+                            const desc = normalize(sale.DESCRICAO || '');
+                            if (desc.includes('TODDYNHO')) key = '1119_TODDYNHO';
+                            else if (desc.includes('TODDY')) key = '1119_TODDY';
+                            else if (desc.includes('QUAKER') || desc.includes('KEROCOCO')) key = '1119_QUAKER_KEROCOCO';
+                        }
+
+                        if (key && metricsMap[key]) {
+                            const d = parseDate(sale.DTPED);
+                            const isPrevMonth = d && d.getUTCMonth() === prevMonthIndex && d.getUTCFullYear() === prevMonthYear;
+
+                            // 1. Revenue/Volume metrics (Types 1 & 9) - Global Sums
+                            if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
+                                metricsMap[key].fat += sale.VLVENDA;
+                                metricsMap[key].vol += sale.TOTPESOLIQ;
+
+                                if (isPrevMonth) {
+                                    metricsMap[key].prevFat += sale.VLVENDA;
+                                    metricsMap[key].prevVol += sale.TOTPESOLIQ;
+                                }
+                            }
+
+                            // 2. Accumulate for Client Count Check (Balance per period)
+                            if (d) {
+                                if (!clientTotals[key]) clientTotals[key] = { prevFat: 0, monthlyFat: new Map() };
+
+                                if (isPrevMonth) clientTotals[key].prevFat += sale.VLVENDA;
+
+                                const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
+                                const currentMVal = clientTotals[key].monthlyFat.get(monthKey) || 0;
+                                clientTotals[key].monthlyFat.set(monthKey, currentMVal + sale.VLVENDA);
+                            }
+                        }
+                    });
+                }
+
+                // Check thresholds for this client
+                for (const key in clientTotals) {
+                    const t = clientTotals[key];
+                    if (t.prevFat > 1) {
+                        metricsMap[key].prevClientsSet.add(codCli);
+                    }
+                    t.monthlyFat.forEach((val, mKey) => {
+                        if (val > 1) {
+                            if (!metricsMap[key].monthlyClientsSets.has(mKey)) {
+                                metricsMap[key].monthlyClientsSets.set(mKey, new Set());
+                            }
+                            metricsMap[key].monthlyClientsSets.get(mKey).add(codCli);
+                        }
+                    });
+                }
+            });
+
+            // Calculate Averages and Finalize
+            for (const key in metricsMap) {
+                const m = metricsMap[key];
+
+                m.avgFat = m.fat / QUARTERLY_DIVISOR;
+                m.avgVol = (m.vol / 1000) / QUARTERLY_DIVISOR; // Tons
+                m.prevVol = m.prevVol / 1000; // Tons
+
+                m.prevClients = m.prevClientsSet.size;
+
+                let sumClients = 0;
+                m.monthlyClientsSets.forEach(set => sumClients += set.size);
+                m.avgClients = sumClients / QUARTERLY_DIVISOR;
+            }
+            return metricsMap;
+        }
+
         function updateGoalsSummaryView() {
             const container = document.getElementById('goals-summary-grid');
             if (!container) return;
 
-            // Ensure metrics are calculated
-            if (Object.keys(globalGoalsMetrics).length === 0) {
-                calculateGoalsMetrics();
-            }
+            // Use the new helper with current filters
+            const displayMetrics = getMetricsForSupervisors(selectedGoalsGvSupervisors);
 
             const summaryItems = [
                 { title: 'Extrusados', supplier: '707', brand: null, color: 'teal' },
@@ -2109,7 +2246,7 @@
             const cardsHTML = summaryItems.map(item => {
                 const key = item.supplier + (item.brand ? `_${item.brand}` : '');
                 const target = goalsTargets[key] || { fat: 0, vol: 0 };
-                const metrics = globalGoalsMetrics[key] || { avgFat: 0, prevFat: 0 };
+                const metrics = displayMetrics[key] || { avgFat: 0, prevFat: 0 };
                 
                 // Color mapping for classes
                 const colorMap = {
@@ -2154,6 +2291,24 @@
                                 </div>
                             </div>
                         </div>
+
+
+
+                        <!-- Modal Confirmação -->
+                        <div id="confirmation-modal" class="modal-overlay hidden">
+                            <div class="bg-slate-800 rounded-lg shadow-2xl max-w-md w-full m-4 text-slate-300 border border-slate-700">
+                                <div class="p-4 border-b border-slate-700">
+                                    <h2 class="text-lg font-bold text-white">Confirmar Ação</h2>
+                                </div>
+                                <div class="p-6">
+                                    <p id="confirmation-message" class="text-base"></p>
+                                </div>
+                                <div class="p-4 border-t border-slate-700 flex justify-end gap-3">
+                                    <button id="confirmation-cancel-btn" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors">Cancelar</button>
+                                    <button id="confirmation-confirm-btn" class="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white font-bold rounded-lg transition-colors">Confirmar</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 `;
             }).join('');
@@ -2165,7 +2320,6 @@
             const cacheKey = currentGoalsSupplier + (currentGoalsBrand ? `_${currentGoalsBrand}` : '');
             
             // --- CÁLCULO DOS TOTAIS GLOBAIS (EMPRESA) PARA O FORNECEDOR/MARCA ATUAL ---
-            // Isso garante que o % SHARE seja sobre o total da empresa, não do filtro.
             let globalTotalAvgFat = 0;
             let globalTotalAvgVol = 0;
 
@@ -2173,7 +2327,6 @@
                 globalTotalAvgFat = globalGoalsTotalsCache[cacheKey].fat;
                 globalTotalAvgVol = globalGoalsTotalsCache[cacheKey].vol;
             } else {
-                // Calcular totais globais varrendo todos os clientes ativos
                 const allActiveClients = allClientsData.filter(c => {
                     const rca1 = String(c.rca1 || '').trim();
                     const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
@@ -2190,11 +2343,7 @@
                         let sumVol = 0;
                         clientHistoryIds.forEach(id => {
                             const sale = optimizedData.historyById.get(id);
-                            
-                            // Check Supplier
                             if (String(sale.CODFOR) !== currentGoalsSupplier) return;
-
-                            // Check Brand (if needed)
                             if (currentGoalsBrand) {
                                 const desc = normalize(sale.DESCRICAO || '');
                                 if (currentGoalsBrand === 'TODDYNHO') {
@@ -2205,7 +2354,6 @@
                                     if (!desc.includes('QUAKER') && !desc.includes('KEROCOCO')) return;
                                 }
                             }
-
                             if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
                                 sumFat += sale.VLVENDA;
                                 sumVol += sale.TOTPESOLIQ;
@@ -2220,9 +2368,6 @@
             }
             
             const clientMetrics = [];
-            let totalAvgFat = 0;
-            let totalAvgVol = 0;
-            let totalAvgMix = 0;
 
             filteredClients.forEach(client => {
                 const codCli = client['Código'];
@@ -2230,16 +2375,11 @@
                 
                 let sumFat = 0;
                 let sumVol = 0; 
-                const mixCounts = {}; 
 
                 if (clientHistoryIds) {
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
-                        
-                        // Filter by current supplier tab
                         if (String(sale.CODFOR) !== currentGoalsSupplier) return;
-
-                        // Filter by Brand (if needed)
                         if (currentGoalsBrand) {
                             const desc = normalize(sale.DESCRICAO || '');
                             if (currentGoalsBrand === 'TODDYNHO') {
@@ -2250,19 +2390,9 @@
                                 if (!desc.includes('QUAKER') && !desc.includes('KEROCOCO')) return;
                             }
                         }
-
                         if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
                             sumFat += sale.VLVENDA;
                             sumVol += sale.TOTPESOLIQ;
-                        }
-                        
-                        if (sale.VLVENDA > 0) {
-                            const d = parseDate(sale.DTPED);
-                            if (d) {
-                                const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
-                                if (!mixCounts[monthKey]) mixCounts[monthKey] = new Set();
-                                mixCounts[monthKey].add(sale.PRODUTO);
-                            }
                         }
                     });
                 }
@@ -2270,19 +2400,21 @@
                 const avgFat = sumFat / QUARTERLY_DIVISOR;
                 const avgVol = (sumVol / 1000) / QUARTERLY_DIVISOR; 
                 
-                let sumMix = 0;
-                Object.values(mixCounts).forEach(set => sumMix += set.size);
-                const avgMix = sumMix / QUARTERLY_DIVISOR;
-
-                if (avgFat > 0 || avgVol > 0 || avgMix > 0) {
-                    totalAvgFat += avgFat;
-                    totalAvgVol += avgVol;
-                    totalAvgMix += avgMix;
-                }
-                
                 let sellerName = 'N/A';
                 const rcaCode = client.rcas[0];
                 if (rcaCode) sellerName = optimizedData.rcaNameByCode.get(rcaCode) || rcaCode;
+
+                // Retrieve Stored Goal
+                let metaFat = 0;
+                let metaVol = 0;
+                if (globalClientGoals.has(codCli)) {
+                    const cGoals = globalClientGoals.get(codCli);
+                    if (cGoals.has(cacheKey)) {
+                        const g = cGoals.get(cacheKey);
+                        metaFat = g.fat;
+                        metaVol = g.vol;
+                    }
+                }
 
                 clientMetrics.push({
                     cod: codCli,
@@ -2290,21 +2422,143 @@
                     seller: sellerName,
                     avgFat,
                     avgVol,
-                    avgMix
+                    shareFat: globalTotalAvgFat > 0 ? (avgFat / globalTotalAvgFat) : 0,
+                    shareVol: globalTotalAvgVol > 0 ? (avgVol / globalTotalAvgVol) : 0,
+                    metaFat, // Use stored value
+                    metaVol  // Use stored value
                 });
             });
 
-            clientMetrics.forEach(m => {
-                m.shareFat = globalTotalAvgFat > 0 ? (m.avgFat / globalTotalAvgFat) : 0;
-                m.metaFat = m.shareFat * goalFat;
+            return clientMetrics;
+        }
+
+        function recalculateTotalGoals() {
+            // Reset goalsTargets sums
+            for (const key in goalsTargets) {
+                goalsTargets[key] = { fat: 0, vol: 0 };
+            }
+
+            globalClientGoals.forEach((goalsMap, codCli) => {
+                goalsMap.forEach((val, key) => {
+                    if (goalsTargets[key]) {
+                        goalsTargets[key].fat += val.fat;
+                        goalsTargets[key].vol += val.vol;
+                    }
+                });
+            });
+        }
+
+        function distributeGoals(type) {
+            const inputId = type === 'fat' ? 'goal-global-fat' : 'goal-global-vol';
+            const inputValue = parseInputMoney(inputId);
+
+            const filteredClients = getGoalsFilteredData();
+            if (filteredClients.length === 0) return;
+
+            const cacheKey = currentGoalsSupplier + (currentGoalsBrand ? `_${currentGoalsBrand}` : '');
+
+            // Calculate Local Totals for Share Distribution
+            // We distribute the input value proportionally among the currently filtered clients
+            let localTotalAvg = 0;
+            const clientAvgs = [];
+
+            filteredClients.forEach(client => {
+                const codCli = client['Código'];
+                const clientHistoryIds = optimizedData.indices.history.byClient.get(codCli);
+                let sumVal = 0;
                 
-                m.shareVol = globalTotalAvgVol > 0 ? (m.avgVol / globalTotalAvgVol) : 0;
-                m.metaVol = m.shareVol * goalVol;
+                if (clientHistoryIds) {
+                    clientHistoryIds.forEach(id => {
+                        const sale = optimizedData.historyById.get(id);
+                        if (String(sale.CODFOR) !== currentGoalsSupplier) return;
+                        if (currentGoalsBrand) {
+                            const desc = normalize(sale.DESCRICAO || '');
+                            if (currentGoalsBrand === 'TODDYNHO') { if (!desc.includes('TODDYNHO')) return; }
+                            else if (currentGoalsBrand === 'TODDY') { if (!desc.includes('TODDY') || desc.includes('TODDYNHO')) return; }
+                            else if (currentGoalsBrand === 'QUAKER_KEROCOCO') { if (!desc.includes('QUAKER') && !desc.includes('KEROCOCO')) return; }
+                        }
+
+                        if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
+                            if (type === 'fat') sumVal += sale.VLVENDA;
+                            else sumVal += sale.TOTPESOLIQ;
+                        }
+                    });
+                }
+                const avg = sumVal / QUARTERLY_DIVISOR;
+
+                // Correction: `calculateDistributedGoals` does `/1000` for volume. We must match.
+                const finalAvg = type === 'vol' ? avg / 1000 : avg;
+
+                localTotalAvg += finalAvg;
+                clientAvgs.push({ cod: codCli, avg: finalAvg });
+            });
+
+            // Update Global Client Goals
+            clientAvgs.forEach(c => {
+                let share = localTotalAvg > 0 ? (c.avg / localTotalAvg) : 0;
+                // If local total is 0, distribute equally? Or 0? Usually 0.
+                if (localTotalAvg === 0 && clientAvgs.length > 0) {
+                     share = 1 / clientAvgs.length;
+                }
+
+                const newGoal = share * inputValue;
+
+                if (!globalClientGoals.has(c.cod)) globalClientGoals.set(c.cod, new Map());
+                const cGoals = globalClientGoals.get(c.cod);
+                if (!cGoals.has(cacheKey)) cGoals.set(cacheKey, { fat: 0, vol: 0 });
                 
-                m.shareMix = totalAvgMix > 0 ? (m.avgMix / totalAvgMix) : 0;
+                const g = cGoals.get(cacheKey);
+                if (type === 'fat') g.fat = newGoal;
+                else g.vol = newGoal;
             });
             
-            return clientMetrics;
+            recalculateTotalGoals();
+            updateGoalsView();
+        }
+
+        function showConfirmationModal(message, onConfirm) {
+            const modal = document.getElementById('confirmation-modal');
+            const msgEl = document.getElementById('confirmation-message');
+            const confirmBtn = document.getElementById('confirmation-confirm-btn');
+            const cancelBtn = document.getElementById('confirmation-cancel-btn');
+
+            msgEl.textContent = message;
+            modal.classList.remove('hidden');
+
+            // Clean up old listeners to avoid duplicates
+            const newConfirmBtn = confirmBtn.cloneNode(true);
+            const newCancelBtn = cancelBtn.cloneNode(true);
+            confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+            cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+            newConfirmBtn.addEventListener('click', () => {
+                modal.classList.add('hidden');
+                onConfirm();
+            });
+
+            newCancelBtn.addEventListener('click', () => {
+                modal.classList.add('hidden');
+            });
+        }
+
+        function getFilterDescription() {
+            if (selectedGoalsGvSupervisors.length > 0) {
+                return selectedGoalsGvSupervisors.length === 1 ? `Supervisor "${selectedGoalsGvSupervisors[0]}"` : "Supervisores selecionados";
+            }
+            if (selectedGoalsGvSellers.length > 0) {
+                return selectedGoalsGvSellers.length === 1 ? `Vendedor "${getFirstName(selectedGoalsGvSellers[0])}"` : "Vendedores selecionados";
+            }
+            if (goalsGvCodcliFilter.value) {
+                return `Cliente "${goalsGvCodcliFilter.value}"`;
+            }
+
+            // Default to Tab Name
+            if (currentGoalsSupplier === '707') return 'EXTRUSADOS';
+            if (currentGoalsSupplier === '708') return 'NÃO EXTRUSADOS';
+            if (currentGoalsSupplier === '752') return 'TORCIDA';
+            if (currentGoalsBrand) return currentGoalsBrand;
+
+            return 'filtro atual';
         }
 
         function updateGoalsView() {
@@ -2316,19 +2570,31 @@
 
             const filteredClients = getGoalsFilteredData();
             
-            // Determine Current Key and Load Values
+            // Determine Current Key
             const cacheKey = currentGoalsSupplier + (currentGoalsBrand ? `_${currentGoalsBrand}` : '');
             
-            const goalFat = parseInputMoney('goal-global-fat');
-            const goalVol = parseInputMoney('goal-global-vol');
+            // Calculate projections
+            // Pass 0 as goals since we are not calculating live from input here, but retrieving stored
+            const clientMetrics = calculateDistributedGoals(filteredClients, currentGoalsSupplier, currentGoalsBrand, 0, 0);
 
-            // Save current input values to state (Sync)
-            if (goalsTargets[cacheKey]) {
-                goalsTargets[cacheKey].fat = goalFat;
-                goalsTargets[cacheKey].vol = goalVol;
+            // Calculate Sums for Input Fields based on Filtered Clients
+            let sumFat = 0;
+            let sumVol = 0;
+            clientMetrics.forEach(m => {
+                sumFat += m.metaFat;
+                sumVol += m.metaVol;
+            });
+
+            // Update Inputs only if not currently focused (to avoid jumping values while typing)
+            const fatInput = document.getElementById('goal-global-fat');
+            const volInput = document.getElementById('goal-global-vol');
+
+            if (fatInput && document.activeElement !== fatInput) {
+                fatInput.value = sumFat.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             }
-
-            const clientMetrics = calculateDistributedGoals(filteredClients, currentGoalsSupplier, currentGoalsBrand, goalFat, goalVol);
+            if (volInput && document.activeElement !== volInput) {
+                volInput.value = sumVol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+            }
 
             clientMetrics.sort((a, b) => b.metaFat - a.metaFat);
 
@@ -2410,11 +2676,43 @@
 
         function updateGoalsSvView() {
             const filteredClients = getGoalsSvFilteredData();
-            
-            const cacheKey = currentGoalsSvSupplier + (currentGoalsSvBrand ? `_${currentGoalsSvBrand}` : '');
-            const target = goalsTargets[cacheKey] || { fat: 0, vol: 0 };
-            
-            const clientMetrics = calculateDistributedGoals(filteredClients, currentGoalsSvSupplier, currentGoalsSvBrand, target.fat, target.vol);
+            let clientMetrics = [];
+
+            if (currentGoalsSvSupplier === 'RESUMO') {
+                const allKeys = Object.keys(goalsTargets);
+                const aggregatedMetricsMap = new Map(); // Map<CodCli, Metric>
+
+                allKeys.forEach(key => {
+                    const parts = key.split('_');
+                    const supplier = parts[0];
+                    const brand = parts.length > 1 ? parts.slice(1).join('_') : null;
+                    const target = goalsTargets[key] || { fat: 0, vol: 0 };
+
+                    const partialMetrics = calculateDistributedGoals(filteredClients, supplier, brand, target.fat, target.vol);
+
+                    partialMetrics.forEach(m => {
+                        if (!aggregatedMetricsMap.has(m.cod)) {
+                            aggregatedMetricsMap.set(m.cod, { ...m }); // Clone
+                        } else {
+                            const existing = aggregatedMetricsMap.get(m.cod);
+                            existing.avgFat += m.avgFat;
+                            existing.shareFat += m.shareFat; // Sum of shares across categories doesn't make logical sense for a "Global Share", but for "Sum of Shares" it's ok-ish, though ideally we recalculate share based on global totals. Here we sum.
+                            existing.metaFat += m.metaFat;
+                            existing.avgVol += m.avgVol;
+                            existing.shareVol += m.shareVol;
+                            existing.metaVol += m.metaVol;
+                            // Mix averages might need weighted average, but simple sum isn't right. Let's avg them.
+                            // Or keep separate? The prompt says "soma de tudo... das, medias, e metas".
+                            // For Mix, summing averages of mix count is weird. Let's just sum financial metrics.
+                        }
+                    });
+                });
+                clientMetrics = Array.from(aggregatedMetricsMap.values());
+            } else {
+                const cacheKey = currentGoalsSvSupplier + (currentGoalsSvBrand ? `_${currentGoalsSvBrand}` : '');
+                const target = goalsTargets[cacheKey] || { fat: 0, vol: 0 };
+                clientMetrics = calculateDistributedGoals(filteredClients, currentGoalsSvSupplier, currentGoalsSvBrand, target.fat, target.vol);
+            }
             
             const supervisorMap = new Map();
             
@@ -2434,6 +2732,7 @@
                 if (!supervisorMap.has(supervisorName)) {
                     supervisorMap.set(supervisorName, { 
                         name: supervisorName,
+                        code: optimizedData.supervisorCodeByName.get(supervisorName) || '',
                         totalMetaFat: 0,
                         totalMetaVol: 0,
                         sellers: new Map() 
@@ -2447,6 +2746,7 @@
                 if (!supData.sellers.has(c.seller)) {
                     supData.sellers.set(c.seller, {
                         name: c.seller,
+                        code: sellerCode || '',
                         avgFat: 0,
                         shareFat: 0,
                         metaFat: 0,
@@ -2471,7 +2771,7 @@
             let html = '';
             
             if (sortedSupervisors.length === 0) {
-                html = '<tr><td colspan="7" class="text-center p-4 text-slate-500">Nenhum dado encontrado.</td></tr>';
+                html = '<tr><td colspan="8" class="text-center p-4 text-slate-500">Nenhum dado encontrado.</td></tr>';
             } else {
                 sortedSupervisors.forEach(sup => {
                     const sortedSellers = Array.from(sup.sellers.values()).sort((a, b) => b.metaFat - a.metaFat);
@@ -2487,6 +2787,7 @@
                     sortedSellers.forEach(seller => {
                         html += `
                             <tr class="hover:bg-slate-800 border-b border-slate-800 border-l-4 border-l-transparent">
+                                <td class="px-2 py-2 text-center bg-[#151c36] text-xs text-slate-400 font-mono">${seller.code}</td>
                                 <td class="px-3 py-2 text-left bg-[#151c36] text-xs text-slate-300 font-medium pl-8">${getFirstName(seller.name)}</td>
                                 <td class="px-2 py-2 text-right text-slate-300 bg-blue-900/10 border-r border-slate-800/50 text-xs">${seller.avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                                 <td class="px-2 py-2 text-center text-blue-400 text-xs bg-blue-900/10 border-r border-slate-800/50">${(seller.shareFat * 100).toFixed(2)}%</td>
@@ -2500,6 +2801,7 @@
                     
                     html += `
                         <tr class="bg-slate-700 font-bold border-b border-slate-600">
+                            <td class="px-2 py-2 text-center text-slate-400 text-xs font-mono">${sup.code}</td>
                             <td class="px-3 py-2 text-left text-white text-xs uppercase tracking-wider">${sup.name} (TOTAL)</td>
                             <td class="px-2 py-2 text-right text-white text-xs">${supAvgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                             <td class="px-2 py-2 text-center text-teal-400 text-xs">${(supShareFat * 100).toFixed(2)}%</td>
@@ -7680,6 +7982,11 @@
             const goalsFiltersContainer = document.querySelector('#goals-gv-content > div.mb-4'); // Filters wrapper
             const goalsSummaryContainer = document.getElementById('goals-summary-content');
 
+            // Filter Wrappers
+            const wrapperSupervisor = document.getElementById('goals-gv-supervisor-filter-wrapper');
+            const wrapperSeller = document.getElementById('goals-gv-seller-filter-wrapper');
+            const wrapperCodCli = document.getElementById('goals-gv-codcli-filter-wrapper');
+
             const toggleGoalsView = (view) => {
                 // Reset Buttons
                 [btnElmaChips, btnFoods, btnSummary].forEach(btn => {
@@ -7702,7 +8009,12 @@
                     if(goalsSummaryContainer) goalsSummaryContainer.classList.remove('hidden');
                     if(goalsMainContainer) goalsMainContainer.classList.add('hidden');
                     if(goalsTableContainer) goalsTableContainer.classList.add('hidden');
-                    if(goalsFiltersContainer) goalsFiltersContainer.classList.add('hidden');
+
+                    // Show Filters Container but toggle specific wrappers
+                    if(goalsFiltersContainer) goalsFiltersContainer.classList.remove('hidden');
+                    if(wrapperSupervisor) wrapperSupervisor.classList.remove('hidden');
+                    if(wrapperSeller) wrapperSeller.classList.add('hidden');
+                    if(wrapperCodCli) wrapperCodCli.classList.add('hidden');
                     
                     updateGoalsSummaryView();
                 } else {
@@ -7710,7 +8022,12 @@
                     if(goalsSummaryContainer) goalsSummaryContainer.classList.add('hidden');
                     if(goalsMainContainer) goalsMainContainer.classList.remove('hidden');
                     if(goalsTableContainer) goalsTableContainer.classList.remove('hidden');
+
+                    // Show Filters Container and all wrappers
                     if(goalsFiltersContainer) goalsFiltersContainer.classList.remove('hidden');
+                    if(wrapperSupervisor) wrapperSupervisor.classList.remove('hidden');
+                    if(wrapperSeller) wrapperSeller.classList.remove('hidden');
+                    if(wrapperCodCli) wrapperCodCli.classList.remove('hidden');
 
                     if (view === 'elmachips') {
                         if(btnElmaChips) {
@@ -7810,12 +8127,13 @@
             // SV Category Toggle Logic
             const btnSvElmaChips = document.getElementById('goals-sv-category-elmachips-btn');
             const btnSvFoods = document.getElementById('goals-sv-category-foods-btn');
+            const btnSvSummary = document.getElementById('goals-sv-category-summary-btn');
             const subTabsSvElmaChips = document.getElementById('goals-sv-sub-tabs-elmachips');
             const subTabsSvFoods = document.getElementById('goals-sv-sub-tabs-foods');
 
             const toggleGoalsSvView = (view) => {
                 // Reset Buttons
-                [btnSvElmaChips, btnSvFoods].forEach(btn => {
+                [btnSvElmaChips, btnSvFoods, btnSvSummary].forEach(btn => {
                     if (btn) {
                         btn.classList.remove('bg-[#0d9488]', 'text-white', 'shadow-lg', 'border-teal-500/50');
                         btn.classList.add('bg-[#334155]', 'text-slate-400', 'border-slate-700');
@@ -7846,12 +8164,20 @@
                     // Select First Tab of Foods
                     const firstTab = subTabsSvFoods.querySelector('.goals-sub-tab');
                     if (firstTab) firstTab.click();
+                } else if (view === 'summary') {
+                    if(btnSvSummary) {
+                        btnSvSummary.classList.remove('bg-[#334155]', 'text-slate-400', 'border-slate-700');
+                        btnSvSummary.classList.add('bg-[#0d9488]', 'text-white', 'shadow-lg', 'border-teal-500/50');
+                    }
+                    currentGoalsSvSupplier = 'RESUMO';
+                    updateGoalsSvView();
                 }
             };
 
-            if (btnSvElmaChips && btnSvFoods) {
+            if (btnSvElmaChips && btnSvFoods && btnSvSummary) {
                 btnSvElmaChips.addEventListener('click', () => toggleGoalsSvView('elmachips'));
                 btnSvFoods.addEventListener('click', () => toggleGoalsSvView('foods'));
+                btnSvSummary.addEventListener('click', () => toggleGoalsSvView('summary'));
             }
 
             // GV Filters
@@ -7891,51 +8217,34 @@
                 debouncedUpdateGoals();
             });
 
-            ['btn-distribute-fat', 'btn-distribute-vol'].forEach(id => {
-                const btn = document.getElementById(id);
-                if (btn) btn.addEventListener('click', () => {
-                    // Update state from DOM before distributing/updating
-                    const cacheKey = currentGoalsSupplier + (currentGoalsBrand ? `_${currentGoalsBrand}` : '');
-                    const goalFat = parseInputMoney('goal-global-fat');
-                    const goalVol = parseInputMoney('goal-global-vol');
-                    
-                    if (goalsTargets[cacheKey]) {
-                        goalsTargets[cacheKey].fat = goalFat;
-                        goalsTargets[cacheKey].vol = goalVol;
-                    }
-                    updateGoals();
+            const btnDistributeFat = document.getElementById('btn-distribute-fat');
+            if (btnDistributeFat) {
+                btnDistributeFat.addEventListener('click', () => {
+                    const filterDesc = getFilterDescription();
+                    const val = document.getElementById('goal-global-fat').value;
+                    showConfirmationModal(`Você deseja inserir esta meta de Faturamento (${val}) para: ${filterDesc}?`, () => {
+                        distributeGoals('fat');
+                    });
                 });
-            });
+            }
+
+            const btnDistributeVol = document.getElementById('btn-distribute-vol');
+            if (btnDistributeVol) {
+                btnDistributeVol.addEventListener('click', () => {
+                    const filterDesc = getFilterDescription();
+                    const val = document.getElementById('goal-global-vol').value;
+                    showConfirmationModal(`Você deseja inserir esta meta de Volume (${val}) para: ${filterDesc}?`, () => {
+                        distributeGoals('vol');
+                    });
+                });
+            }
 
             // Add Input Listeners for Real-time State Updates
             const fatInput = document.getElementById('goal-global-fat');
             const volInput = document.getElementById('goal-global-vol');
             
-            const handleInputUpdate = () => {
-                const cacheKey = currentGoalsSupplier + (currentGoalsBrand ? `_${currentGoalsBrand}` : '');
-                const goalFat = parseInputMoney('goal-global-fat');
-                const goalVol = parseInputMoney('goal-global-vol');
-                
-                if (goalsTargets[cacheKey]) {
-                    goalsTargets[cacheKey].fat = goalFat;
-                    goalsTargets[cacheKey].vol = goalVol;
-                }
-            };
-
-            if (fatInput) {
-                fatInput.addEventListener('input', handleInputUpdate);
-                fatInput.addEventListener('change', () => {
-                    handleInputUpdate();
-                    updateGoals(); // Re-render table on blur/enter (change) if needed
-                });
-            }
-            if (volInput) {
-                volInput.addEventListener('input', handleInputUpdate);
-                volInput.addEventListener('change', () => {
-                    handleInputUpdate();
-                    updateGoals();
-                });
-            }
+            // REMOVED: Automatic update on change/input to prevent overwriting user input before distribution.
+            // Values are now read directly from the input when the "Distribute" button is clicked.
 
             clearGoalsGvFiltersBtn.addEventListener('click', () => { resetGoalsGvFilters(); markDirty('goals'); });
 
@@ -9237,7 +9546,7 @@
                                 <!-- Filters -->
                                 <div class="mb-4 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
                                     <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 items-end">
-                                        <div class="relative">
+                                        <div id="goals-gv-supervisor-filter-wrapper" class="relative">
                                             <label for="goals-gv-supervisor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label>
                                             <button id="goals-gv-supervisor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
                                                 <span id="goals-gv-supervisor-filter-text">Todos</span>
@@ -9245,7 +9554,7 @@
                                             </button>
                                             <div id="goals-gv-supervisor-filter-dropdown" class="hidden absolute z-50 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
                                         </div>
-                                        <div class="relative">
+                                        <div id="goals-gv-seller-filter-wrapper" class="relative">
                                             <label for="goals-gv-seller-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Vendedor</label>
                                             <button id="goals-gv-seller-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
                                                 <span id="goals-gv-seller-filter-text">Todos</span>
@@ -9253,7 +9562,7 @@
                                             </button>
                                             <div id="goals-gv-seller-filter-dropdown" class="hidden absolute z-50 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
                                         </div>
-                                        <div>
+                                        <div id="goals-gv-codcli-filter-wrapper">
                                             <label for="goals-gv-codcli-filter" class="block mb-2 text-sm font-medium text-slate-400">Cód. Cliente</label>
                                             <input type="text" id="goals-gv-codcli-filter" placeholder="Digite o código..." class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5">
                                         </div>
@@ -9305,6 +9614,7 @@
                                     <div class="flex gap-4">
                                         <button id="goals-sv-category-elmachips-btn" class="px-8 py-3 bg-[#0d9488] text-white font-bold rounded hover:bg-teal-700 transition-colors uppercase tracking-wider text-sm shadow-lg border border-teal-500/50">ELMA CHIPS</button>
                                         <button id="goals-sv-category-foods-btn" class="px-8 py-3 bg-[#334155] text-slate-400 font-bold rounded hover:bg-slate-700 transition-colors uppercase tracking-wider text-sm border border-slate-700">FOODS</button>
+                                        <button id="goals-sv-category-summary-btn" class="px-8 py-3 bg-[#334155] text-slate-400 font-bold rounded hover:bg-slate-700 transition-colors uppercase tracking-wider text-sm border border-slate-700">RESUMO</button>
                                     </div>
                                     
                                     <!-- Sub-tabs Container (SV) -->
@@ -9346,6 +9656,7 @@
                                         <table class="min-w-full text-sm text-left text-slate-300 border-collapse">
                                             <thead class="text-xs uppercase sticky top-0 z-20">
                                                 <tr class="bg-[#0f172a] text-slate-400 border-b border-slate-700">
+                                                    <th rowspan="2" class="px-2 py-2 text-center w-16 bg-[#0f172a] border-r border-slate-700">CÓD</th>
                                                     <th rowspan="2" class="px-3 py-2 text-left bg-[#0f172a] border-r border-slate-700">VENDEDOR</th>
                                                     <th colspan="3" class="px-2 py-1 text-center bg-blue-900/30 text-blue-400 border-r border-slate-700 border-b border-blue-900/50">FATURAMENTO (R$)</th>
                                                     <th colspan="3" class="px-2 py-1 text-center bg-orange-900/30 text-orange-400 border-b border-orange-900/50 border-r border-slate-700">VOLUME (TON)</th>
