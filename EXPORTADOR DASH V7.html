@@ -1511,6 +1511,7 @@
         let selectedGoalsGvSupervisors = [];
         let selectedGoalsGvSellers = [];
         let selectedGoalsSvSupervisors = [];
+        let selectedGoalsSummarySupervisors = [];
 
         // let innovationsIncludeBonus = true; // REMOVED
         // let innovationsMonthIncludeBonus = true; // REMOVED
@@ -2231,8 +2232,53 @@
             const container = document.getElementById('goals-summary-grid');
             if (!container) return;
 
-            // Use the new helper with current filters
-            const displayMetrics = getMetricsForSupervisors(selectedGoalsGvSupervisors);
+            // Use the independent summary filter
+            const displayMetrics = getMetricsForSupervisors(selectedGoalsSummarySupervisors);
+
+            // Calculate Target Sums for Filtered Subset
+            // 1. Identify clients matching the summary filter
+            let filteredSummaryClients = allClientsData;
+            
+            // Apply "Active" Filter logic (Consistent with other Goal Views)
+            filteredSummaryClients = filteredSummaryClients.filter(c => {
+                const rca1 = String(c.rca1 || '').trim();
+                const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
+                if (isAmericanas) return true;
+                if (rca1 === '53') return false;
+                return true;
+            });
+
+            if (selectedGoalsSummarySupervisors.length > 0) {
+                const supervisorsSet = new Set(selectedGoalsSummarySupervisors);
+                const rcasSet = new Set();
+                supervisorsSet.forEach(sup => {
+                    (optimizedData.rcasBySupervisor.get(sup) || []).forEach(rca => rcasSet.add(rca));
+                });
+                filteredSummaryClients = filteredSummaryClients.filter(c => c.rcas.some(r => rcasSet.has(r)));
+            }
+
+            // 2. Sum up goals for these clients
+            const summaryGoalsSums = {
+                '707': { fat: 0, vol: 0 },
+                '708': { fat: 0, vol: 0 },
+                '752': { fat: 0, vol: 0 },
+                '1119_TODDYNHO': { fat: 0, vol: 0 },
+                '1119_TODDY': { fat: 0, vol: 0 },
+                '1119_QUAKER_KEROCOCO': { fat: 0, vol: 0 }
+            };
+
+            filteredSummaryClients.forEach(c => {
+                const codCli = c['Código'];
+                if (globalClientGoals.has(codCli)) {
+                    const cGoals = globalClientGoals.get(codCli);
+                    cGoals.forEach((val, key) => {
+                        if (summaryGoalsSums[key]) {
+                            summaryGoalsSums[key].fat += val.fat;
+                            summaryGoalsSums[key].vol += val.vol;
+                        }
+                    });
+                }
+            });
 
             const summaryItems = [
                 { title: 'Extrusados', supplier: '707', brand: null, color: 'teal' },
@@ -2245,7 +2291,12 @@
 
             const cardsHTML = summaryItems.map(item => {
                 const key = item.supplier + (item.brand ? `_${item.brand}` : '');
-                const target = goalsTargets[key] || { fat: 0, vol: 0 };
+                
+                // Use calculated sums if filter is active, otherwise global targets? 
+                // Actually, if no filter is active, filteredSummaryClients = All Active, so the sum matches the global target.
+                // So we can always use summaryGoalsSums.
+                
+                const target = summaryGoalsSums[key] || { fat: 0, vol: 0 };
                 const metrics = displayMetrics[key] || { avgFat: 0, prevFat: 0 };
                 
                 // Color mapping for classes
@@ -7992,12 +8043,10 @@
                     if(goalsMainContainer) goalsMainContainer.classList.add('hidden');
                     if(goalsTableContainer) goalsTableContainer.classList.add('hidden');
                     
-                    // Show Filters Container but toggle specific wrappers
-                    if(goalsFiltersContainer) goalsFiltersContainer.classList.remove('hidden');
-                    if(wrapperSupervisor) wrapperSupervisor.classList.remove('hidden');
-                    if(wrapperSeller) wrapperSeller.classList.add('hidden');
-                    if(wrapperCodCli) wrapperCodCli.classList.add('hidden');
+                    // HIDE Main Filters Container completely
+                    if(goalsFiltersContainer) goalsFiltersContainer.classList.add('hidden');
                     
+                    // Ensure Summary Filters are initialized/visible (they are inside summary container)
                     updateGoalsSummaryView();
                 } else {
                     // Show Main Content
@@ -8005,7 +8054,7 @@
                     if(goalsMainContainer) goalsMainContainer.classList.remove('hidden');
                     if(goalsTableContainer) goalsTableContainer.classList.remove('hidden');
                     
-                    // Show Filters Container and all wrappers
+                    // SHOW Main Filters Container and all wrappers
                     if(goalsFiltersContainer) goalsFiltersContainer.classList.remove('hidden');
                     if(wrapperSupervisor) wrapperSupervisor.classList.remove('hidden');
                     if(wrapperSeller) wrapperSeller.classList.remove('hidden');
@@ -8197,6 +8246,43 @@
             goalsGvCodcliFilter.addEventListener('input', (e) => {
                 e.target.value = e.target.value.replace(/[^0-9]/g, '');
                 debouncedUpdateGoals();
+            });
+
+            // --- Summary View Independent Filters ---
+            const goalsSummarySupervisorFilterBtn = document.getElementById('goals-summary-supervisor-filter-btn');
+            const goalsSummarySupervisorFilterDropdown = document.getElementById('goals-summary-supervisor-filter-dropdown');
+            const clearGoalsSummaryFiltersBtn = document.getElementById('clear-goals-summary-filters-btn');
+
+            if (goalsSummarySupervisorFilterBtn && goalsSummarySupervisorFilterDropdown) {
+                goalsSummarySupervisorFilterBtn.addEventListener('click', () => goalsSummarySupervisorFilterDropdown.classList.toggle('hidden'));
+                
+                goalsSummarySupervisorFilterDropdown.addEventListener('change', (e) => {
+                    if (e.target.type === 'checkbox') {
+                        const { value, checked } = e.target;
+                        if (checked) selectedGoalsSummarySupervisors.push(value);
+                        else selectedGoalsSummarySupervisors = selectedGoalsSummarySupervisors.filter(s => s !== value);
+                        
+                        updateSupervisorFilter(goalsSummarySupervisorFilterDropdown, document.getElementById('goals-summary-supervisor-filter-text'), selectedGoalsSummarySupervisors, allSalesData, true);
+                        updateGoalsSummaryView();
+                    }
+                });
+            }
+
+            if (clearGoalsSummaryFiltersBtn) {
+                clearGoalsSummaryFiltersBtn.addEventListener('click', () => {
+                    selectedGoalsSummarySupervisors = [];
+                    updateSupervisorFilter(goalsSummarySupervisorFilterDropdown, document.getElementById('goals-summary-supervisor-filter-text'), selectedGoalsSummarySupervisors, allSalesData, true);
+                    updateGoalsSummaryView();
+                });
+            }
+
+            // Close dropdowns on outside click
+            document.addEventListener('click', (e) => {
+                if (goalsSummarySupervisorFilterBtn && goalsSummarySupervisorFilterDropdown) {
+                    if (!goalsSummarySupervisorFilterBtn.contains(e.target) && !goalsSummarySupervisorFilterDropdown.contains(e.target)) {
+                        goalsSummarySupervisorFilterDropdown.classList.add('hidden');
+                    }
+                }
             });
 
             const btnDistributeFat = document.getElementById('btn-distribute-fat');
@@ -8597,6 +8683,10 @@
         selectedGoalsGvSellers = updateSellerFilter(selectedGoalsGvSupervisors, goalsGvSellerFilterDropdown, goalsGvSellerFilterText, selectedGoalsGvSellers, allSalesData);
         // Initialize SV Supervisor filter just in case
         selectedGoalsSvSupervisors = updateSupervisorFilter(goalsSvSupervisorFilterDropdown, goalsSvSupervisorFilterText, selectedGoalsSvSupervisors, allSalesData);
+        // Initialize Summary Supervisor Filter
+        if(document.getElementById('goals-summary-supervisor-filter-dropdown')) {
+            selectedGoalsSummarySupervisors = updateSupervisorFilter(document.getElementById('goals-summary-supervisor-filter-dropdown'), document.getElementById('goals-summary-supervisor-filter-text'), selectedGoalsSummarySupervisors, allSalesData);
+        }
 
 
         updateAllComparisonFilters();
@@ -9469,6 +9559,21 @@
 
                                 <!-- Summary Content -->
                                 <div id="goals-summary-content" class="hidden mb-6">
+                                    <!-- Independent Filters for Summary -->
+                                    <div class="mb-4 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
+                                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                                            <div class="relative">
+                                                <label for="goals-summary-supervisor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label>
+                                                <button id="goals-summary-supervisor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
+                                                    <span id="goals-summary-supervisor-filter-text">Todos</span>
+                                                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
+                                                </button>
+                                                <div id="goals-summary-supervisor-filter-dropdown" class="hidden absolute z-50 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
+                                            </div>
+                                            <button id="clear-goals-summary-filters-btn" class="w-full bg-slate-600 hover:bg-slate-500 text-white font-bold py-2.5 px-4 rounded-lg">Limpar Filtros</button>
+                                        </div>
+                                    </div>
+
                                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="goals-summary-grid">
                                         <!-- Summary Cards will be injected here -->
                                     </div>
