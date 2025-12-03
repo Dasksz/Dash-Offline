@@ -2914,153 +2914,453 @@
             return clients;
         }
 
+        function recalculateGoalsSvTotals(input) {
+            const { supId, colId, field } = input.dataset;
+
+            // 1. Sum for this Supervisor
+            const supInputs = document.querySelectorAll(`.goals-sv-input[data-sup-id="${supId}"][data-col-id="${colId}"][data-field="${field}"]`);
+            let supSum = 0;
+            supInputs.forEach(inp => {
+                let val = parseFloat(inp.value.replace(/\./g, '').replace(',', '.'));
+                if (isNaN(val)) val = 0;
+                supSum += val;
+            });
+
+            const supTotalEl = document.getElementById(`total-sup-${supId}-${colId}-${field}`);
+            if (supTotalEl) {
+                // Formatting depends on field
+                if (field === 'fat') supTotalEl.textContent = supSum.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                else if (field === 'vol') supTotalEl.textContent = supSum.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3});
+                else supTotalEl.textContent = supSum;
+            }
+
+            // 2. Sum for Grand Total (Geral PRIME)
+            const allInputs = document.querySelectorAll(`.goals-sv-input[data-col-id="${colId}"][data-field="${field}"]`);
+            let grandSum = 0;
+            allInputs.forEach(inp => {
+                let val = parseFloat(inp.value.replace(/\./g, '').replace(',', '.'));
+                if (isNaN(val)) val = 0;
+                grandSum += val;
+            });
+
+            const grandTotalEl = document.getElementById(`total-grand-${colId}-${field}`);
+            if (grandTotalEl) {
+                if (field === 'fat') grandTotalEl.textContent = grandSum.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                else if (field === 'vol') grandTotalEl.textContent = grandSum.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3});
+                else grandTotalEl.textContent = grandSum;
+            }
+        }
+
         function updateGoalsSvView() {
             const filteredClients = getGoalsSvFilteredData();
-            let clientMetrics = [];
 
-            if (currentGoalsSvSupplier === 'RESUMO') {
-                const allKeys = Object.keys(goalsTargets);
-                const aggregatedMetricsMap = new Map(); // Map<CodCli, Metric>
+            // Define Column Blocks (Metrics Config)
+            const svColumns = [
+                { id: 'total_elma', label: 'TOTAL ELMA', type: 'standard', isAgg: true, colorClass: 'text-teal-400', components: ['707', '708', '752'] },
+                { id: '707', label: 'EXTRUSADOS', type: 'standard', supplier: '707', brand: null, colorClass: 'text-slate-300' },
+                { id: '708', label: 'NÃO EXTRUSADOS', type: 'standard', supplier: '708', brand: null, colorClass: 'text-slate-300' },
+                { id: '752', label: 'TORCIDA', type: 'standard', supplier: '752', brand: null, colorClass: 'text-slate-300' },
+                { id: 'tonelada_elma', label: 'TONELADA ELMA', type: 'tonnage', isAgg: true, colorClass: 'text-orange-400', components: ['707', '708', '752'] },
+                { id: 'mix_salty', label: 'MIX SALTY', type: 'mix', isAgg: true, colorClass: 'text-teal-400', components: [] },
+                { id: 'total_foods', label: 'TOTAL FOODS', type: 'standard', isAgg: true, colorClass: 'text-yellow-400', components: ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'] },
+                { id: '1119_TODDYNHO', label: 'TODDYNHO', type: 'standard', supplier: '1119', brand: 'TODDYNHO', colorClass: 'text-slate-300' },
+                { id: '1119_TODDY', label: 'TODDY', type: 'standard', supplier: '1119', brand: 'TODDY', colorClass: 'text-slate-300' },
+                { id: '1119_QUAKER_KEROCOCO', label: 'QUAKER / KEROCOCO', type: 'standard', supplier: '1119', brand: 'QUAKER_KEROCOCO', colorClass: 'text-slate-300' },
+                { id: 'tonelada_foods', label: 'TONELADA FOODS', type: 'tonnage', isAgg: true, colorClass: 'text-orange-400', components: ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'] },
+                { id: 'mix_foods', label: 'MIX FOODS', type: 'mix', isAgg: true, colorClass: 'text-yellow-400', components: [] }
+            ];
 
-                allKeys.forEach(key => {
-                    const parts = key.split('_');
-                    const supplier = parts[0];
-                    const brand = parts.length > 1 ? parts.slice(1).join('_') : null;
-                    const target = goalsTargets[key] || { fat: 0, vol: 0 };
+            // 1. Fetch Metrics for each Base Category
+            const metricsByCat = {};
+            const baseCategories = svColumns.filter(c => c.type === 'standard' && !c.isAgg);
 
-                    const partialMetrics = calculateDistributedGoals(filteredClients, supplier, brand, target.fat, target.vol);
-                    
-                    partialMetrics.forEach(m => {
-                        if (!aggregatedMetricsMap.has(m.cod)) {
-                            aggregatedMetricsMap.set(m.cod, { ...m }); // Clone
-                        } else {
-                            const existing = aggregatedMetricsMap.get(m.cod);
-                            existing.avgFat += m.avgFat;
-                            existing.shareFat += m.shareFat; // Sum of shares across categories doesn't make logical sense for a "Global Share", but for "Sum of Shares" it's ok-ish, though ideally we recalculate share based on global totals. Here we sum.
-                            existing.metaFat += m.metaFat;
-                            existing.avgVol += m.avgVol;
-                            existing.shareVol += m.shareVol;
-                            existing.metaVol += m.metaVol;
-                            // Mix averages might need weighted average, but simple sum isn't right. Let's avg them.
-                            // Or keep separate? The prompt says "soma de tudo... das, medias, e metas".
-                            // For Mix, summing averages of mix count is weird. Let's just sum financial metrics.
-                        }
-                    });
-                });
-                clientMetrics = Array.from(aggregatedMetricsMap.values());
-            } else {
-                const cacheKey = currentGoalsSvSupplier + (currentGoalsSvBrand ? `_${currentGoalsSvBrand}` : '');
-                const target = goalsTargets[cacheKey] || { fat: 0, vol: 0 };
-                clientMetrics = calculateDistributedGoals(filteredClients, currentGoalsSvSupplier, currentGoalsSvBrand, target.fat, target.vol);
-            }
-            
-            const supervisorMap = new Map();
-            
-            clientMetrics.forEach(c => {
-                const sellerCode = optimizedData.rcaCodeByName.get(c.seller);
-                
-                let supervisorName = 'N/A';
-                if (sellerCode) {
-                    for (const [sup, rcas] of optimizedData.rcasBySupervisor) {
-                        if (rcas.includes(sellerCode)) {
-                            supervisorName = sup;
-                            break;
+            baseCategories.forEach(cat => {
+                const target = goalsTargets[cat.id] || { fat: 0, vol: 0 };
+                // Using 0 as goal to retrieve stored metas inside the function
+                metricsByCat[cat.id] = calculateDistributedGoals(filteredClients, cat.supplier, cat.brand, target.fat, target.vol);
+            });
+
+            // 2. Aggregate by Seller
+            const sellerMap = new Map(); // SellerName -> { Supervisor, Code, Data: { [ColId]: { metaFat, metaVol, metaPos, avgVol } } }
+
+            const initSeller = (c) => {
+                const sellerName = c.seller;
+                if (!sellerMap.has(sellerName)) {
+                    let sellerCode = optimizedData.rcaCodeByName.get(sellerName) || '';
+                    let supervisorName = 'N/A';
+                    if (sellerCode) {
+                        for (const [sup, rcas] of optimizedData.rcasBySupervisor) {
+                            if (rcas.includes(sellerCode)) {
+                                supervisorName = sup;
+                                break;
+                            }
                         }
                     }
-                }
-                
-                if (!supervisorMap.has(supervisorName)) {
-                    supervisorMap.set(supervisorName, { 
-                        name: supervisorName,
-                        code: optimizedData.supervisorCodeByName.get(supervisorName) || '',
-                        totalMetaFat: 0,
-                        totalMetaVol: 0,
-                        totalMetaPos: 0, // Initialize
-                        sellers: new Map() 
+                    sellerMap.set(sellerName, {
+                        name: sellerName,
+                        code: sellerCode,
+                        supervisor: supervisorName,
+                        data: {},
+                        metaPosTotal: 0
                     });
                 }
-                
-                const supData = supervisorMap.get(supervisorName);
-                supData.totalMetaFat += c.metaFat;
-                supData.totalMetaVol += c.metaVol;
-                supData.totalMetaPos += (c.metaPos || 0); // Accumulate
-                
-                if (!supData.sellers.has(c.seller)) {
-                    supData.sellers.set(c.seller, {
-                        name: c.seller,
-                        code: sellerCode || '',
-                        avgFat: 0,
-                        shareFat: 0,
-                        metaFat: 0,
-                        avgVol: 0,
-                        shareVol: 0,
-                        metaVol: 0,
-                        metaPos: 0 // Initialize
-                    });
-                }
-                
-                const sellerData = supData.sellers.get(c.seller);
-                sellerData.avgFat += c.avgFat;
-                sellerData.shareFat += c.shareFat;
-                sellerData.metaFat += c.metaFat;
-                sellerData.avgVol += c.avgVol;
-                sellerData.shareVol += c.shareVol;
-                sellerData.metaVol += c.metaVol;
-                sellerData.metaPos += (c.metaPos || 0); // Accumulate
+                return sellerMap.get(sellerName);
+            };
+
+            // Populate Base Metrics
+            baseCategories.forEach(cat => {
+                const catId = cat.id;
+                metricsByCat[catId].forEach(client => {
+                    const sellerObj = initSeller(client);
+                    if (!sellerObj.data[catId]) sellerObj.data[catId] = { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0 };
+                    
+                    sellerObj.data[catId].metaFat += client.metaFat;
+                    sellerObj.data[catId].metaVol += client.metaVol;
+                    sellerObj.data[catId].metaPos += client.metaPos;
+                    sellerObj.data[catId].avgVol += client.avgVol;
+                });
             });
+
+            const calculateMixMetrics = (sellerObj) => {
+                const sellerName = sellerObj.name;
+                const rcaCode = sellerObj.code;
+                if (!rcaCode) return { avgSalty: 0, avgFoods: 0 };
+
+                const historyIds = optimizedData.indices.history.byRca.get(sellerName) || [];
+                const monthlyData = new Map();
+
+                historyIds.forEach(id => {
+                    const sale = optimizedData.historyById.get(id);
+                    const d = parseDate(sale.DTPED);
+                    if (!d) return;
+
+                    const mKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
+                    if (!monthlyData.has(mKey)) monthlyData.set(mKey, new Map());
+
+                    const cMap = monthlyData.get(mKey);
+                    if (!cMap.has(sale.CODCLI)) cMap.set(sale.CODCLI, { salty: new Set(), foods: new Set(), val: 0 });
+
+                    const cData = cMap.get(sale.CODCLI);
+                    cData.val += sale.VLVENDA;
+
+                    if (sale.VLVENDA > 0) {
+                         const desc = normalize(sale.DESCRICAO);
+                         MIX_SALTY_CATEGORIES.forEach(cat => { if (desc.includes(cat)) cData.salty.add(cat); });
+                         MIX_FOODS_CATEGORIES.forEach(cat => { if (desc.includes(cat)) cData.foods.add(cat); });
+                    }
+                });
+
+                let sumSalty = 0;
+                let sumFoods = 0;
+
+                const months = Array.from(monthlyData.keys()).sort().slice(-3);
+                const divisor = months.length > 0 ? months.length : 1;
+
+                months.forEach(m => {
+                    const cMap = monthlyData.get(m);
+                    let mSalty = 0;
+                    let mFoods = 0;
+                    cMap.forEach(d => {
+                        if (d.salty.size >= MIX_SALTY_CATEGORIES.length) mSalty++;
+                        if (d.foods.size >= MIX_FOODS_CATEGORIES.length) mFoods++;
+                    });
+                    sumSalty += mSalty;
+                    sumFoods += mFoods;
+                });
+
+                return {
+                    avgSalty: sumSalty / divisor,
+                    avgFoods: sumFoods / divisor
+                };
+            };
+
+            // Calculate Aggregates
+            sellerMap.forEach(sellerObj => {
+                // 1. Component Aggregates
+                svColumns.filter(c => c.isAgg && c.type !== 'mix').forEach(aggCol => {
+                    let sumFat = 0, sumVol = 0, sumPos = 0, sumAvgVol = 0;
+                    aggCol.components.forEach(compId => {
+                        if (sellerObj.data[compId]) {
+                            sumFat += sellerObj.data[compId].metaFat;
+                            sumVol += sellerObj.data[compId].metaVol;
+                            sumPos += sellerObj.data[compId].metaPos;
+                            sumAvgVol += sellerObj.data[compId].avgVol;
+                        }
+                    });
+                    sellerObj.data[aggCol.id] = { metaFat: sumFat, metaVol: sumVol, metaPos: sumPos, avgVol: sumAvgVol };
+                });
+
+                // 2. Mix Metrics
+                const sellerClients = filteredClients.filter(c => {
+                    const code = c.rcas[0];
+                    const name = optimizedData.rcaNameByCode.get(code) || code;
+                    return name === sellerObj.name;
+                });
+                
+                let activeClientsCount = 0;
+                sellerClients.forEach(c => {
+                    const hIds = optimizedData.indices.history.byClient.get(c['Código']);
+                    let totalFat = 0;
+                    if (hIds) {
+                        for (const id of hIds) {
+                             totalFat += optimizedData.historyById.get(id).VLVENDA;
+                        }
+                    }
+                    if (totalFat > 1) {
+                        activeClientsCount++;
+                    }
+                });
+                
+                sellerObj.metaPosTotal = activeClientsCount;
+
+                const mixStats = calculateMixMetrics(sellerObj);
+                
+                sellerObj.data['mix_salty'] = {
+                    avgMix: mixStats.avgSalty,
+                    metaMix: Math.round(activeClientsCount * 0.60)
+                };
+                
+                sellerObj.data['mix_foods'] = {
+                    avgMix: mixStats.avgFoods,
+                    metaMix: Math.round(activeClientsCount * 0.30)
+                };
+            });
+
+            // Group by Supervisor
+            const supervisorGroups = new Map();
+            sellerMap.forEach(seller => {
+                const supName = seller.supervisor;
+                if (!supervisorGroups.has(supName)) {
+                    supervisorGroups.set(supName, {
+                        name: supName,
+                        id: supName.replace(/[^a-zA-Z0-9]/g, '_'),
+                        code: optimizedData.supervisorCodeByName.get(supName) || '',
+                        sellers: [],
+                        totals: {}
+                    });
+                }
+                const group = supervisorGroups.get(supName);
+                group.sellers.push(seller);
+                
+                // Aggregate Supervisor Totals
+                svColumns.forEach(col => {
+                    if (!group.totals[col.id]) group.totals[col.id] = { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0 };
+                    if (seller.data[col.id]) {
+                        group.totals[col.id].metaFat += seller.data[col.id].metaFat || 0;
+                        group.totals[col.id].metaVol += seller.data[col.id].metaVol || 0;
+                        group.totals[col.id].metaPos += seller.data[col.id].metaPos || 0;
+                        group.totals[col.id].avgVol += seller.data[col.id].avgVol || 0;
+                        group.totals[col.id].avgMix += seller.data[col.id].avgMix || 0;
+                        group.totals[col.id].metaMix += seller.data[col.id].metaMix || 0;
+                    }
+                });
+            });
+
+            const sortedSupervisors = Array.from(supervisorGroups.values()).sort((a, b) => {
+                const totalElmaA = a.totals['total_elma'] ? a.totals['total_elma'].metaFat : 0;
+                const totalElmaB = b.totals['total_elma'] ? b.totals['total_elma'].metaFat : 0;
+                return totalElmaB - totalElmaA;
+            });
+
+            // Grand Totals
+            const grandTotals = {};
+            svColumns.forEach(col => grandTotals[col.id] = { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0 });
+            sortedSupervisors.forEach((sup, index) => {
+                // Generate Safe ID using Index for strict uniqueness
+                sup.id = `sup-${index}`;
+
+                svColumns.forEach(col => {
+                    grandTotals[col.id].metaFat += sup.totals[col.id].metaFat;
+                    grandTotals[col.id].metaVol += sup.totals[col.id].metaVol;
+                    grandTotals[col.id].metaPos += sup.totals[col.id].metaPos;
+                    grandTotals[col.id].avgVol += sup.totals[col.id].avgVol;
+                    grandTotals[col.id].avgMix += sup.totals[col.id].avgMix;
+                    grandTotals[col.id].metaMix += sup.totals[col.id].metaMix;
+                });
+            });
+
+            // 3. Render HTML
+            const mainTable = document.getElementById('goals-sv-main-table');
+            if (!mainTable) return;
+
+            // Generate Header
+            let headerHTML = `
+                <thead class="text-[10px] uppercase sticky top-0 z-20 bg-[#0f172a] text-slate-400">
+                    <tr>
+                        <th rowspan="3" class="px-2 py-2 text-center w-16 border-r border-b border-slate-700">CÓD</th>
+                        <th rowspan="3" class="px-3 py-2 text-left w-48 border-r border-b border-slate-700">VENDEDOR</th>
+            `;
             
-            const sortedSupervisors = Array.from(supervisorMap.values()).sort((a, b) => b.totalMetaFat - a.totalMetaFat);
+            // Row 1: Groups
+            svColumns.forEach(col => {
+                let colspan = 2;
+                if (col.type === 'standard') colspan = 4; // MetaFat, AdjFat, MetaPos, AdjPos
+                if (col.type === 'tonnage') colspan = 3; // Avg, Meta, Adj
+                if (col.type === 'mix') colspan = 3; // Avg, Meta, Adj
+
+                headerHTML += `<th colspan="${colspan}" class="px-2 py-2 text-center font-bold border-r border-b border-slate-700 ${col.colorClass}">${col.label}</th>`;
+            });
+            headerHTML += `</tr><tr>`;
             
-            const tableBody = document.getElementById('goals-sv-table-body');
-            let html = '';
-            
+            // Row 2: Metric Names
+            svColumns.forEach(col => {
+                if (col.type === 'standard') {
+                    headerHTML += `
+                        <th colspan="2" class="px-1 py-1 text-center border-r border-slate-700/50 bg-slate-800/50">FATURAMENTO</th>
+                        <th colspan="2" class="px-1 py-1 text-center border-r border-slate-700 bg-slate-800/50">POSITIVAÇÃO</th>
+                    `;
+                } else if (col.type === 'tonnage') {
+                    headerHTML += `
+                        <th class="px-1 py-1 text-right border-r border-slate-700/50 bg-slate-800/50">MÉDIA TRIM.</th>
+                        <th colspan="2" class="px-1 py-1 text-center border-r border-slate-700 bg-slate-800/50">META TON</th>
+                    `;
+                } else if (col.type === 'mix') {
+                    headerHTML += `
+                        <th class="px-1 py-1 text-right border-r border-slate-700/50 bg-slate-800/50">MÉDIA TRIM.</th>
+                        <th colspan="2" class="px-1 py-1 text-center border-r border-slate-700 bg-slate-800/50">META MIX</th>
+                    `;
+                }
+            });
+            headerHTML += `</tr><tr>`;
+
+            // Row 3: Subtitles
+            const gearIcon = `<svg class="w-3 h-3 mx-auto text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>`;
+
+            svColumns.forEach(col => {
+                if (col.type === 'standard') {
+                    headerHTML += `
+                        <th class="px-1 py-1 text-right border-r border-b border-slate-700 text-slate-500 font-normal">Meta</th>
+                        <th class="px-1 py-1 text-center border-r border-b border-slate-700 text-slate-500 font-normal">${gearIcon}</th>
+                        <th class="px-1 py-1 text-center border-r border-b border-slate-700 text-slate-500 font-normal">Meta</th>
+                        <th class="px-1 py-1 text-center border-r border-b border-slate-700 text-slate-500 font-normal">${gearIcon}</th>
+                    `;
+                } else if (col.type === 'tonnage') {
+                    headerHTML += `
+                        <th class="px-1 py-1 text-right border-r border-b border-slate-700 text-slate-500 font-normal">Volume</th>
+                        <th class="px-1 py-1 text-right border-r border-b border-slate-700 text-slate-500 font-normal">Volume</th>
+                        <th class="px-1 py-1 text-center border-r border-b border-slate-700 text-slate-500 font-normal">${gearIcon}</th>
+                    `;
+                } else if (col.type === 'mix') {
+                    headerHTML += `
+                        <th class="px-1 py-1 text-right border-r border-b border-slate-700 text-slate-500 font-normal">Qtd</th>
+                        <th class="px-1 py-1 text-right border-r border-b border-slate-700 text-slate-500 font-normal">Meta</th>
+                        <th class="px-1 py-1 text-center border-r border-b border-slate-700 text-slate-500 font-normal">${gearIcon}</th>
+                    `;
+                }
+            });
+            headerHTML += `</tr></thead>`;
+
+            // Generate Body
+            let bodyHTML = `<tbody class="divide-y divide-slate-800 bg-[#151c36]">`;
+
             if (sortedSupervisors.length === 0) {
-                html = '<tr><td colspan="8" class="text-center p-4 text-slate-500">Nenhum dado encontrado.</td></tr>';
+                bodyHTML += `<tr><td colspan="${2 + (svColumns.length * 4)}" class="text-center p-4 text-slate-500">Nenhum dado encontrado.</td></tr>`;
             } else {
                 sortedSupervisors.forEach(sup => {
-                    const sortedSellers = Array.from(sup.sellers.values()).sort((a, b) => b.metaFat - a.metaFat);
-                    
-                    let supAvgFat = 0, supShareFat = 0, supAvgVol = 0, supShareVol = 0;
-                    sortedSellers.forEach(s => {
-                        supAvgFat += s.avgFat;
-                        supShareFat += s.shareFat;
-                        supAvgVol += s.avgVol;
-                        supShareVol += s.shareVol;
+                    // Sort sellers
+                    sup.sellers.sort((a, b) => {
+                        const valA = a.data['total_elma'] ? a.data['total_elma'].metaFat : 0;
+                        const valB = b.data['total_elma'] ? b.data['total_elma'].metaFat : 0;
+                        return valB - valA;
                     });
 
-                    sortedSellers.forEach(seller => {
-                        html += `
-                            <tr class="hover:bg-slate-800 border-b border-slate-800 border-l-4 border-l-transparent">
-                                <td class="px-2 py-2 text-center bg-[#151c36] text-xs text-slate-400 font-mono">${seller.code}</td>
-                                <td class="px-3 py-2 text-left bg-[#151c36] text-xs text-slate-300 font-medium pl-8">${getFirstName(seller.name)}</td>
-                                <td class="px-2 py-2 text-right text-slate-300 bg-blue-900/10 border-r border-slate-800/50 text-xs">${seller.avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                                <td class="px-2 py-2 text-center text-blue-400 text-xs bg-blue-900/10 border-r border-slate-800/50">${(seller.shareFat * 100).toFixed(2)}%</td>
-                                <td class="px-2 py-2 text-right font-bold text-blue-200 bg-blue-900/20 border-r border-slate-800 text-xs">${seller.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                                <td class="px-2 py-2 text-right text-slate-300 bg-orange-900/10 border-r border-slate-800/50 text-xs">${seller.avgVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
-                                <td class="px-2 py-2 text-center text-orange-400 text-xs bg-orange-900/10 border-r border-slate-800/50">${(seller.shareVol * 100).toFixed(2)}%</td>
-                                <td class="px-2 py-2 text-right font-bold text-orange-200 bg-orange-900/20 border-r border-slate-800 text-xs">${seller.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
-                                <td class="px-2 py-2 text-center font-bold text-purple-300 bg-purple-900/10 text-xs">${seller.metaPos || 0}</td>
-                            </tr>
-                        `;
+                    sup.sellers.forEach(seller => {
+                        bodyHTML += `<tr class="hover:bg-slate-800 border-b border-slate-800">`;
+                        bodyHTML += `<td class="px-2 py-1 text-center text-slate-400 font-mono">${seller.code}</td>`;
+                        bodyHTML += `<td class="px-2 py-1 text-left text-white font-medium truncate max-w-[200px]" title="${seller.name}">${getFirstName(seller.name)}</td>`;
+
+                        svColumns.forEach(col => {
+                            const d = seller.data[col.id] || { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0 };
+
+                            if (col.type === 'standard') {
+                                bodyHTML += `
+                                    <td class="px-1 py-1 text-right text-slate-300 border-r border-slate-800/50">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                    <td class="px-1 py-1 bg-[#1e293b] border-r border-slate-800/50"><input type="text" value="${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}" class="goals-sv-input bg-transparent text-right w-full outline-none text-yellow-300 text-xs font-mono" data-sup-id="${sup.id}" data-col-id="${col.id}" data-field="fat" oninput="recalculateGoalsSvTotals(this)"></td>
+                                    <td class="px-1 py-1 text-center text-slate-300 border-r border-slate-800/50">${d.metaPos}</td>
+                                    <td class="px-1 py-1 bg-[#1e293b] border-r border-slate-800/50"><input type="text" value="${d.metaPos}" class="goals-sv-input bg-transparent text-center w-full outline-none text-yellow-300 text-xs font-mono" data-sup-id="${sup.id}" data-col-id="${col.id}" data-field="pos" oninput="recalculateGoalsSvTotals(this)"></td>
+                                `;
+                            } else if (col.type === 'tonnage') {
+                                bodyHTML += `
+                                    <td class="px-1 py-1 text-right text-slate-300 border-r border-slate-800/50">${d.avgVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
+                                    <td class="px-1 py-1 text-right text-slate-300 border-r border-slate-800/50 font-bold">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
+                                    <td class="px-1 py-1 bg-[#1e293b] border-r border-slate-800/50"><input type="text" value="${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}" class="goals-sv-input bg-transparent text-right w-full outline-none text-yellow-300 text-xs font-mono" data-sup-id="${sup.id}" data-col-id="${col.id}" data-field="vol" oninput="recalculateGoalsSvTotals(this)"></td>
+                                `;
+                            } else if (col.type === 'mix') {
+                                bodyHTML += `
+                                    <td class="px-1 py-1 text-right text-slate-300 border-r border-slate-800/50">${d.avgMix.toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1})}</td>
+                                    <td class="px-1 py-1 text-right text-slate-300 border-r border-slate-800/50 font-bold">${d.metaMix}</td>
+                                    <td class="px-1 py-1 bg-[#1e293b] border-r border-slate-800/50"><input type="text" value="${d.metaMix}" class="goals-sv-input bg-transparent text-right w-full outline-none text-yellow-300 text-xs font-mono" data-sup-id="${sup.id}" data-col-id="${col.id}" data-field="mix" oninput="recalculateGoalsSvTotals(this)"></td>
+                                `;
+                            }
+                        });
+                        bodyHTML += `</tr>`;
                     });
+
+                    // Supervisor Total Row
+                    bodyHTML += `<tr class="bg-slate-800 font-bold border-b border-slate-600">`;
+                    bodyHTML += `<td class="px-2 py-2 text-center text-slate-400 font-mono">${sup.code}</td>`;
+                    bodyHTML += `<td class="px-2 py-2 text-left text-white uppercase tracking-wider">${sup.name}</td>`;
                     
-                    html += `
-                        <tr class="bg-slate-700 font-bold border-b border-slate-600">
-                            <td class="px-2 py-2 text-center text-slate-400 text-xs font-mono">${sup.code}</td>
-                            <td class="px-3 py-2 text-left text-white text-xs uppercase tracking-wider">${sup.name} (TOTAL)</td>
-                            <td class="px-2 py-2 text-right text-white text-xs">${supAvgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                            <td class="px-2 py-2 text-center text-teal-400 text-xs">${(supShareFat * 100).toFixed(2)}%</td>
-                            <td class="px-2 py-2 text-right text-white text-xs">${sup.totalMetaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                            <td class="px-2 py-2 text-right text-white text-xs">${supAvgVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
-                            <td class="px-2 py-2 text-center text-teal-400 text-xs">${(supShareVol * 100).toFixed(2)}%</td>
-                            <td class="px-2 py-2 text-right text-white text-xs border-r border-slate-700">${sup.totalMetaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
-                            <td class="px-2 py-2 text-center text-purple-400 text-xs font-bold bg-purple-900/20">${(sup.totalMetaPos || 0)}</td>
-                        </tr>
-                    `;
+                    svColumns.forEach(col => {
+                        const d = sup.totals[col.id];
+                        const color = col.id.includes('total') || col.type === 'tonnage' || col.type === 'mix' ? 'text-white' : 'text-slate-300';
+
+                        if (col.type === 'standard') {
+                            bodyHTML += `
+                                <td class="px-1 py-1 text-right ${color} border-r border-slate-700">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                <td class="px-1 py-1 text-right text-yellow-500/70 border-r border-slate-700" id="total-sup-${sup.id}-${col.id}-fat">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                <td class="px-1 py-1 text-center ${color} border-r border-slate-700">${d.metaPos}</td>
+                                <td class="px-1 py-1 text-center text-yellow-500/70 border-r border-slate-700" id="total-sup-${sup.id}-${col.id}-pos">${d.metaPos}</td>
+                            `;
+                        } else if (col.type === 'tonnage') {
+                            bodyHTML += `
+                                <td class="px-1 py-1 text-right text-slate-300 border-r border-slate-700">${d.avgVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
+                                <td class="px-1 py-1 text-right ${color} border-r border-slate-700">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
+                                <td class="px-1 py-1 text-right text-yellow-500/70 border-r border-slate-700" id="total-sup-${sup.id}-${col.id}-vol">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
+                            `;
+                        } else if (col.type === 'mix') {
+                            bodyHTML += `
+                                <td class="px-1 py-1 text-right text-slate-300 border-r border-slate-700">${d.avgMix.toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1})}</td>
+                                <td class="px-1 py-1 text-right ${color} border-r border-slate-700">${d.metaMix}</td>
+                                <td class="px-1 py-1 text-right text-yellow-500/70 border-r border-slate-700" id="total-sup-${sup.id}-${col.id}-mix">${d.metaMix}</td>
+                            `;
+                        }
+                    });
+                    bodyHTML += `</tr>`;
                 });
+
+                // Grand Total Row (Geral PRIME)
+                bodyHTML += `<tr class="bg-[#0f172a] font-bold text-white border-t-2 border-slate-500 sticky bottom-0 z-20">`;
+                bodyHTML += `<td colspan="2" class="px-4 py-3 text-right uppercase tracking-wider">Geral PRIME</td>`;
+
+                svColumns.forEach(col => {
+                    const d = grandTotals[col.id];
+                    if (col.type === 'standard') {
+                        bodyHTML += `
+                            <td class="px-1 py-2 text-right text-teal-400 border-r border-slate-700">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                            <td class="px-1 py-2 text-right text-teal-600/70 border-r border-slate-700" id="total-grand-${col.id}-fat">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                            <td class="px-1 py-2 text-center text-purple-400 border-r border-slate-700">${d.metaPos}</td>
+                            <td class="px-1 py-2 text-center text-purple-600/70 border-r border-slate-700" id="total-grand-${col.id}-pos">${d.metaPos}</td>
+                        `;
+                    } else if (col.type === 'tonnage') {
+                        bodyHTML += `
+                            <td class="px-1 py-2 text-right text-slate-400 border-r border-slate-700">${d.avgVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
+                            <td class="px-1 py-2 text-right text-orange-400 border-r border-slate-700">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
+                            <td class="px-1 py-2 text-right text-orange-600/70 border-r border-slate-700" id="total-grand-${col.id}-vol">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
+                        `;
+                    } else if (col.type === 'mix') {
+                        bodyHTML += `
+                            <td class="px-1 py-2 text-right text-slate-400 border-r border-slate-700">${d.avgMix.toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1})}</td>
+                            <td class="px-1 py-2 text-right text-cyan-400 border-r border-slate-700">${d.metaMix}</td>
+                            <td class="px-1 py-2 text-right text-cyan-600/70 border-r border-slate-700" id="total-grand-${col.id}-mix">${d.metaMix}</td>
+                        `;
+                    }
+                });
+                bodyHTML += `</tr>`;
             }
-            
-            tableBody.innerHTML = html;
+
+            bodyHTML += `</tbody>`;
+            mainTable.innerHTML = headerHTML + bodyHTML;
         }
 
         function handleGoalsFilterChange() {
@@ -8408,95 +8708,7 @@
                 }
             });
 
-            // SV Sub-tabs Logic (Duplicated but targeting SV state)
-            const goalsSvSubTabsContainer = document.getElementById('goals-sv-sub-tabs-container');
-            if (goalsSvSubTabsContainer) {
-                goalsSvSubTabsContainer.addEventListener('click', (e) => {
-                    const btn = e.target.closest('.goals-sub-tab');
-                    if (!btn) return;
-
-                    // Ensure metrics are ready (shared with GV)
-                    if (Object.keys(globalGoalsMetrics).length === 0) {
-                        calculateGoalsMetrics();
-                    }
-
-                    // Remove active styles from ALL SV sub-tabs
-                    goalsSvSubTabsContainer.querySelectorAll('.goals-sub-tab').forEach(b => {
-                        b.classList.remove('active', 'text-teal-400', 'font-bold', 'border-b-2', 'border-teal-400');
-                        b.classList.add('text-slate-400', 'font-medium');
-                        const indicator = b.querySelector('.indicator');
-                        if (indicator) indicator.remove();
-                    });
-
-                    btn.classList.remove('text-slate-400', 'font-medium');
-                    btn.classList.add('active', 'text-teal-400', 'font-bold', 'border-b-2', 'border-teal-400');
-                    
-                    const indicator = document.createElement('span');
-                    indicator.className = 'w-2 h-2 rounded-full bg-teal-400 inline-block indicator mr-2';
-                    btn.prepend(indicator);
-
-                    currentGoalsSvSupplier = btn.dataset.supplier;
-                    currentGoalsSvBrand = btn.dataset.brand || null;
-                    
-                    updateGoalsSvView();
-                });
-            }
-
-            // SV Category Toggle Logic
-            const btnSvElmaChips = document.getElementById('goals-sv-category-elmachips-btn');
-            const btnSvFoods = document.getElementById('goals-sv-category-foods-btn');
-            const btnSvSummary = document.getElementById('goals-sv-category-summary-btn');
-            const subTabsSvElmaChips = document.getElementById('goals-sv-sub-tabs-elmachips');
-            const subTabsSvFoods = document.getElementById('goals-sv-sub-tabs-foods');
-
-            const toggleGoalsSvView = (view) => {
-                // Reset Buttons
-                [btnSvElmaChips, btnSvFoods, btnSvSummary].forEach(btn => {
-                    if (btn) {
-                        btn.classList.remove('bg-[#0d9488]', 'text-white', 'shadow-lg', 'border-teal-500/50');
-                        btn.classList.add('bg-[#334155]', 'text-slate-400', 'border-slate-700');
-                    }
-                });
-
-                // Hide All Sub-tabs
-                if(subTabsSvElmaChips) subTabsSvElmaChips.classList.add('hidden');
-                if(subTabsSvFoods) subTabsSvFoods.classList.add('hidden');
-                
-                if (view === 'elmachips') {
-                    if(btnSvElmaChips) {
-                        btnSvElmaChips.classList.remove('bg-[#334155]', 'text-slate-400', 'border-slate-700');
-                        btnSvElmaChips.classList.add('bg-[#0d9488]', 'text-white', 'shadow-lg', 'border-teal-500/50');
-                    }
-                    if(subTabsSvElmaChips) subTabsSvElmaChips.classList.remove('hidden');
-                    
-                    // Select First Tab of Elma Chips
-                    const firstTab = subTabsSvElmaChips.querySelector('.goals-sub-tab');
-                    if (firstTab) firstTab.click();
-                } else if (view === 'foods') {
-                    if(btnSvFoods) {
-                        btnSvFoods.classList.remove('bg-[#334155]', 'text-slate-400', 'border-slate-700');
-                        btnSvFoods.classList.add('bg-[#0d9488]', 'text-white', 'shadow-lg', 'border-teal-500/50');
-                    }
-                    if(subTabsSvFoods) subTabsSvFoods.classList.remove('hidden');
-                    
-                    // Select First Tab of Foods
-                    const firstTab = subTabsSvFoods.querySelector('.goals-sub-tab');
-                    if (firstTab) firstTab.click();
-                } else if (view === 'summary') {
-                    if(btnSvSummary) {
-                        btnSvSummary.classList.remove('bg-[#334155]', 'text-slate-400', 'border-slate-700');
-                        btnSvSummary.classList.add('bg-[#0d9488]', 'text-white', 'shadow-lg', 'border-teal-500/50');
-                    }
-                    currentGoalsSvSupplier = 'RESUMO';
-                    updateGoalsSvView();
-                }
-            };
-
-            if (btnSvElmaChips && btnSvFoods && btnSvSummary) {
-                btnSvElmaChips.addEventListener('click', () => toggleGoalsSvView('elmachips'));
-                btnSvFoods.addEventListener('click', () => toggleGoalsSvView('foods'));
-                btnSvSummary.addEventListener('click', () => toggleGoalsSvView('summary'));
-            }
+            // SV Sub-tabs Logic and Toggle Logic REMOVED (Replaced by Single Table View)
 
             // GV Filters
             goalsGvSupervisorFilterBtn.addEventListener('click', () => goalsGvSupervisorFilterDropdown.classList.toggle('hidden'));
@@ -10004,34 +10216,6 @@
 
                             <!-- Tab Content: Meta SV -->
                             <div id="goals-sv-content" class="hidden">
-                                <!-- Category Selection Toggles (SV) -->
-                                <div class="flex flex-col gap-4 mb-6">
-                                    <div class="flex gap-4">
-                                        <button id="goals-sv-category-elmachips-btn" class="px-8 py-3 bg-[#0d9488] text-white font-bold rounded hover:bg-teal-700 transition-colors uppercase tracking-wider text-sm shadow-lg border border-teal-500/50">ELMA CHIPS</button>
-                                        <button id="goals-sv-category-foods-btn" class="px-8 py-3 bg-[#334155] text-slate-400 font-bold rounded hover:bg-slate-700 transition-colors uppercase tracking-wider text-sm border border-slate-700">FOODS</button>
-                                        <button id="goals-sv-category-summary-btn" class="px-8 py-3 bg-[#334155] text-slate-400 font-bold rounded hover:bg-slate-700 transition-colors uppercase tracking-wider text-sm border border-slate-700">RESUMO</button>
-                                    </div>
-                                    
-                                    <!-- Sub-tabs Container (SV) -->
-                                    <div id="goals-sv-sub-tabs-container">
-                                        <!-- Elma Chips Sub-tabs -->
-                                        <div class="flex border-b border-slate-700 overflow-x-auto" id="goals-sv-sub-tabs-elmachips">
-                                            <button data-supplier="707" class="goals-sub-tab px-6 py-3 text-teal-400 font-bold text-sm border-b-2 border-teal-400 flex items-center gap-2 whitespace-nowrap active">
-                                                <span class="w-2 h-2 rounded-full bg-teal-400 inline-block indicator"></span> EXTRUSADOS
-                                            </button>
-                                            <button data-supplier="708" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">NÃO EXTRUSADOS</button>
-                                            <button data-supplier="752" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">TORCIDA</button>
-                                        </div>
-
-                                        <!-- Foods Sub-tabs -->
-                                        <div class="hidden flex border-b border-slate-700 overflow-x-auto" id="goals-sv-sub-tabs-foods">
-                                            <button data-supplier="1119" data-brand="TODDYNHO" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">TODDYNHO</button>
-                                            <button data-supplier="1119" data-brand="TODDY" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">TODDY</button>
-                                            <button data-supplier="1119" data-brand="QUAKER_KEROCOCO" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">QUAKER / KEROCOCO</button>
-                                        </div>
-                                    </div>
-                                </div>
-
                                 <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
                                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
                                         <div class="relative">
@@ -10047,30 +10231,10 @@
                                 
                                 <!-- Consolidated Table (SV) -->
                                 <div id="goals-sv-table-container" class="bg-[#1d2347] border border-slate-700 shadow-sm rounded-lg overflow-hidden">
-                                    <div class="overflow-auto custom-scrollbar" style="max-height: 60vh;">
-                                        <table class="min-w-full text-sm text-left text-slate-300 border-collapse">
-                                            <thead class="text-xs uppercase sticky top-0 z-20 bg-[#0f172a] text-slate-400">
-                                                <tr>
-                                                    <th rowspan="2" class="px-2 py-2 text-center w-16 border-r border-b border-slate-700">CÓD</th>
-                                                    <th rowspan="2" class="px-3 py-2 text-left border-r border-b border-slate-700">VENDEDOR</th>
-                                                    <th colspan="3" class="px-2 py-1 text-center bg-blue-900/30 text-blue-400 border-r border-slate-700 border-b-0">FATURAMENTO (R$)</th>
-                                                    <th colspan="3" class="px-2 py-1 text-center bg-orange-900/30 text-orange-400 border-r border-slate-700 border-b-0">VOLUME (TON)</th>
-                                                    <th rowspan="2" class="px-2 py-1 text-center bg-purple-900/30 text-purple-400 border-b border-slate-700">POS.</th>
-                                                </tr>
-                                                <tr>
-                                                    <!-- Fat Headers -->
-                                                    <th class="px-2 py-2 text-right w-24 bg-blue-900/20 text-blue-300 border-r border-b border-slate-700/50 text-[10px]">MÉDIA</th>
-                                                    <th class="px-2 py-2 text-center w-16 bg-blue-900/20 text-blue-300 border-r border-b border-slate-700/50 text-[10px]">% SHARE</th>
-                                                    <th class="px-2 py-2 text-right w-24 bg-blue-900/20 text-blue-100 font-bold border-r border-b border-slate-700 text-[10px]">META</th>
-                                                    <!-- Vol Headers -->
-                                                    <th class="px-2 py-2 text-right w-24 bg-orange-900/20 text-orange-300 border-r border-b border-slate-700/50 text-[10px]">MÉDIA KG</th>
-                                                    <th class="px-2 py-2 text-center w-16 bg-orange-900/20 text-orange-300 border-r border-b border-slate-700/50 text-[10px]">% SHARE</th>
-                                                    <th class="px-2 py-2 text-right w-24 bg-orange-900/20 text-orange-100 font-bold border-b border-slate-700 text-[10px]">META KG</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="goals-sv-table-body" class="divide-y divide-slate-800 bg-[#151c36]">
-                                                <!-- Rows will be populated by JS -->
-                                            </tbody>
+                                    <div class="overflow-auto custom-scrollbar" style="max-height: 75vh;">
+                                        <table class="min-w-full text-sm text-left text-slate-300 border-collapse" id="goals-sv-main-table">
+                                            <!-- Headers populated by JS -->
+                                            <tbody id="goals-sv-table-body" class="divide-y divide-slate-800 bg-[#151c36]"></tbody>
                                         </table>
                                     </div>
                                 </div>
