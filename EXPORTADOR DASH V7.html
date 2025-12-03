@@ -2915,39 +2915,114 @@
         }
 
         function recalculateGoalsSvTotals(input) {
-            const { supId, colId, field } = input.dataset;
+            const { supId, colId, field, sellerId } = input.dataset;
             
-            // 1. Sum for this Supervisor
-            const supInputs = document.querySelectorAll(`.goals-sv-input[data-sup-id="${supId}"][data-col-id="${colId}"][data-field="${field}"]`);
-            let supSum = 0;
-            supInputs.forEach(inp => {
-                let val = parseFloat(inp.value.replace(/\./g, '').replace(',', '.'));
-                if (isNaN(val)) val = 0;
-                supSum += val;
-            });
+            // Helper to parse input value
+            const parseVal = (str) => {
+                let val = parseFloat(str.replace(/\./g, '').replace(',', '.'));
+                return isNaN(val) ? 0 : val;
+            };
+
+            // Helper to calculate and update column totals (Supervisor and Grand)
+            const updateColumnTotals = (cId, fld) => {
+                // 1. Supervisor Total
+                // For 'geral', the values are in spans (text), for others inputs.
+                let supSum = 0;
+                if (cId === 'geral') {
+                    const supCells = document.querySelectorAll(`.goals-sv-text[data-sup-id="${supId}"][data-col-id="${cId}"][data-field="${fld}"]`);
+                    supCells.forEach(el => supSum += parseVal(el.textContent));
+                } else {
+                    const supInputs = document.querySelectorAll(`.goals-sv-input[data-sup-id="${supId}"][data-col-id="${cId}"][data-field="${fld}"]`);
+                    supInputs.forEach(inp => supSum += parseVal(inp.value));
+                }
+
+                const supTotalEl = document.getElementById(`total-sup-${supId}-${cId}-${fld}`);
+                if (supTotalEl) {
+                    if (fld === 'fat') supTotalEl.textContent = supSum.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    else if (fld === 'vol' || fld === 'ton') supTotalEl.textContent = supSum.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3});
+                    else supTotalEl.textContent = supSum;
+                }
+
+                // 2. Grand Total
+                let grandSum = 0;
+                if (cId === 'geral') {
+                    const allCells = document.querySelectorAll(`.goals-sv-text[data-col-id="${cId}"][data-field="${fld}"]`);
+                    allCells.forEach(el => grandSum += parseVal(el.textContent));
+                } else {
+                    const allInputs = document.querySelectorAll(`.goals-sv-input[data-col-id="${cId}"][data-field="${fld}"]`);
+                    allInputs.forEach(inp => grandSum += parseVal(inp.value));
+                }
+
+                const grandTotalEl = document.getElementById(`total-grand-${cId}-${fld}`);
+                if (grandTotalEl) {
+                    if (fld === 'fat') grandTotalEl.textContent = grandSum.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    else if (fld === 'vol' || fld === 'ton') grandTotalEl.textContent = grandSum.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3});
+                    else grandTotalEl.textContent = grandSum;
+                }
+            };
+
+            // A. Update Current Column Totals
+            updateColumnTotals(colId, field);
+
+            // B. Row Aggregation Logic (Update Total Elma/Foods and Geral)
+            const elmaIds = ['707', '708', '752'];
+            const foodsIds = ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
+
+            let groupTotalId = null;
+            let components = [];
             
-            const supTotalEl = document.getElementById(`total-sup-${supId}-${colId}-${field}`);
-            if (supTotalEl) {
-                // Formatting depends on field
-                if (field === 'fat') supTotalEl.textContent = supSum.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                else if (field === 'vol') supTotalEl.textContent = supSum.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3});
-                else supTotalEl.textContent = supSum;
+            if (elmaIds.includes(colId)) {
+                groupTotalId = 'total_elma';
+                components = elmaIds;
+            } else if (foodsIds.includes(colId)) {
+                groupTotalId = 'total_foods';
+                components = foodsIds;
+            }
+            
+            // Only aggregate if we are editing a base column (not changing mix or tonnage directly if those were editable)
+            if (groupTotalId) {
+                // 1. Recalculate Group Total (Row)
+                let groupSum = 0;
+                components.forEach(cId => {
+                    const el = document.querySelector(`.goals-sv-input[data-seller-id="${sellerId}"][data-col-id="${cId}"][data-field="${field}"]`);
+                    if (el) groupSum += parseVal(el.value);
+                });
+
+                // Update Group Total Input (Read-only)
+                const groupInput = document.querySelector(`.goals-sv-input[data-seller-id="${sellerId}"][data-col-id="${groupTotalId}"][data-field="${field}"]`);
+                if (groupInput) {
+                    if (field === 'fat') groupInput.value = groupSum.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    else if (field === 'vol') groupInput.value = groupSum.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3});
+                    else groupInput.value = groupSum; // Pos
+
+                    // Update Column Totals for the Group Column
+                    updateColumnTotals(groupTotalId, field);
+                }
             }
 
-            // 2. Sum for Grand Total (Geral PRIME)
-            const allInputs = document.querySelectorAll(`.goals-sv-input[data-col-id="${colId}"][data-field="${field}"]`);
-            let grandSum = 0;
-            allInputs.forEach(inp => {
-                let val = parseFloat(inp.value.replace(/\./g, '').replace(',', '.'));
-                if (isNaN(val)) val = 0;
-                grandSum += val;
-            });
-            
-            const grandTotalEl = document.getElementById(`total-grand-${colId}-${field}`);
-            if (grandTotalEl) {
-                if (field === 'fat') grandTotalEl.textContent = grandSum.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                else if (field === 'vol') grandTotalEl.textContent = grandSum.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3});
-                else grandTotalEl.textContent = grandSum;
+            // 2. Recalculate GERAL Total (Row) - Only for Fat and Vol/Ton
+            // Geral Pos is static (Active Clients), so we don't update it on input change
+            if (field === 'fat' || field === 'vol') {
+                const elmaInput = document.querySelector(`.goals-sv-input[data-seller-id="${sellerId}"][data-col-id="total_elma"][data-field="${field}"]`);
+                const foodsInput = document.querySelector(`.goals-sv-input[data-seller-id="${sellerId}"][data-col-id="total_foods"][data-field="${field}"]`);
+
+                let elmaVal = elmaInput ? parseVal(elmaInput.value) : 0;
+                let foodsVal = foodsInput ? parseVal(foodsInput.value) : 0;
+                let geralSum = elmaVal + foodsVal;
+
+                // Map field 'vol' to 'ton' for Geral if needed, or keep consistent
+                // In column definitions: 'tonelada_elma' is type 'tonnage' (field 'vol'). 'geral' is type 'geral'.
+                // Geral uses field 'fat' and 'ton'.
+                const geralField = field === 'vol' ? 'ton' : field;
+
+                const geralCell = document.getElementById(`geral-${sellerId}-${geralField}`);
+                if (geralCell) {
+                    if (geralField === 'fat') geralCell.textContent = geralSum.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    else geralCell.textContent = geralSum.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3});
+
+                    // Update Column Totals for Geral
+                    updateColumnTotals('geral', geralField);
+                }
             }
         }
 
@@ -2967,7 +3042,8 @@
                 { id: '1119_TODDY', label: 'TODDY', type: 'standard', supplier: '1119', brand: 'TODDY', colorClass: 'text-slate-300' },
                 { id: '1119_QUAKER_KEROCOCO', label: 'QUAKER / KEROCOCO', type: 'standard', supplier: '1119', brand: 'QUAKER_KEROCOCO', colorClass: 'text-slate-300' },
                 { id: 'tonelada_foods', label: 'TONELADA FOODS', type: 'tonnage', isAgg: true, colorClass: 'text-orange-400', components: ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'] },
-                { id: 'mix_foods', label: 'MIX FOODS', type: 'mix', isAgg: true, colorClass: 'text-yellow-400', components: [] }
+                { id: 'mix_foods', label: 'MIX FOODS', type: 'mix', isAgg: true, colorClass: 'text-yellow-400', components: [] },
+                { id: 'geral', label: 'GERAL', type: 'geral', isAgg: true, colorClass: 'text-white', components: ['total_elma', 'total_foods'] }
             ];
 
             // 1. Fetch Metrics for each Base Category
@@ -3012,12 +3088,13 @@
                 const catId = cat.id;
                 metricsByCat[catId].forEach(client => {
                     const sellerObj = initSeller(client);
-                    if (!sellerObj.data[catId]) sellerObj.data[catId] = { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0 };
+                    if (!sellerObj.data[catId]) sellerObj.data[catId] = { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgFat: 0 };
                     
                     sellerObj.data[catId].metaFat += client.metaFat;
                     sellerObj.data[catId].metaVol += client.metaVol;
                     sellerObj.data[catId].metaPos += client.metaPos;
                     sellerObj.data[catId].avgVol += client.avgVol; 
+                    sellerObj.data[catId].avgFat += client.avgFat; // Added avgFat for Geral calculation
                 });
             });
 
@@ -3077,17 +3154,18 @@
             // Calculate Aggregates
             sellerMap.forEach(sellerObj => {
                 // 1. Component Aggregates
-                svColumns.filter(c => c.isAgg && c.type !== 'mix').forEach(aggCol => {
-                    let sumFat = 0, sumVol = 0, sumPos = 0, sumAvgVol = 0;
+                svColumns.filter(c => c.isAgg && c.type !== 'mix' && c.type !== 'geral').forEach(aggCol => {
+                    let sumFat = 0, sumVol = 0, sumPos = 0, sumAvgVol = 0, sumAvgFat = 0;
                     aggCol.components.forEach(compId => {
                         if (sellerObj.data[compId]) {
                             sumFat += sellerObj.data[compId].metaFat;
                             sumVol += sellerObj.data[compId].metaVol;
                             sumPos += sellerObj.data[compId].metaPos;
                             sumAvgVol += sellerObj.data[compId].avgVol;
+                            sumAvgFat += sellerObj.data[compId].avgFat || 0;
                         }
                     });
-                    sellerObj.data[aggCol.id] = { metaFat: sumFat, metaVol: sumVol, metaPos: sumPos, avgVol: sumAvgVol };
+                    sellerObj.data[aggCol.id] = { metaFat: sumFat, metaVol: sumVol, metaPos: sumPos, avgVol: sumAvgVol, avgFat: sumAvgFat };
                 });
 
                 // 2. Mix Metrics
@@ -3124,6 +3202,18 @@
                     avgMix: mixStats.avgFoods,
                     metaMix: Math.round(activeClientsCount * 0.30)
                 };
+
+                // 3. Geral Aggregate
+                // Sum of Total Elma + Total Foods
+                const totalElma = sellerObj.data['total_elma'] || { metaFat: 0, metaVol: 0, avgFat: 0 };
+                const totalFoods = sellerObj.data['total_foods'] || { metaFat: 0, metaVol: 0, avgFat: 0 };
+
+                sellerObj.data['geral'] = {
+                    avgFat: (totalElma.avgFat || 0) + (totalFoods.avgFat || 0),
+                    metaFat: totalElma.metaFat + totalFoods.metaFat,
+                    metaVol: totalElma.metaVol + totalFoods.metaVol, // Is Tonelada
+                    metaPos: activeClientsCount // Logic of "Total Meta Pos" (Unique Clients)
+                };
             });
 
             // Group by Supervisor
@@ -3144,7 +3234,7 @@
                 
                 // Aggregate Supervisor Totals
                 svColumns.forEach(col => {
-                    if (!group.totals[col.id]) group.totals[col.id] = { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0 };
+                    if (!group.totals[col.id]) group.totals[col.id] = { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0, avgFat: 0 };
                     if (seller.data[col.id]) {
                         group.totals[col.id].metaFat += seller.data[col.id].metaFat || 0;
                         group.totals[col.id].metaVol += seller.data[col.id].metaVol || 0;
@@ -3152,6 +3242,7 @@
                         group.totals[col.id].avgVol += seller.data[col.id].avgVol || 0;
                         group.totals[col.id].avgMix += seller.data[col.id].avgMix || 0;
                         group.totals[col.id].metaMix += seller.data[col.id].metaMix || 0;
+                        group.totals[col.id].avgFat += seller.data[col.id].avgFat || 0;
                     }
                 });
             });
@@ -3164,7 +3255,7 @@
 
             // Grand Totals
             const grandTotals = {};
-            svColumns.forEach(col => grandTotals[col.id] = { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0 });
+            svColumns.forEach(col => grandTotals[col.id] = { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0, avgFat: 0 });
             sortedSupervisors.forEach((sup, index) => {
                 // Generate Safe ID using Index for strict uniqueness
                 sup.id = `sup-${index}`;
@@ -3176,6 +3267,7 @@
                     grandTotals[col.id].avgVol += sup.totals[col.id].avgVol;
                     grandTotals[col.id].avgMix += sup.totals[col.id].avgMix;
                     grandTotals[col.id].metaMix += sup.totals[col.id].metaMix;
+                    grandTotals[col.id].avgFat += sup.totals[col.id].avgFat;
                 });
             });
 
@@ -3197,6 +3289,7 @@
                 if (col.type === 'standard') colspan = 4; // MetaFat, AdjFat, MetaPos, AdjPos
                 if (col.type === 'tonnage') colspan = 3; // Avg, Meta, Adj
                 if (col.type === 'mix') colspan = 3; // Avg, Meta, Adj
+                if (col.type === 'geral') colspan = 4; // AvgFat, MetaFat, MetaTon, MetaPos
                 
                 headerHTML += `<th colspan="${colspan}" class="px-2 py-2 text-center font-bold border-r border-b border-slate-700 ${col.colorClass}">${col.label}</th>`;
             });
@@ -3218,6 +3311,12 @@
                     headerHTML += `
                         <th class="px-1 py-1 text-right border-r border-slate-700/50 bg-slate-800/50">MÉDIA TRIM.</th>
                         <th colspan="2" class="px-1 py-1 text-center border-r border-slate-700 bg-slate-800/50">META MIX</th>
+                    `;
+                } else if (col.type === 'geral') {
+                    headerHTML += `
+                        <th colspan="2" class="px-1 py-1 text-center border-r border-slate-700/50 bg-slate-800/50">FATURAMENTO</th>
+                        <th class="px-1 py-1 text-center border-r border-slate-700/50 bg-slate-800/50">TONELADA</th>
+                        <th class="px-1 py-1 text-center border-r border-slate-700 bg-slate-800/50">POSITIVAÇÃO</th>
                     `;
                 }
             });
@@ -3246,6 +3345,13 @@
                         <th class="px-1 py-1 text-right border-r border-b border-slate-700 text-slate-500 font-normal">Meta</th>
                         <th class="px-1 py-1 text-center border-r border-b border-slate-700 text-slate-500 font-normal">${gearIcon}</th>
                     `;
+                } else if (col.type === 'geral') {
+                    headerHTML += `
+                        <th class="px-1 py-1 text-right border-r border-b border-slate-700 text-slate-500 font-normal">Média Trim.</th>
+                        <th colspan="1" class="px-1 py-1 text-right border-r border-b border-slate-700 text-slate-500 font-normal">Meta</th>
+                        <th class="px-1 py-1 text-right border-r border-b border-slate-700 text-slate-500 font-normal">Meta</th>
+                        <th class="px-1 py-1 text-center border-r border-b border-slate-700 text-slate-500 font-normal">Meta</th>
+                    `;
                 }
             });
             headerHTML += `</tr></thead>`;
@@ -3270,14 +3376,20 @@
                         bodyHTML += `<td class="px-2 py-1 text-left text-white font-medium truncate max-w-[200px]" title="${seller.name}">${getFirstName(seller.name)}</td>`;
                         
                         svColumns.forEach(col => {
-                            const d = seller.data[col.id] || { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0 };
+                            const d = seller.data[col.id] || { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0, avgFat: 0 };
                             
                             if (col.type === 'standard') {
+                                // Read-only logic for Aggregates (Total Elma / Total Foods)
+                                const isReadOnly = col.isAgg;
+                                const inputClass = isReadOnly ? 'text-slate-400 font-bold opacity-70' : 'text-yellow-300';
+                                const readonlyAttr = isReadOnly ? 'readonly' : '';
+                                const cellBg = isReadOnly ? 'bg-[#151c36]' : 'bg-[#1e293b]';
+
                                 bodyHTML += `
                                     <td class="px-1 py-1 text-right text-slate-300 border-r border-slate-800/50">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                                    <td class="px-1 py-1 bg-[#1e293b] border-r border-slate-800/50"><input type="text" value="${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}" class="goals-sv-input bg-transparent text-right w-full outline-none text-yellow-300 text-xs font-mono" data-sup-id="${sup.id}" data-col-id="${col.id}" data-field="fat" oninput="recalculateGoalsSvTotals(this)"></td>
+                                    <td class="px-1 py-1 ${cellBg} border-r border-slate-800/50"><input type="text" value="${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}" class="goals-sv-input bg-transparent text-right w-full outline-none ${inputClass} text-xs font-mono" data-sup-id="${sup.id}" data-col-id="${col.id}" data-seller-id="${seller.id}" data-field="fat" oninput="recalculateGoalsSvTotals(this)" ${readonlyAttr}></td>
                                     <td class="px-1 py-1 text-center text-slate-300 border-r border-slate-800/50">${d.metaPos}</td>
-                                    <td class="px-1 py-1 bg-[#1e293b] border-r border-slate-800/50"><input type="text" value="${d.metaPos}" class="goals-sv-input bg-transparent text-center w-full outline-none text-yellow-300 text-xs font-mono" data-sup-id="${sup.id}" data-col-id="${col.id}" data-field="pos" oninput="recalculateGoalsSvTotals(this)"></td>
+                                    <td class="px-1 py-1 ${cellBg} border-r border-slate-800/50"><input type="text" value="${d.metaPos}" class="goals-sv-input bg-transparent text-center w-full outline-none ${inputClass} text-xs font-mono" data-sup-id="${sup.id}" data-col-id="${col.id}" data-seller-id="${seller.id}" data-field="pos" oninput="recalculateGoalsSvTotals(this)" ${readonlyAttr}></td>
                                 `;
                             } else if (col.type === 'tonnage') {
                                 bodyHTML += `
@@ -3290,6 +3402,14 @@
                                     <td class="px-1 py-1 text-right text-slate-300 border-r border-slate-800/50">${d.avgMix.toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1})}</td>
                                     <td class="px-1 py-1 text-right text-slate-300 border-r border-slate-800/50 font-bold">${d.metaMix}</td>
                                     <td class="px-1 py-1 bg-[#1e293b] border-r border-slate-800/50"><input type="text" value="${d.metaMix}" class="goals-sv-input bg-transparent text-right w-full outline-none text-yellow-300 text-xs font-mono" data-sup-id="${sup.id}" data-col-id="${col.id}" data-field="mix" oninput="recalculateGoalsSvTotals(this)"></td>
+                                `;
+                            } else if (col.type === 'geral') {
+                                // Geral Columns (Read-only Text)
+                                bodyHTML += `
+                                    <td class="px-1 py-1 text-right text-slate-400 border-r border-slate-800/50 font-mono text-xs">${d.avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                    <td class="px-1 py-1 text-right text-white font-bold border-r border-slate-800/50 font-mono text-xs goals-sv-text" data-sup-id="${sup.id}" data-col-id="geral" data-field="fat" id="geral-${seller.id}-fat">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                    <td class="px-1 py-1 text-right text-white font-bold border-r border-slate-800/50 font-mono text-xs goals-sv-text" data-sup-id="${sup.id}" data-col-id="geral" data-field="ton" id="geral-${seller.id}-ton">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
+                                    <td class="px-1 py-1 text-center text-white font-bold border-r border-slate-800/50 font-mono text-xs goals-sv-text" data-sup-id="${sup.id}" data-col-id="geral" data-field="pos" id="geral-${seller.id}-pos">${d.metaPos}</td>
                                 `;
                             }
                         });
