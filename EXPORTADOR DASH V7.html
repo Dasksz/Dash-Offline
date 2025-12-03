@@ -1599,7 +1599,7 @@
 
         // --- MIX VIEW LOGIC ---
         const MIX_SALTY_CATEGORIES = ['CHEETOS', 'DORITOS', 'FANDANGOS', 'RUFFLES', 'TORCIDA'];
-        const MIX_FOODS_CATEGORIES = ['TODDYNHO', 'TODDY', 'QUAKER', 'KEROCOCO'];
+        const MIX_FOODS_CATEGORIES = ['TODDYNHO', 'TODDY ', 'QUAKER', 'KEROCOCO'];
 
         function getMixFilteredData(options = {}) {
             const { excludeFilter = null } = options;
@@ -1758,11 +1758,11 @@
                         
                         // Checar Salty
                         MIX_SALTY_CATEGORIES.forEach(cat => {
-                            if (desc.includes(normalize(cat))) positivatedCats.add(cat);
+                            if (desc.includes(cat)) positivatedCats.add(cat);
                         });
                         // Checar Foods
                         MIX_FOODS_CATEGORIES.forEach(cat => {
-                            if (desc.includes(normalize(cat))) positivatedCats.add(cat);
+                            if (desc.includes(cat)) positivatedCats.add(cat);
                         });
                     }
                 });
@@ -4667,7 +4667,7 @@
 
         function normalize(str) {
             return str
-                ? str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '').toUpperCase()
+                ? str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toUpperCase()
                 : '';
         }
 
@@ -4861,7 +4861,7 @@
 
             const pepsicoCodfors = new Set(['707', '708']);
             const saltyCategories = ['CHEETOS', 'DORITOS', 'FANDANGOS', 'RUFFLES', 'TORCIDA'];
-            const foodsCategories = ['TODDYNHO', 'TODDY', 'QUAKER', 'KEROCOCO'];
+            const foodsCategories = ['TODDYNHO', 'TODDY ', 'QUAKER', 'KEROCOCO'];
 
             // Helper to normalize strings
             const norm = (s) => s ? s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase() : '';
@@ -4941,6 +4941,32 @@
             metrics.current.mixPepsico = countMixClients > 0 ? sumMix / countMixClients : 0;
             metrics.current.positivacaoSalty = countSalty;
             metrics.current.positivacaoFoods = countFoods;
+
+            // --- DEBUG DIAGNOSTICS FOR MIX PEPSICO ---
+            const debugMixList = [];
+            currentClientProductMap.forEach((prods, codcli) => {
+                let pepsicoCount = 0;
+                prods.forEach(pData => {
+                    if (pData.val > 1 && pepsicoCodfors.has(pData.codfor)) {
+                        pepsicoCount++;
+                    }
+                });
+                if (pepsicoCount > 0) {
+                    debugMixList.push({ cod: codcli, mix: pepsicoCount });
+                }
+            });
+            debugMixList.sort((a, b) => a.mix - b.mix);
+
+            console.group("Diagnóstico Mix Pepsico");
+            console.log(`Total Soma Mix: ${sumMix}`);
+            console.log(`Total Clientes no Denominador: ${countMixClients}`);
+            console.log(`Média Calculada: ${metrics.current.mixPepsico}`);
+            console.log("Top 10 Clientes com MENOR Mix (Puxam a média para baixo):");
+            console.table(debugMixList.slice(0, 10));
+            console.log("Top 10 Clientes com MAIOR Mix:");
+            console.table(debugMixList.slice(-10));
+            console.groupEnd();
+            // ----------------------------------------
 
 
             // --- 3. Process History Sales (Single Pass) ---
