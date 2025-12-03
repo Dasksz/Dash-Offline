@@ -1362,7 +1362,7 @@
         let mixTableDataForExport = [];
         let mixKpiMode = 'total'; // 'total' ou 'atendidos'
 
-        let currentGoalsSupplier = '707';
+        let currentGoalsSupplier = 'ELMA_ALL';
         let currentGoalsBrand = null;
         let currentGoalsSvSupplier = '707';
         let currentGoalsSvBrand = null;
@@ -8989,8 +8989,8 @@
                 goalsTargets[key].vol = globalGoalsMetrics[key].prevVol;
             }
         }
-        // Initialize Inputs and Refs for Default Tab (707)
-        const defGoalsMetric = globalGoalsMetrics['707'];
+        // Initialize Inputs and Refs for Default Tab (ELMA_ALL)
+        const defGoalsMetric = globalGoalsMetrics['ELMA_ALL'];
         if (defGoalsMetric) {
             const fi = document.getElementById('goal-global-fat');
             const vi = document.getElementById('goal-global-vol');
@@ -9810,10 +9810,10 @@
                                     <div id="goals-sub-tabs-container">
                                         <!-- Elma Chips Sub-tabs -->
                                         <div class="flex border-b border-slate-700 overflow-x-auto" id="goals-sub-tabs-elmachips">
-                                            <button data-supplier="ELMA_ALL" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">ELMA</button>
-                                            <button data-supplier="707" class="goals-sub-tab px-6 py-3 text-teal-400 font-bold text-sm border-b-2 border-teal-400 flex items-center gap-2 whitespace-nowrap active">
-                                                <span class="w-2 h-2 rounded-full bg-teal-400 inline-block indicator"></span> EXTRUSADOS
+                                            <button data-supplier="ELMA_ALL" class="goals-sub-tab px-6 py-3 text-teal-400 font-bold text-sm border-b-2 border-teal-400 flex items-center gap-2 whitespace-nowrap active">
+                                                <span class="w-2 h-2 rounded-full bg-teal-400 inline-block indicator"></span> ELMA
                                             </button>
+                                            <button data-supplier="707" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">EXTRUSADOS</button>
                                             <button data-supplier="708" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">NÃO EXTRUSADOS</button>
                                             <button data-supplier="752" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">TORCIDA</button>
                                         </div>
