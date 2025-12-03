@@ -2419,10 +2419,17 @@
             const totalFatEl = document.getElementById('summary-total-fat');
             const totalVolEl = document.getElementById('summary-total-vol');
             const totalPosEl = document.getElementById('summary-total-pos');
+            const mixSaltyEl = document.getElementById('summary-mix-salty');
+            const mixFoodsEl = document.getElementById('summary-mix-foods');
             
             if(totalFatEl) totalFatEl.textContent = totalFat.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
             if(totalVolEl) totalVolEl.textContent = totalVol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-            if(totalPosEl) totalPosEl.textContent = uniquePosClientsSet.size.toLocaleString('pt-BR');
+            
+            const totalPosCount = uniquePosClientsSet.size;
+            if(totalPosEl) totalPosEl.textContent = totalPosCount.toLocaleString('pt-BR');
+            
+            if(mixSaltyEl) mixSaltyEl.textContent = Math.round(totalPosCount * 0.60).toLocaleString('pt-BR');
+            if(mixFoodsEl) mixFoodsEl.textContent = Math.round(totalPosCount * 0.30).toLocaleString('pt-BR');
         }
 
         function calculateDistributedGoals(filteredClients, currentGoalsSupplier, currentGoalsBrand, goalFat, goalVol) {
@@ -9862,6 +9869,14 @@
                                             <div class="text-right px-2 border-l border-slate-700">
                                                 <p class="text-[10px] uppercase text-slate-400 font-bold mb-1">Total Meta Pos.</p>
                                                 <p class="text-xl font-bold text-purple-400" id="summary-total-pos">0</p>
+                                            </div>
+                                            <div class="text-right px-2 border-l border-slate-700">
+                                                <p class="text-[10px] uppercase text-slate-400 font-bold mb-1">Meta Mix Salty</p>
+                                                <p class="text-xl font-bold text-teal-400" id="summary-mix-salty">0</p>
+                                            </div>
+                                            <div class="text-right px-2 border-l border-slate-700">
+                                                <p class="text-[10px] uppercase text-slate-400 font-bold mb-1">Meta Mix Foods</p>
+                                                <p class="text-xl font-bold text-yellow-400" id="summary-mix-foods">0</p>
                                             </div>
                                         </div>
                                     </div>
