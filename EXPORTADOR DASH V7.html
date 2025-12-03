@@ -346,7 +346,7 @@
             });
         };
 
-        const processSalesData = (rawData, clientMap, productMasterMap, newRcaSupervisorMap) => {
+        const processSalesData = (rawData, clientMap, productMasterMap, newRcaSupervisorMap, preserveOriginalSeller = false) => {
             return rawData.map(rawRow => {
                 const codCliStr = String(rawRow['CODCLI']).trim();
                 const clientInfo = clientMap.get(codCliStr) || {};
@@ -379,7 +379,9 @@
                 }
 
                 // 3. Regra de Prioridade 2: Se NÃO for Americanas, usa a nova lógica
-                if (!isAmericanas) {
+                // Se preserveOriginalSeller for true, pulamos a reatribuição baseada no cadastro de clientes (RCA1)
+                // e mantemos o vendedor original da venda (Execução vs Carteira)
+                if (!isAmericanas && !preserveOriginalSeller) {
                     const rca1Cliente = (clientInfo.rca1 || '').trim();
                     const codUsurVenda = codUsur; // Guarda o CODUSUR original da linha de venda
                     
@@ -629,8 +631,9 @@
                 });
 
                 self.postMessage({ type: 'progress', status: 'Cruzando dados de vendas...', percentage: 70 });
-                const processedSalesData = processSalesData(salesDataRaw, clientMap, productMasterMap, newRcaSupervisorMap);
-                const processedHistoryData = processSalesData(historyDataRaw, clientMap, productMasterMap, newRcaSupervisorMap);
+                const processedSalesData = processSalesData(salesDataRaw, clientMap, productMasterMap, newRcaSupervisorMap, false);
+                // Para o histórico, passamos true para preservar o vendedor original (Execução) e não remapear para o dono atual (Carteira)
+                const processedHistoryData = processSalesData(historyDataRaw, clientMap, productMasterMap, newRcaSupervisorMap, true);
 
                 self.postMessage({ type: 'progress', status: 'Aplicando regra de filial...', percentage: 75 });
 
@@ -943,7 +946,9 @@
                     if (sale.DTSAIDA && typeof sale.DTSAIDA === 'string') sale.DTSAIDA = parseDate(sale.DTSAIDA);
                     
                     try {
-                        if (sale.CODCLI !== americanasCodCli) {
+                        // Remapeamento de vendedor: Apenas para dados ATUAIS (Carteira).
+                        // O histórico deve manter a fidelidade com a execução original (Quem vendeu na época).
+                        if (!isHistory && sale.CODCLI !== americanasCodCli) {
                             const currentSellerCode = clientToCurrentSellerMap.get(sale.CODCLI);
                             if (currentSellerCode) {
                                 const sellerDetails = sellerDetailsMap.get(currentSellerCode);
