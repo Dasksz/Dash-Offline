@@ -2916,38 +2916,82 @@
 
         function recalculateGoalsSvTotals(input) {
             const { supId, colId, field } = input.dataset;
-            
-            // 1. Sum for this Supervisor
-            const supInputs = document.querySelectorAll(`.goals-sv-input[data-sup-id="${supId}"][data-col-id="${colId}"][data-field="${field}"]`);
-            let supSum = 0;
-            supInputs.forEach(inp => {
-                let val = parseFloat(inp.value.replace(/\./g, '').replace(',', '.'));
-                if (isNaN(val)) val = 0;
-                supSum += val;
-            });
-            
-            const supTotalEl = document.getElementById(`total-sup-${supId}-${colId}-${field}`);
-            if (supTotalEl) {
-                // Formatting depends on field
-                if (field === 'fat') supTotalEl.textContent = supSum.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                else if (field === 'vol') supTotalEl.textContent = supSum.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3});
-                else supTotalEl.textContent = supSum;
-            }
+            const tr = input.closest('tr');
 
-            // 2. Sum for Grand Total (Geral PRIME)
-            const allInputs = document.querySelectorAll(`.goals-sv-input[data-col-id="${colId}"][data-field="${field}"]`);
-            let grandSum = 0;
-            allInputs.forEach(inp => {
-                let val = parseFloat(inp.value.replace(/\./g, '').replace(',', '.'));
-                if (isNaN(val)) val = 0;
-                grandSum += val;
-            });
-            
-            const grandTotalEl = document.getElementById(`total-grand-${colId}-${field}`);
-            if (grandTotalEl) {
-                if (field === 'fat') grandTotalEl.textContent = grandSum.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                else if (field === 'vol') grandTotalEl.textContent = grandSum.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3});
-                else grandTotalEl.textContent = grandSum;
+            // --- Aggregation Map: Component -> Aggregate ---
+            const componentToAgg = {
+                '707': 'total_elma', '708': 'total_elma', '752': 'total_elma',
+                '1119_TODDYNHO': 'total_foods', '1119_TODDY': 'total_foods', '1119_QUAKER_KEROCOCO': 'total_foods'
+            };
+            const aggregations = {
+                'total_elma': ['707', '708', '752'],
+                'total_foods': ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO']
+            };
+
+            // Helper to update vertical totals (Supervisor & Grand Total)
+            const updateVerticalTotal = (sId, cId, fId) => {
+                // 1. Sum for this Supervisor
+                const supInputs = document.querySelectorAll(`.goals-sv-input[data-sup-id="${sId}"][data-col-id="${cId}"][data-field="${fId}"]`);
+                let supSum = 0;
+                supInputs.forEach(inp => {
+                    let val = parseFloat(inp.value.replace(/\./g, '').replace(',', '.'));
+                    if (isNaN(val)) val = 0;
+                    supSum += val;
+                });
+
+                const supTotalEl = document.getElementById(`total-sup-${sId}-${cId}-${fId}`);
+                if (supTotalEl) {
+                    if (fId === 'fat') supTotalEl.textContent = supSum.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    else if (fId === 'vol') supTotalEl.textContent = supSum.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3});
+                    else supTotalEl.textContent = supSum;
+                }
+
+                // 2. Sum for Grand Total (Geral PRIME)
+                const allInputs = document.querySelectorAll(`.goals-sv-input[data-col-id="${cId}"][data-field="${fId}"]`);
+                let grandSum = 0;
+                allInputs.forEach(inp => {
+                    let val = parseFloat(inp.value.replace(/\./g, '').replace(',', '.'));
+                    if (isNaN(val)) val = 0;
+                    grandSum += val;
+                });
+
+                const grandTotalEl = document.getElementById(`total-grand-${cId}-${fId}`);
+                if (grandTotalEl) {
+                    if (fId === 'fat') grandTotalEl.textContent = grandSum.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    else if (fId === 'vol') grandTotalEl.textContent = grandSum.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3});
+                    else grandTotalEl.textContent = grandSum;
+                }
+            };
+
+            // Update Vertical Totals for the Edited Column
+            updateVerticalTotal(supId, colId, field);
+
+            // --- Horizontal Aggregation (Row Level) ---
+            // If this is a component, update the aggregate column
+            if (componentToAgg[colId]) {
+                const aggId = componentToAgg[colId];
+                const components = aggregations[aggId];
+
+                let rowSum = 0;
+                components.forEach(compId => {
+                    // Find input in the SAME ROW
+                    const compInput = tr.querySelector(`.goals-sv-input[data-col-id="${compId}"][data-field="${field}"]`);
+                    if (compInput) {
+                        let val = parseFloat(compInput.value.replace(/\./g, '').replace(',', '.'));
+                        if (isNaN(val)) val = 0;
+                        rowSum += val;
+                    }
+                });
+
+                const aggInput = tr.querySelector(`.goals-sv-input[data-col-id="${aggId}"][data-field="${field}"]`);
+                if (aggInput) {
+                    if (field === 'fat') aggInput.value = rowSum.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    else if (field === 'vol') aggInput.value = rowSum.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3});
+                    else aggInput.value = rowSum;
+
+                    // Now update vertical totals for the aggregate column (Supervisor & Grand Total)
+                    updateVerticalTotal(supId, aggId, field);
+                }
             }
         }
 
@@ -3273,11 +3317,15 @@
                             const d = seller.data[col.id] || { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0 };
                             
                             if (col.type === 'standard') {
+                                const isReadOnly = col.isAgg;
+                                const readOnlyAttr = isReadOnly ? 'readonly tabIndex="-1"' : '';
+                                const inputClass = isReadOnly ? 'text-slate-400 cursor-not-allowed' : 'text-yellow-300';
+
                                 bodyHTML += `
                                     <td class="px-1 py-1 text-right text-slate-300 border-r border-slate-800/50">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                                    <td class="px-1 py-1 bg-[#1e293b] border-r border-slate-800/50"><input type="text" value="${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}" class="goals-sv-input bg-transparent text-right w-full outline-none text-yellow-300 text-xs font-mono" data-sup-id="${sup.id}" data-col-id="${col.id}" data-field="fat" oninput="recalculateGoalsSvTotals(this)"></td>
+                                    <td class="px-1 py-1 bg-[#1e293b] border-r border-slate-800/50"><input type="text" value="${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}" class="goals-sv-input bg-transparent text-right w-full outline-none ${inputClass} text-xs font-mono" data-sup-id="${sup.id}" data-col-id="${col.id}" data-field="fat" oninput="recalculateGoalsSvTotals(this)" ${readOnlyAttr}></td>
                                     <td class="px-1 py-1 text-center text-slate-300 border-r border-slate-800/50">${d.metaPos}</td>
-                                    <td class="px-1 py-1 bg-[#1e293b] border-r border-slate-800/50"><input type="text" value="${d.metaPos}" class="goals-sv-input bg-transparent text-center w-full outline-none text-yellow-300 text-xs font-mono" data-sup-id="${sup.id}" data-col-id="${col.id}" data-field="pos" oninput="recalculateGoalsSvTotals(this)"></td>
+                                    <td class="px-1 py-1 bg-[#1e293b] border-r border-slate-800/50"><input type="text" value="${d.metaPos}" class="goals-sv-input bg-transparent text-center w-full outline-none ${inputClass} text-xs font-mono" data-sup-id="${sup.id}" data-col-id="${col.id}" data-field="pos" oninput="recalculateGoalsSvTotals(this)" ${readOnlyAttr}></td>
                                 `;
                             } else if (col.type === 'tonnage') {
                                 bodyHTML += `
