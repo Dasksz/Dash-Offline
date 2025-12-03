@@ -1399,7 +1399,9 @@
                 '752': createMetric(),
                 '1119_TODDYNHO': createMetric(),
                 '1119_TODDY': createMetric(),
-                '1119_QUAKER_KEROCOCO': createMetric()
+                '1119_QUAKER_KEROCOCO': createMetric(),
+                'ELMA_ALL': createMetric(),
+                'FOODS_ALL': createMetric()
             };
 
             const currentDate = lastSaleDate;
@@ -1495,6 +1497,36 @@
             });
 
             // Calculate Averages and Finalize
+            // First calculate basic metrics for leaf keys
+            const leafKeys = ['707', '708', '752', '1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
+
+            // Helper for aggregation
+            const aggregateToAll = (targetKey, sourceKeys) => {
+                const target = globalGoalsMetrics[targetKey];
+                sourceKeys.forEach(key => {
+                    const source = globalGoalsMetrics[key];
+                    target.fat += source.fat;
+                    target.vol += source.vol;
+                    target.prevFat += source.prevFat;
+                    target.prevVol += source.prevVol; // Already raw, keep raw for now
+
+                    source.prevClientsSet.forEach(c => target.prevClientsSet.add(c));
+                    source.quarterlyPosClientsSet.forEach(c => target.quarterlyPosClientsSet.add(c));
+
+                    source.monthlyClientsSets.forEach((set, monthKey) => {
+                        if (!target.monthlyClientsSets.has(monthKey)) {
+                            target.monthlyClientsSets.set(monthKey, new Set());
+                        }
+                        const targetSet = target.monthlyClientsSets.get(monthKey);
+                        set.forEach(c => targetSet.add(c));
+                    });
+                });
+            };
+
+            aggregateToAll('ELMA_ALL', ['707', '708', '752']);
+            aggregateToAll('FOODS_ALL', ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO']);
+
+            // Finalize calculations for ALL keys
             for (const key in globalGoalsMetrics) {
                 const m = globalGoalsMetrics[key];
                 
@@ -2406,6 +2438,30 @@
             let globalTotalAvgFat = 0;
             let globalTotalAvgVol = 0;
 
+            const shouldIncludeSale = (sale, supplier, brand) => {
+                const codFor = String(sale.CODFOR);
+                if (supplier === 'ELMA_ALL') {
+                    if (!['707', '708', '752'].includes(codFor)) return false;
+                } else if (supplier === 'FOODS_ALL') {
+                    // Include all brands of 1119 that are in sub-tabs
+                    if (codFor !== '1119') return false;
+                    // No brand filtering here, assuming 1119 contains mostly Foods
+                } else {
+                    if (codFor !== supplier) return false;
+                    if (brand) {
+                        const desc = normalize(sale.DESCRICAO || '');
+                        if (brand === 'TODDYNHO') {
+                            if (!desc.includes('TODDYNHO')) return false;
+                        } else if (brand === 'TODDY') {
+                            if (!desc.includes('TODDY') || desc.includes('TODDYNHO')) return false;
+                        } else if (brand === 'QUAKER_KEROCOCO') {
+                            if (!desc.includes('QUAKER') && !desc.includes('KEROCOCO')) return false;
+                        }
+                    }
+                }
+                return true;
+            };
+
             if (globalGoalsTotalsCache[cacheKey]) {
                 globalTotalAvgFat = globalGoalsTotalsCache[cacheKey].fat;
                 globalTotalAvgVol = globalGoalsTotalsCache[cacheKey].vol;
@@ -2426,20 +2482,11 @@
                         let sumVol = 0;
                         clientHistoryIds.forEach(id => {
                             const sale = optimizedData.historyById.get(id);
-                            if (String(sale.CODFOR) !== currentGoalsSupplier) return;
-                            if (currentGoalsBrand) {
-                                const desc = normalize(sale.DESCRICAO || '');
-                                if (currentGoalsBrand === 'TODDYNHO') {
-                                    if (!desc.includes('TODDYNHO')) return;
-                                } else if (currentGoalsBrand === 'TODDY') {
-                                    if (!desc.includes('TODDY') || desc.includes('TODDYNHO')) return;
-                                } else if (currentGoalsBrand === 'QUAKER_KEROCOCO') {
-                                    if (!desc.includes('QUAKER') && !desc.includes('KEROCOCO')) return;
+                            if (shouldIncludeSale(sale, currentGoalsSupplier, currentGoalsBrand)) {
+                                if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
+                                    sumFat += sale.VLVENDA;
+                                    sumVol += sale.TOTPESOLIQ;
                                 }
-                            }
-                            if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
-                                sumFat += sale.VLVENDA;
-                                sumVol += sale.TOTPESOLIQ;
                             }
                         });
                         globalTotalAvgFat += (sumFat / QUARTERLY_DIVISOR);
@@ -2465,32 +2512,23 @@
                 if (clientHistoryIds) {
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
-                        if (String(sale.CODFOR) !== currentGoalsSupplier) return;
-                        if (currentGoalsBrand) {
-                            const desc = normalize(sale.DESCRICAO || '');
-                            if (currentGoalsBrand === 'TODDYNHO') {
-                                if (!desc.includes('TODDYNHO')) return;
-                            } else if (currentGoalsBrand === 'TODDY') {
-                                if (!desc.includes('TODDY') || desc.includes('TODDYNHO')) return;
-                            } else if (currentGoalsBrand === 'QUAKER_KEROCOCO') {
-                                if (!desc.includes('QUAKER') && !desc.includes('KEROCOCO')) return;
-                            }
-                        }
-                        if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
-                            sumFat += sale.VLVENDA;
-                            sumVol += sale.TOTPESOLIQ;
+                        if (shouldIncludeSale(sale, currentGoalsSupplier, currentGoalsBrand)) {
+                            if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
+                                sumFat += sale.VLVENDA;
+                                sumVol += sale.TOTPESOLIQ;
 
-                            const d = parseDate(sale.DTPED);
-                            if (d) {
-                                // Previous Month Calc
-                                if (d.getUTCMonth() === prevMonthIndex && d.getUTCFullYear() === prevMonthYear) {
-                                    prevFat += sale.VLVENDA;
-                                    prevVol += sale.TOTPESOLIQ;
+                                const d = parseDate(sale.DTPED);
+                                if (d) {
+                                    // Previous Month Calc
+                                    if (d.getUTCMonth() === prevMonthIndex && d.getUTCFullYear() === prevMonthYear) {
+                                        prevFat += sale.VLVENDA;
+                                        prevVol += sale.TOTPESOLIQ;
+                                    }
+
+                                    // Activity per Month Calc
+                                    const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
+                                    monthlyActivity.set(monthKey, (monthlyActivity.get(monthKey) || 0) + sale.VLVENDA);
                                 }
-
-                                // Activity per Month Calc
-                                const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
-                                monthlyActivity.set(monthKey, (monthlyActivity.get(monthKey) || 0) + sale.VLVENDA);
                             }
                         }
                     });
@@ -2511,12 +2549,30 @@
                 // Retrieve Stored Goal
                 let metaFat = 0;
                 let metaVol = 0;
-                if (globalClientGoals.has(codCli)) {
-                    const cGoals = globalClientGoals.get(codCli);
-                    if (cGoals.has(cacheKey)) {
-                        const g = cGoals.get(cacheKey);
-                        metaFat = g.fat;
-                        metaVol = g.vol;
+
+                if (currentGoalsSupplier === 'ELMA_ALL' || currentGoalsSupplier === 'FOODS_ALL') {
+                    if (globalClientGoals.has(codCli)) {
+                        const cGoals = globalClientGoals.get(codCli);
+                        const keysToSum = currentGoalsSupplier === 'ELMA_ALL'
+                            ? ['707', '708', '752']
+                            : ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
+
+                        keysToSum.forEach(k => {
+                            if (cGoals.has(k)) {
+                                const g = cGoals.get(k);
+                                metaFat += g.fat;
+                                metaVol += g.vol;
+                            }
+                        });
+                    }
+                } else {
+                    if (globalClientGoals.has(codCli)) {
+                        const cGoals = globalClientGoals.get(codCli);
+                        if (cGoals.has(cacheKey)) {
+                            const g = cGoals.get(cacheKey);
+                            metaFat = g.fat;
+                            metaVol = g.vol;
+                        }
                     }
                 }
 
@@ -2716,12 +2772,39 @@
             // Update Inputs only if not currently focused (to avoid jumping values while typing)
             const fatInput = document.getElementById('goal-global-fat');
             const volInput = document.getElementById('goal-global-vol');
-            
-            if (fatInput && document.activeElement !== fatInput) {
-                fatInput.value = sumFat.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const btnDistributeFat = document.getElementById('btn-distribute-fat');
+            const btnDistributeVol = document.getElementById('btn-distribute-vol');
+
+            const isAggregatedTab = currentGoalsSupplier === 'ELMA_ALL' || currentGoalsSupplier === 'FOODS_ALL';
+
+            if (fatInput) {
+                if (document.activeElement !== fatInput) {
+                    fatInput.value = sumFat.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                }
+                fatInput.readOnly = isAggregatedTab;
+                if (isAggregatedTab) {
+                    fatInput.classList.add('opacity-50', 'cursor-not-allowed');
+                } else {
+                    fatInput.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
             }
-            if (volInput && document.activeElement !== volInput) {
-                volInput.value = sumVol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+            if (volInput) {
+                if (document.activeElement !== volInput) {
+                    volInput.value = sumVol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+                }
+                volInput.readOnly = isAggregatedTab;
+                if (isAggregatedTab) {
+                    volInput.classList.add('opacity-50', 'cursor-not-allowed');
+                } else {
+                    volInput.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            }
+            
+            if (btnDistributeFat) {
+                btnDistributeFat.style.display = isAggregatedTab ? 'none' : '';
+            }
+            if (btnDistributeVol) {
+                btnDistributeVol.style.display = isAggregatedTab ? 'none' : '';
             }
 
             // Update Reference KPIs with Filtered Totals
@@ -5816,43 +5899,92 @@
 
             // Tendency logic for Daily Chart
             if (useTendencyComparison) {
+                // Calculate historical weekday weights
+                const weekdayTotals = new Array(7).fill(0);
+                let totalHistorySales = 0;
+                historySales.forEach(s => {
+                    const d = parseDate(s.DTPED);
+                    if (d && (s.TIPOVENDA === '1' || s.TIPOVENDA === '9')) {
+                        const day = d.getUTCDay();
+                        if (day >= 1 && day <= 5) {
+                            weekdayTotals[day] += s.VLVENDA;
+                            totalHistorySales += s.VLVENDA;
+                        }
+                    }
+                });
+
+                const weekdayWeights = weekdayTotals.map(val => totalHistorySales > 0 ? val / totalHistorySales : 0);
+
+                // Fallback to even distribution if no history
+                if (totalHistorySales === 0) {
+                    for(let i=1; i<=5; i++) weekdayWeights[i] = 0.2;
+                }
+
                 const today = lastSaleDate;
                 const currentWeekIndex = currentMonthWeeks.findIndex(w => today >= w.start && today <= w.end);
                 
                 if (currentWeekIndex !== -1) {
                     const week = currentMonthWeeks[currentWeekIndex];
-                    let remainingDays = 0;
+                    const remainingDaysIndices = [];
                     for (let d = new Date(week.start); d <= week.end; d.setUTCDate(d.getUTCDate() + 1)) {
-                        if (d > today && d.getUTCDay() >= 1 && d.getUTCDay() <= 5 && !isHoliday(d, selectedHolidays)) remainingDays++;
+                        if (d > today && d.getUTCDay() >= 1 && d.getUTCDay() <= 5 && !isHoliday(d, selectedHolidays)) {
+                            remainingDaysIndices.push(d.getUTCDay());
+                        }
                     }
                     
                     const currentWeekTotal = weeklyCurrentData[currentWeekIndex]; // Projected total
                     const currentWeekSold = m.charts.weeklyCurrent[currentWeekIndex]; // Actual sold
                     const toDistribute = Math.max(0, currentWeekTotal - currentWeekSold);
                     
-                    if (remainingDays > 0 && toDistribute > 0) {
-                        const dailyAdd = toDistribute / remainingDays;
+                    if (remainingDaysIndices.length > 0 && toDistribute > 0) {
+                        let weightSum = 0;
+                        remainingDaysIndices.forEach(idx => weightSum += weekdayWeights[idx]);
+
+                        // Fallback local if remaining days have no historical weight (unlikely but possible)
+                        const localWeights = {};
+                        if (weightSum === 0) {
+                             remainingDaysIndices.forEach(idx => { localWeights[idx] = 1; weightSum += 1; });
+                        } else {
+                             remainingDaysIndices.forEach(idx => { localWeights[idx] = weekdayWeights[idx]; });
+                        }
+
                         for (let d = new Date(week.start); d <= week.end; d.setUTCDate(d.getUTCDate() + 1)) {
-                            if (d > today && d.getUTCDay() >= 1 && d.getUTCDay() <= 5 && !isHoliday(d, selectedHolidays)) {
-                                salesByWeekAndDay[currentWeekIndex+1][d.getUTCDay()] += dailyAdd;
+                            const dayIdx = d.getUTCDay();
+                            if (d > today && dayIdx >= 1 && dayIdx <= 5 && !isHoliday(d, selectedHolidays)) {
+                                const val = toDistribute * (localWeights[dayIdx] / weightSum);
+                                salesByWeekAndDay[currentWeekIndex+1][dayIdx] += val;
                             }
                         }
                     }
                 }
                 
-                // For future weeks, distribute evenly across working days
+                // For future weeks, distribute proportionally across working days
                 for (let i = currentWeekIndex + 1; i < currentMonthWeeks.length; i++) {
                     const proj = weeklyCurrentData[i];
                     const week = currentMonthWeeks[i];
-                    let workDays = 0;
+                    const workingDaysIndices = [];
                     for (let d = new Date(week.start); d <= week.end; d.setUTCDate(d.getUTCDate() + 1)) {
-                        if (d.getUTCDay() >= 1 && d.getUTCDay() <= 5 && !isHoliday(d, selectedHolidays)) workDays++;
+                        if (d.getUTCDay() >= 1 && d.getUTCDay() <= 5 && !isHoliday(d, selectedHolidays)) {
+                            workingDaysIndices.push(d.getUTCDay());
+                        }
                     }
-                    if (workDays > 0) {
-                        const daily = proj / workDays;
+
+                    if (workingDaysIndices.length > 0) {
+                        let weightSum = 0;
+                        workingDaysIndices.forEach(idx => weightSum += weekdayWeights[idx]);
+
+                        const localWeights = {};
+                        if (weightSum === 0) {
+                             workingDaysIndices.forEach(idx => { localWeights[idx] = 1; weightSum += 1; });
+                        } else {
+                             workingDaysIndices.forEach(idx => { localWeights[idx] = weekdayWeights[idx]; });
+                        }
+
                         for (let d = new Date(week.start); d <= week.end; d.setUTCDate(d.getUTCDate() + 1)) {
-                            if (d.getUTCDay() >= 1 && d.getUTCDay() <= 5 && !isHoliday(d, selectedHolidays)) {
-                                salesByWeekAndDay[i+1][d.getUTCDay()] += daily;
+                            const dayIdx = d.getUTCDay();
+                            if (dayIdx >= 1 && dayIdx <= 5 && !isHoliday(d, selectedHolidays)) {
+                                const val = proj * (localWeights[dayIdx] / weightSum);
+                                salesByWeekAndDay[i+1][dayIdx] += val;
                             }
                         }
                     }
@@ -9678,6 +9810,7 @@
                                     <div id="goals-sub-tabs-container">
                                         <!-- Elma Chips Sub-tabs -->
                                         <div class="flex border-b border-slate-700 overflow-x-auto" id="goals-sub-tabs-elmachips">
+                                            <button data-supplier="ELMA_ALL" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">ELMA</button>
                                             <button data-supplier="707" class="goals-sub-tab px-6 py-3 text-teal-400 font-bold text-sm border-b-2 border-teal-400 flex items-center gap-2 whitespace-nowrap active">
                                                 <span class="w-2 h-2 rounded-full bg-teal-400 inline-block indicator"></span> EXTRUSADOS
                                             </button>
@@ -9687,6 +9820,7 @@
 
                                         <!-- Foods Sub-tabs -->
                                         <div class="hidden flex border-b border-slate-700 overflow-x-auto" id="goals-sub-tabs-foods">
+                                            <button data-supplier="FOODS_ALL" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">FOODS</button>
                                             <button data-supplier="1119" data-brand="TODDYNHO" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">TODDYNHO</button>
                                             <button data-supplier="1119" data-brand="TODDY" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">TODDY</button>
                                             <button data-supplier="1119" data-brand="QUAKER_KEROCOCO" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">QUAKER / KEROCOCO</button>
