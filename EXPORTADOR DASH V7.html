@@ -2917,21 +2917,23 @@
         function updateGoalsSvView() {
             const filteredClients = getGoalsSvFilteredData();
             
-            // Define Column Blocks
+            // Define Column Blocks (Metrics Config)
             const svColumns = [
-                { id: 'total_elma', label: 'TOTAL ELMA', isAgg: true, colorClass: 'text-teal-400', components: ['707', '708', '752'] }, 
-                { id: '707', label: 'EXTRUSADOS', supplier: '707', brand: null, colorClass: 'text-slate-300' },
-                { id: '708', label: 'NÃO EXTRUSADOS', supplier: '708', brand: null, colorClass: 'text-slate-300' },
-                { id: '752', label: 'TORCIDA', supplier: '752', brand: null, colorClass: 'text-slate-300' },
-                { id: 'total_foods', label: 'TOTAL FOODS', isAgg: true, colorClass: 'text-yellow-400', components: ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'] },
-                { id: '1119_TODDYNHO', label: 'TODDYNHO', supplier: '1119', brand: 'TODDYNHO', colorClass: 'text-slate-300' },
-                { id: '1119_TODDY', label: 'TODDY', supplier: '1119', brand: 'TODDY', colorClass: 'text-slate-300' },
-                { id: '1119_QUAKER_KEROCOCO', label: 'QUAKER / KEROCOCO', supplier: '1119', brand: 'QUAKER_KEROCOCO', colorClass: 'text-slate-300' }
+                { id: 'total_elma', label: 'TOTAL ELMA', type: 'standard', isAgg: true, colorClass: 'text-teal-400', components: ['707', '708', '752'] }, 
+                { id: '707', label: 'EXTRUSADOS', type: 'standard', supplier: '707', brand: null, colorClass: 'text-slate-300' },
+                { id: '708', label: 'NÃO EXTRUSADOS', type: 'standard', supplier: '708', brand: null, colorClass: 'text-slate-300' },
+                { id: '752', label: 'TORCIDA', type: 'standard', supplier: '752', brand: null, colorClass: 'text-slate-300' },
+                { id: 'tonelada_elma', label: 'TONELADA ELMA', type: 'tonnage', isAgg: true, colorClass: 'text-orange-400', components: ['707', '708', '752'] },
+                { id: 'total_foods', label: 'TOTAL FOODS', type: 'standard', isAgg: true, colorClass: 'text-yellow-400', components: ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'] },
+                { id: '1119_TODDYNHO', label: 'TODDYNHO', type: 'standard', supplier: '1119', brand: 'TODDYNHO', colorClass: 'text-slate-300' },
+                { id: '1119_TODDY', label: 'TODDY', type: 'standard', supplier: '1119', brand: 'TODDY', colorClass: 'text-slate-300' },
+                { id: '1119_QUAKER_KEROCOCO', label: 'QUAKER / KEROCOCO', type: 'standard', supplier: '1119', brand: 'QUAKER_KEROCOCO', colorClass: 'text-slate-300' },
+                { id: 'tonelada_foods', label: 'TONELADA FOODS', type: 'tonnage', isAgg: true, colorClass: 'text-orange-400', components: ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'] }
             ];
 
             // 1. Fetch Metrics for each Base Category
             const metricsByCat = {};
-            const baseCategories = svColumns.filter(c => !c.isAgg);
+            const baseCategories = svColumns.filter(c => c.type === 'standard' && !c.isAgg);
             
             baseCategories.forEach(cat => {
                 const target = goalsTargets[cat.id] || { fat: 0, vol: 0 };
@@ -2940,12 +2942,8 @@
             });
 
             // 2. Aggregate by Seller
-            const sellerMap = new Map(); // SellerName -> { Supervisor, Code, Data: { [ColId]: { metaFat, metaVol, metaPos } } }
+            const sellerMap = new Map(); // SellerName -> { Supervisor, Code, Data: { [ColId]: { metaFat, metaVol, metaPos, avgVol } } }
 
-            // Initialize sellers from the first category data (all categories iterate same clients)
-            // But strictness might vary slightly? No, filteredClients is consistent.
-            // Iterate first valid dataset to init sellers
-            
             const initSeller = (c) => {
                 const sellerName = c.seller;
                 if (!sellerMap.has(sellerName)) {
@@ -2974,26 +2972,28 @@
                 const catId = cat.id;
                 metricsByCat[catId].forEach(client => {
                     const sellerObj = initSeller(client);
-                    if (!sellerObj.data[catId]) sellerObj.data[catId] = { metaFat: 0, metaVol: 0, metaPos: 0 };
+                    if (!sellerObj.data[catId]) sellerObj.data[catId] = { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0 };
                     
                     sellerObj.data[catId].metaFat += client.metaFat;
                     sellerObj.data[catId].metaVol += client.metaVol;
                     sellerObj.data[catId].metaPos += client.metaPos;
+                    sellerObj.data[catId].avgVol += client.avgVol; // Sum Average Volume
                 });
             });
 
-            // Calculate Aggregates (Total Elma, Total Foods)
+            // Calculate Aggregates
             sellerMap.forEach(sellerObj => {
                 svColumns.filter(c => c.isAgg).forEach(aggCol => {
-                    let sumFat = 0, sumVol = 0, sumPos = 0;
+                    let sumFat = 0, sumVol = 0, sumPos = 0, sumAvgVol = 0;
                     aggCol.components.forEach(compId => {
                         if (sellerObj.data[compId]) {
                             sumFat += sellerObj.data[compId].metaFat;
                             sumVol += sellerObj.data[compId].metaVol;
                             sumPos += sellerObj.data[compId].metaPos;
+                            sumAvgVol += sellerObj.data[compId].avgVol;
                         }
                     });
-                    sellerObj.data[aggCol.id] = { metaFat: sumFat, metaVol: sumVol, metaPos: sumPos };
+                    sellerObj.data[aggCol.id] = { metaFat: sumFat, metaVol: sumVol, metaPos: sumPos, avgVol: sumAvgVol };
                 });
             });
 
@@ -3014,11 +3014,12 @@
                 
                 // Aggregate Supervisor Totals
                 svColumns.forEach(col => {
-                    if (!group.totals[col.id]) group.totals[col.id] = { metaFat: 0, metaVol: 0, metaPos: 0 };
+                    if (!group.totals[col.id]) group.totals[col.id] = { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0 };
                     if (seller.data[col.id]) {
                         group.totals[col.id].metaFat += seller.data[col.id].metaFat;
                         group.totals[col.id].metaVol += seller.data[col.id].metaVol;
                         group.totals[col.id].metaPos += seller.data[col.id].metaPos;
+                        group.totals[col.id].avgVol += seller.data[col.id].avgVol;
                     }
                 });
             });
@@ -3031,12 +3032,13 @@
 
             // Grand Totals
             const grandTotals = {};
-            svColumns.forEach(col => grandTotals[col.id] = { metaFat: 0, metaVol: 0, metaPos: 0 });
+            svColumns.forEach(col => grandTotals[col.id] = { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0 });
             sortedSupervisors.forEach(sup => {
                 svColumns.forEach(col => {
                     grandTotals[col.id].metaFat += sup.totals[col.id].metaFat;
                     grandTotals[col.id].metaVol += sup.totals[col.id].metaVol;
                     grandTotals[col.id].metaPos += sup.totals[col.id].metaPos;
+                    grandTotals[col.id].avgVol += sup.totals[col.id].avgVol;
                 });
             });
 
@@ -3054,27 +3056,40 @@
             
             // Row 1: Groups
             svColumns.forEach(col => {
-                headerHTML += `<th colspan="3" class="px-2 py-2 text-center font-bold border-r border-b border-slate-700 ${col.colorClass}">${col.label}</th>`;
+                const colspan = col.type === 'standard' ? 2 : 2;
+                headerHTML += `<th colspan="${colspan}" class="px-2 py-2 text-center font-bold border-r border-b border-slate-700 ${col.colorClass}">${col.label}</th>`;
             });
             headerHTML += `</tr><tr>`;
             
             // Row 2: Metric Names
             svColumns.forEach(col => {
-                headerHTML += `
-                    <th class="px-1 py-1 text-right border-r border-slate-700/50 bg-slate-800/50">FATURAMENTO</th>
-                    <th class="px-1 py-1 text-right border-r border-slate-700/50 bg-slate-800/50">VOLUME</th>
-                    <th class="px-1 py-1 text-center border-r border-slate-700 bg-slate-800/50">POSITIVAÇÃO</th>
-                `;
+                if (col.type === 'standard') {
+                    headerHTML += `
+                        <th class="px-1 py-1 text-right border-r border-slate-700/50 bg-slate-800/50">FATURAMENTO</th>
+                        <th class="px-1 py-1 text-center border-r border-slate-700 bg-slate-800/50">POSITIVAÇÃO</th>
+                    `;
+                } else if (col.type === 'tonnage') {
+                    headerHTML += `
+                        <th class="px-1 py-1 text-right border-r border-slate-700/50 bg-slate-800/50">MÉDIA TRIM.</th>
+                        <th class="px-1 py-1 text-right border-r border-slate-700 bg-slate-800/50">META TON</th>
+                    `;
+                }
             });
             headerHTML += `</tr><tr>`;
 
-            // Row 3: Subtitles (Meta)
+            // Row 3: Subtitles
             svColumns.forEach(col => {
-                headerHTML += `
-                    <th class="px-1 py-1 text-right border-r border-b border-slate-700 text-slate-500 font-normal">Meta</th>
-                    <th class="px-1 py-1 text-right border-r border-b border-slate-700 text-slate-500 font-normal">Meta</th>
-                    <th class="px-1 py-1 text-center border-r border-b border-slate-700 text-slate-500 font-normal">Meta</th>
-                `;
+                if (col.type === 'standard') {
+                    headerHTML += `
+                        <th class="px-1 py-1 text-right border-r border-b border-slate-700 text-slate-500 font-normal">Meta</th>
+                        <th class="px-1 py-1 text-center border-r border-b border-slate-700 text-slate-500 font-normal">Meta</th>
+                    `;
+                } else if (col.type === 'tonnage') {
+                    headerHTML += `
+                        <th class="px-1 py-1 text-right border-r border-b border-slate-700 text-slate-500 font-normal">Volume</th>
+                        <th class="px-1 py-1 text-right border-r border-b border-slate-700 text-slate-500 font-normal">Volume</th>
+                    `;
+                }
             });
             headerHTML += `</tr></thead>`;
 
@@ -3082,7 +3097,7 @@
             let bodyHTML = `<tbody class="divide-y divide-slate-800 bg-[#151c36]">`;
 
             if (sortedSupervisors.length === 0) {
-                bodyHTML += `<tr><td colspan="${2 + (svColumns.length * 3)}" class="text-center p-4 text-slate-500">Nenhum dado encontrado.</td></tr>`;
+                bodyHTML += `<tr><td colspan="${2 + (svColumns.length * 2)}" class="text-center p-4 text-slate-500">Nenhum dado encontrado.</td></tr>`;
             } else {
                 sortedSupervisors.forEach(sup => {
                     // Sort sellers by Total Elma Meta Fat Descending
@@ -3098,12 +3113,18 @@
                         bodyHTML += `<td class="px-2 py-1 text-left text-white font-medium truncate max-w-[200px]" title="${seller.name}">${getFirstName(seller.name)}</td>`;
                         
                         svColumns.forEach(col => {
-                            const d = seller.data[col.id] || { metaFat: 0, metaVol: 0, metaPos: 0 };
-                            bodyHTML += `
-                                <td class="px-1 py-1 text-right text-slate-300 border-r border-slate-800/50">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                                <td class="px-1 py-1 text-right text-slate-300 border-r border-slate-800/50">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
-                                <td class="px-1 py-1 text-center text-slate-300 border-r border-slate-800/50">${d.metaPos}</td>
-                            `;
+                            const d = seller.data[col.id] || { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0 };
+                            if (col.type === 'standard') {
+                                bodyHTML += `
+                                    <td class="px-1 py-1 text-right text-slate-300 border-r border-slate-800/50">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                    <td class="px-1 py-1 text-center text-slate-300 border-r border-slate-800/50">${d.metaPos}</td>
+                                `;
+                            } else {
+                                bodyHTML += `
+                                    <td class="px-1 py-1 text-right text-slate-300 border-r border-slate-800/50">${d.avgVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
+                                    <td class="px-1 py-1 text-right text-slate-300 border-r border-slate-800/50 font-bold">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
+                                `;
+                            }
                         });
                         bodyHTML += `</tr>`;
                     });
@@ -3115,12 +3136,18 @@
                     
                     svColumns.forEach(col => {
                         const d = sup.totals[col.id];
-                        const color = col.id.includes('total') ? 'text-white' : 'text-slate-300';
-                        bodyHTML += `
-                            <td class="px-1 py-1 text-right ${color} border-r border-slate-700">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                            <td class="px-1 py-1 text-right ${color} border-r border-slate-700">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
-                            <td class="px-1 py-1 text-center ${color} border-r border-slate-700">${d.metaPos}</td>
-                        `;
+                        const color = col.id.includes('total') || col.type === 'tonnage' ? 'text-white' : 'text-slate-300';
+                        if (col.type === 'standard') {
+                            bodyHTML += `
+                                <td class="px-1 py-1 text-right ${color} border-r border-slate-700">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                <td class="px-1 py-1 text-center ${color} border-r border-slate-700">${d.metaPos}</td>
+                            `;
+                        } else {
+                            bodyHTML += `
+                                <td class="px-1 py-1 text-right text-slate-300 border-r border-slate-700">${d.avgVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
+                                <td class="px-1 py-1 text-right ${color} border-r border-slate-700">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
+                            `;
+                        }
                     });
                     bodyHTML += `</tr>`;
                 });
@@ -3131,11 +3158,17 @@
                 
                 svColumns.forEach(col => {
                     const d = grandTotals[col.id];
-                    bodyHTML += `
-                        <td class="px-1 py-2 text-right text-teal-400 border-r border-slate-700">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                        <td class="px-1 py-2 text-right text-orange-400 border-r border-slate-700">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
-                        <td class="px-1 py-2 text-center text-purple-400 border-r border-slate-700">${d.metaPos}</td>
-                    `;
+                    if (col.type === 'standard') {
+                        bodyHTML += `
+                            <td class="px-1 py-2 text-right text-teal-400 border-r border-slate-700">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                            <td class="px-1 py-2 text-center text-purple-400 border-r border-slate-700">${d.metaPos}</td>
+                        `;
+                    } else {
+                        bodyHTML += `
+                            <td class="px-1 py-2 text-right text-slate-400 border-r border-slate-700">${d.avgVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
+                            <td class="px-1 py-2 text-right text-orange-400 border-r border-slate-700">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
+                        `;
+                    }
                 });
                 bodyHTML += `</tr>`;
             }
