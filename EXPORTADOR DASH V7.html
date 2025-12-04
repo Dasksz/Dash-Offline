@@ -2398,7 +2398,7 @@
             });
 
             // Grand Total Row
-            const grandRowData = [createCell("", grandTotalStyle), createCell("GERAL PRIME", grandTotalStyle)];
+            const grandRowData = [createCell("GV", grandTotalStyle), createCell("GERAL PRIME", grandTotalStyle)];
             svColumns.forEach(col => {
                 if (col.type === 'standard') {
                     const rangeFat = colCellsForGrandTotal[col.id].fat;
