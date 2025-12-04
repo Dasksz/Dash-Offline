@@ -3585,6 +3585,7 @@
         
         function getCoverageFilteredData(options = {}) {
             const { excludeFilter = null } = options;
+            const isExcluded = (f) => excludeFilter === f || (Array.isArray(excludeFilter) && excludeFilter.includes(f));
 
             // Define filter sets from UI state
             const sellersNameSet = new Set(selectedCoverageSellers);
@@ -3601,13 +3602,13 @@
             let clients = allClientsData;
             if (filial !== 'ambas' || supervisorsSet.size > 0 || sellersNameSet.size > 0 || city) {
                 const rcasOfSupervisor = new Set();
-                if (excludeFilter !== 'supervisor' && supervisorsSet.size > 0) {
+                if (!isExcluded('supervisor') && supervisorsSet.size > 0) {
                     supervisorsSet.forEach(sup => {
                         (optimizedData.rcasBySupervisor.get(sup) || []).forEach(rca => rcasOfSupervisor.add(rca));
                     });
                 }
                 const rcasOfSellers = new Set();
-                if (excludeFilter !== 'seller' && sellersNameSet.size > 0) {
+                if (!isExcluded('seller') && sellersNameSet.size > 0) {
                      sellersNameSet.forEach(sellerName => {
                         const rcaCode = optimizedData.rcaCodeByName.get(sellerName);
                         if (rcaCode) rcasOfSellers.add(rcaCode);
@@ -3617,7 +3618,7 @@
                     if (filial !== 'ambas' && clientLastBranch.get(c['Código']) !== filial) return false;
                     if (rcasOfSupervisor.size > 0 && !c.rcas.some(rca => rcasOfSupervisor.has(rca))) return false;
                     if (rcasOfSellers.size > 0 && !c.rcas.some(rca => rcasOfSellers.has(rca))) return false;
-                    if (excludeFilter !== 'city' && city && (!c.cidade || c.cidade.toLowerCase() !== city)) return false;
+                    if (!isExcluded('city') && city && (!c.cidade || c.cidade.toLowerCase() !== city)) return false;
                     return true;
                 });
             }
@@ -5783,6 +5784,7 @@
         }
 
         const getFilteredDataFromIndices = (indices, dataMap, filters, excludeFilter = null) => {
+            const isExcluded = (f) => excludeFilter === f || (Array.isArray(excludeFilter) && excludeFilter.includes(f));
             const setsToIntersect = [];
             let hasFilter = false;
 
@@ -5795,7 +5797,7 @@
                 }
             }
 
-            if (excludeFilter !== 'supervisor' && filters.supervisor) {
+            if (!isExcluded('supervisor') && filters.supervisor) {
                 if (typeof filters.supervisor === 'string') {
                     hasFilter = true;
                     if (indices.bySupervisor && indices.bySupervisor.has(filters.supervisor)) {
@@ -5818,7 +5820,7 @@
                 }
             }
 
-            if (excludeFilter !== 'pasta' && filters.pasta) {
+            if (!isExcluded('pasta') && filters.pasta) {
                 hasFilter = true;
                 if (indices.byPasta && indices.byPasta.has(filters.pasta)) {
                     setsToIntersect.push(indices.byPasta.get(filters.pasta));
@@ -5827,7 +5829,7 @@
                 }
             }
 
-            if (excludeFilter !== 'tipoVenda' && filters.tipoVenda && filters.tipoVenda.size > 0) {
+            if (!isExcluded('tipoVenda') && filters.tipoVenda && filters.tipoVenda.size > 0) {
                 hasFilter = true;
                 const ids = new Set();
                 let foundAny = false;
@@ -5841,7 +5843,7 @@
                 else return [];
             }
 
-            if (excludeFilter !== 'seller' && filters.seller && filters.seller.size > 0) {
+            if (!isExcluded('seller') && filters.seller && filters.seller.size > 0) {
                 hasFilter = true;
                 const ids = new Set();
                 let foundAny = false;
@@ -5855,7 +5857,7 @@
                 else return [];
             }
 
-            if (excludeFilter !== 'supplier' && filters.supplier && filters.supplier.size > 0) {
+            if (!isExcluded('supplier') && filters.supplier && filters.supplier.size > 0) {
                 hasFilter = true;
                 const ids = new Set();
                 let foundAny = false;
@@ -5869,7 +5871,7 @@
                 else return [];
             }
 
-            if (excludeFilter !== 'product' && filters.product && filters.product.size > 0) {
+            if (!isExcluded('product') && filters.product && filters.product.size > 0) {
                 hasFilter = true;
                 const ids = new Set();
                 let foundAny = false;
@@ -5883,7 +5885,7 @@
                 else return [];
             }
 
-            if (excludeFilter !== 'city' && filters.city) {
+            if (!isExcluded('city') && filters.city) {
                 hasFilter = true;
                 if (indices.byCity && indices.byCity.has(filters.city)) {
                     setsToIntersect.push(indices.byCity.get(filters.city));
@@ -8026,7 +8028,11 @@
                     if (checked) selectedMainSuppliers.push(value);
                     else selectedMainSuppliers = selectedMainSuppliers.filter(s => s !== value);
                     
-                    selectedMainSuppliers = updateSupplierFilter(fornecedorFilterDropdown, document.getElementById('fornecedor-filter-text'), selectedMainSuppliers, [...allSalesData, ...allHistoryData], 'main');
+                    let supplierDataSource = [...allSalesData, ...allHistoryData];
+                    if (currentFornecedor) {
+                        supplierDataSource = supplierDataSource.filter(s => s.OBSERVACAOFOR === currentFornecedor);
+                    }
+                    selectedMainSuppliers = updateSupplierFilter(fornecedorFilterDropdown, document.getElementById('fornecedor-filter-text'), selectedMainSuppliers, supplierDataSource, 'main');
                     mainTableState.currentPage = 1;
                     updateDashboard();
                 }
