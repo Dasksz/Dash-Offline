@@ -1366,6 +1366,7 @@
         let currentGoalsBrand = null;
         let currentGoalsSvSupplier = '707';
         let currentGoalsSvBrand = null;
+        let currentGoalsSvData = [];
         let goalsTableState = {
             currentPage: 1,
             itemsPerPage: 100,
@@ -2082,6 +2083,349 @@
         }
 
         // --- GOALS VIEW LOGIC ---
+
+        function exportGoalsSvXLSX() {
+            if (!currentGoalsSvData || currentGoalsSvData.length === 0) {
+                alert("Sem dados para exportar.");
+                return;
+            }
+
+            const wb = XLSX.utils.book_new();
+            const ws_data = [];
+
+            // --- 1. Headers ---
+            // Row 1: Group Headers
+            const row1 = ["CÓD", "VENDEDOR"];
+            const merges = [{ s: { r: 0, c: 0 }, e: { r: 2, c: 0 } }, { s: { r: 0, c: 1 }, e: { r: 2, c: 1 } }];
+            let colIdx = 2;
+
+            const svColumns = [
+                { id: 'total_elma', label: 'TOTAL ELMA', type: 'standard' },
+                { id: '707', label: 'EXTRUSADOS', type: 'standard' },
+                { id: '708', label: 'NÃO EXTRUSADOS', type: 'standard' },
+                { id: '752', label: 'TORCIDA', type: 'standard' },
+                { id: 'tonelada_elma', label: 'TONELADA ELMA', type: 'tonnage' },
+                { id: 'mix_salty', label: 'MIX SALTY', type: 'mix' },
+                { id: 'total_foods', label: 'TOTAL FOODS', type: 'standard' },
+                { id: '1119_TODDYNHO', label: 'TODDYNHO', type: 'standard' },
+                { id: '1119_TODDY', label: 'TODDY', type: 'standard' },
+                { id: '1119_QUAKER_KEROCOCO', label: 'QUAKER / KEROCOCO', type: 'standard' },
+                { id: 'tonelada_foods', label: 'TONELADA FOODS', type: 'tonnage' },
+                { id: 'mix_foods', label: 'MIX FOODS', type: 'mix' },
+                { id: 'geral', label: 'GERAL', type: 'geral' },
+                { id: 'pedev', label: 'AUDITORIA PEDEV', type: 'pedev' }
+            ];
+
+            const colMap = {}; // store start index for each column group
+
+            svColumns.forEach(col => {
+                colMap[col.id] = colIdx;
+                row1.push(col.label);
+                let span = 0;
+                if (col.type === 'standard') span = 4;
+                else if (col.type === 'tonnage' || col.type === 'mix') span = 3;
+                else if (col.type === 'geral') span = 4;
+                else if (col.type === 'pedev') span = 1;
+
+                merges.push({ s: { r: 0, c: colIdx }, e: { r: 0, c: colIdx + span - 1 } });
+                for (let k = 1; k < span; k++) row1.push("");
+                colIdx += span;
+            });
+            ws_data.push(row1);
+
+            // Row 2: Metric Names
+            const row2 = ["", ""];
+            svColumns.forEach(col => {
+                if (col.type === 'standard') {
+                    row2.push("FATURAMENTO", "", "POSITIVAÇÃO", "");
+                    merges.push({ s: { r: 1, c: colMap[col.id] }, e: { r: 1, c: colMap[col.id] + 1 } });
+                    merges.push({ s: { r: 1, c: colMap[col.id] + 2 }, e: { r: 1, c: colMap[col.id] + 3 } });
+                } else if (col.type === 'tonnage') {
+                    row2.push("MÉDIA TRIM.", "META TON", "");
+                    merges.push({ s: { r: 1, c: colMap[col.id] + 1 }, e: { r: 1, c: colMap[col.id] + 2 } });
+                } else if (col.type === 'mix') {
+                    row2.push("MÉDIA TRIM.", "META MIX", "");
+                    merges.push({ s: { r: 1, c: colMap[col.id] + 1 }, e: { r: 1, c: colMap[col.id] + 2 } });
+                } else if (col.type === 'geral') {
+                    row2.push("FATURAMENTO", "", "TONELADA", "POSITIVAÇÃO");
+                    merges.push({ s: { r: 1, c: colMap[col.id] }, e: { r: 1, c: colMap[col.id] + 1 } });
+                } else {
+                    row2.push("META");
+                }
+            });
+            ws_data.push(row2);
+
+            // Row 3: Subtitles
+            const row3 = ["", ""];
+            svColumns.forEach(col => {
+                if (col.type === 'standard') {
+                    row3.push("Meta", "Ajuste", "Meta", "Ajuste");
+                } else if (col.type === 'tonnage') {
+                    row3.push("Volume", "Volume", "Ajuste");
+                } else if (col.type === 'mix') {
+                    row3.push("Qtd", "Meta", "Ajuste");
+                } else if (col.type === 'geral') {
+                    row3.push("Média Trim.", "Meta", "Meta", "Meta");
+                } else {
+                    row3.push("");
+                }
+            });
+            ws_data.push(row3);
+
+            // --- 2. Data Rows ---
+            let currentRow = 3; // 0-indexed, so 4th row in Excel (A4)
+            const supervisorTotalsRowIndices = [];
+
+            // Mapping for Formula References
+            const colCellsForGrandTotal = {};
+            svColumns.forEach(c => colCellsForGrandTotal[c.id] = { fat: [], pos: [], vol: [], mix: [] });
+
+            currentGoalsSvData.forEach(sup => {
+                const sellers = sup.sellers; // Already sorted
+                const colCellsForSupTotal = {}; // Reset per supervisor
+                svColumns.forEach(c => colCellsForSupTotal[c.id] = { fat: [], pos: [], vol: [], mix: [] });
+
+                sellers.forEach(seller => {
+                    const rowData = [seller.code, seller.name];
+
+                    svColumns.forEach(col => {
+                        const d = seller.data[col.id] || { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0, avgFat: 0 };
+                        const cIdx = colMap[col.id];
+                        const excelRow = currentRow + 1; // 1-based for formulas
+
+                        // Helper to get column letter
+                        const getColLet = (idx) => XLSX.utils.encode_col(idx);
+
+                        if (col.type === 'standard') {
+                            // Meta Fat (Static)
+                            rowData.push(d.metaFat);
+                            // Ajuste Fat (Editable) - This is the "Final" value in the input
+                            rowData.push(d.metaFat);
+
+                            // Meta Pos (Static)
+                            rowData.push(d.metaPos);
+                            // Ajuste Pos (Editable)
+                            rowData.push(d.metaPos);
+
+                            // Formula Logic for Aggregates:
+                            if (col.id === 'total_elma') {
+                                // Formula: Sum of 707, 708, 752 (indices relative to row)
+                                const compCols = ['707', '708', '752'].map(id => colMap[id] + 1); // +1 for Ajuste Fat
+                                const compColsPos = ['707', '708', '752'].map(id => colMap[id] + 3); // +3 for Ajuste Pos
+
+                                const formulaFat = compCols.map(c => `${getColLet(c)}${excelRow}`).join("+");
+                                const formulaPos = compColsPos.map(c => `${getColLet(c)}${excelRow}`).join("+");
+
+                                rowData[rowData.length - 3] = { t: 'n', v: d.metaFat, f: formulaFat }; // Overwrite Ajuste Fat with Formula
+                                rowData[rowData.length - 1] = { t: 'n', v: d.metaPos, f: formulaPos }; // Overwrite Ajuste Pos with Formula
+                            } else if (col.id === 'total_foods') {
+                                const compCols = ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'].map(id => colMap[id] + 1);
+                                const compColsPos = ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'].map(id => colMap[id] + 3);
+
+                                const formulaFat = compCols.map(c => `${getColLet(c)}${excelRow}`).join("+");
+                                const formulaPos = compColsPos.map(c => `${getColLet(c)}${excelRow}`).join("+");
+
+                                rowData[rowData.length - 3] = { t: 'n', v: d.metaFat, f: formulaFat };
+                                rowData[rowData.length - 1] = { t: 'n', v: d.metaPos, f: formulaPos };
+                            }
+
+                            // Store address for Supervisor Total (Always use the "Ajuste" column)
+                            colCellsForSupTotal[col.id].fat.push(`${getColLet(cIdx + 1)}${excelRow}`);
+                            colCellsForSupTotal[col.id].pos.push(`${getColLet(cIdx + 3)}${excelRow}`);
+
+                        } else if (col.type === 'tonnage') {
+                            rowData.push(d.avgVol); // Avg
+                            rowData.push(d.metaVol); // Meta
+                            rowData.push(d.metaVol); // Ajuste
+
+                            // Store for Sup Total
+                            colCellsForSupTotal[col.id].vol.push(`${getColLet(cIdx + 2)}${excelRow}`);
+
+                        } else if (col.type === 'mix') {
+                            rowData.push(d.avgMix);
+                            rowData.push(d.metaMix);
+                            rowData.push(d.metaMix); // Ajuste
+                            colCellsForSupTotal[col.id].mix.push(`${getColLet(cIdx + 2)}${excelRow}`);
+
+                        } else if (col.type === 'geral') {
+                            // AvgFat, MetaFat, MetaTon, MetaPos
+                            // Formulas based on Total Elma + Total Foods
+                            const elmaIdx = colMap['total_elma'];
+                            const foodsIdx = colMap['total_foods'];
+
+                            const fFat = `${getColLet(elmaIdx + 1)}${excelRow}+${getColLet(foodsIdx + 1)}${excelRow}`;
+
+                            // Vol/Ton: Tonelada Elma + Tonelada Foods
+                            const elmaTonIdx = colMap['tonelada_elma'];
+                            const foodsTonIdx = colMap['tonelada_foods'];
+                            const fTon = `${getColLet(elmaTonIdx + 2)}${excelRow}+${getColLet(foodsTonIdx + 2)}${excelRow}`;
+
+                            // Pos: Total Elma + Total Foods
+                            const fPos = `${getColLet(elmaIdx + 3)}${excelRow}+${getColLet(foodsIdx + 3)}${excelRow}`;
+
+                            rowData.push(d.avgFat);
+                            rowData.push({ t: 'n', v: d.metaFat, f: fFat });
+                            rowData.push({ t: 'n', v: d.metaVol, f: fTon });
+                            rowData.push({ t: 'n', v: d.metaPos, f: fPos });
+
+                            colCellsForSupTotal[col.id].fat.push(`${getColLet(cIdx + 1)}${excelRow}`);
+                            colCellsForSupTotal[col.id].vol.push(`${getColLet(cIdx + 2)}${excelRow}`);
+                            colCellsForSupTotal[col.id].pos.push(`${getColLet(cIdx + 3)}${excelRow}`);
+
+                        } else if (col.type === 'pedev') {
+                            // Formula: 90% of Total Elma Pos
+                            const elmaIdx = colMap['total_elma'];
+                            const fPedev = `ROUND(${getColLet(elmaIdx + 3)}${excelRow}*0.9, 0)`;
+                            rowData.push({ t: 'n', v: d.metaPos, f: fPedev });
+
+                            colCellsForSupTotal[col.id].pos.push(`${getColLet(cIdx)}${excelRow}`);
+                        }
+                    });
+
+                    ws_data.push(rowData);
+                    currentRow++;
+                });
+
+                // Supervisor Total Row
+                const supRowData = [sup.code, sup.name.toUpperCase()];
+                const excelSupRow = currentRow + 1;
+                supervisorTotalsRowIndices.push(excelSupRow);
+
+                svColumns.forEach(col => {
+                    const cIdx = colMap[col.id];
+                    const getColLet = (idx) => XLSX.utils.encode_col(idx);
+
+                    if (col.type === 'standard') {
+                        // Fat
+                        const rangeFat = colCellsForSupTotal[col.id].fat;
+                        const fFatRange = rangeFat.length > 0 ? `SUM(${rangeFat[0]}:${rangeFat[rangeFat.length-1]})` : "0";
+
+                        supRowData.push({ t: 'n', v: 0, f: fFatRange }); // Meta
+                        supRowData.push({ t: 'n', v: 0, f: fFatRange }); // Ajuste
+
+                        // Pos
+                        const rangePos = colCellsForSupTotal[col.id].pos;
+                        const fPosRange = rangePos.length > 0 ? `SUM(${rangePos[0]}:${rangePos[rangePos.length-1]})` : "0";
+                        supRowData.push({ t: 'n', v: 0, f: fPosRange });
+                        supRowData.push({ t: 'n', v: 0, f: fPosRange });
+
+                        colCellsForGrandTotal[col.id].fat.push(`${getColLet(cIdx+1)}${excelSupRow}`);
+                        colCellsForGrandTotal[col.id].pos.push(`${getColLet(cIdx+3)}${excelSupRow}`);
+
+                    } else if (col.type === 'tonnage') {
+                        supRowData.push("");
+                        // Vol
+                        const rangeVol = colCellsForSupTotal[col.id].vol;
+                        const fVolRange = rangeVol.length > 0 ? `SUM(${rangeVol[0]}:${rangeVol[rangeVol.length-1]})` : "0";
+                        supRowData.push({ t: 'n', v: 0, f: fVolRange });
+                        supRowData.push({ t: 'n', v: 0, f: fVolRange });
+
+                        colCellsForGrandTotal[col.id].vol.push(`${getColLet(cIdx+2)}${excelSupRow}`);
+
+                    } else if (col.type === 'mix') {
+                        supRowData.push("");
+                        const rangeMix = colCellsForSupTotal[col.id].mix;
+                        const fMixRange = rangeMix.length > 0 ? `SUM(${rangeMix[0]}:${rangeMix[rangeMix.length-1]})` : "0";
+                        supRowData.push({ t: 'n', v: 0, f: fMixRange });
+                        supRowData.push({ t: 'n', v: 0, f: fMixRange });
+
+                        colCellsForGrandTotal[col.id].mix.push(`${getColLet(cIdx+2)}${excelSupRow}`);
+
+                    } else if (col.type === 'geral') {
+                        supRowData.push(""); // Avg
+                        // Fat
+                        const rangeFat = colCellsForSupTotal[col.id].fat;
+                        const fFatRange = rangeFat.length > 0 ? `SUM(${rangeFat[0]}:${rangeFat[rangeFat.length-1]})` : "0";
+                        supRowData.push({ t: 'n', v: 0, f: fFatRange });
+
+                        // Ton
+                        const rangeVol = colCellsForSupTotal[col.id].vol;
+                        const fVolRange = rangeVol.length > 0 ? `SUM(${rangeVol[0]}:${rangeVol[rangeVol.length-1]})` : "0";
+                        supRowData.push({ t: 'n', v: 0, f: fVolRange });
+
+                        // Pos
+                        const rangePos = colCellsForSupTotal[col.id].pos;
+                        const fPosRange = rangePos.length > 0 ? `SUM(${rangePos[0]}:${rangePos[rangePos.length-1]})` : "0";
+                        supRowData.push({ t: 'n', v: 0, f: fPosRange });
+
+                        colCellsForGrandTotal[col.id].fat.push(`${getColLet(cIdx+1)}${excelSupRow}`);
+                        colCellsForGrandTotal[col.id].vol.push(`${getColLet(cIdx+2)}${excelSupRow}`);
+                        colCellsForGrandTotal[col.id].pos.push(`${getColLet(cIdx+3)}${excelSupRow}`);
+
+                    } else if (col.type === 'pedev') {
+                        const elmaIdx = colMap['total_elma'];
+                        const fPedev = `ROUND(${getColLet(elmaIdx + 3)}${excelSupRow}*0.9, 0)`;
+                        supRowData.push({ t: 'n', v: 0, f: fPedev });
+
+                        colCellsForGrandTotal[col.id].pos.push(`${getColLet(cIdx)}${excelSupRow}`);
+                    }
+                });
+
+                ws_data.push(supRowData);
+                currentRow++;
+            });
+
+            // Grand Total Row
+            const grandRowData = ["", "GERAL PRIME"];
+
+            svColumns.forEach(col => {
+                if (col.type === 'standard') {
+                    const rangeFat = colCellsForGrandTotal[col.id].fat;
+                    const fFat = rangeFat.length > 0 ? rangeFat.join("+") : "0";
+
+                    grandRowData.push({ t: 'n', v: 0, f: fFat });
+                    grandRowData.push({ t: 'n', v: 0, f: fFat });
+
+                    const rangePos = colCellsForGrandTotal[col.id].pos;
+                    const fPos = rangePos.length > 0 ? rangePos.join("+") : "0";
+
+                    grandRowData.push({ t: 'n', v: 0, f: fPos });
+                    grandRowData.push({ t: 'n', v: 0, f: fPos });
+
+                } else if (col.type === 'tonnage') {
+                    grandRowData.push("");
+                    const rangeVol = colCellsForGrandTotal[col.id].vol;
+                    const fVol = rangeVol.length > 0 ? rangeVol.join("+") : "0";
+                    grandRowData.push({ t: 'n', v: 0, f: fVol });
+                    grandRowData.push({ t: 'n', v: 0, f: fVol });
+
+                } else if (col.type === 'mix') {
+                    grandRowData.push("");
+                    const rangeMix = colCellsForGrandTotal[col.id].mix;
+                    const fMix = rangeMix.length > 0 ? rangeMix.join("+") : "0";
+                    grandRowData.push({ t: 'n', v: 0, f: fMix });
+                    grandRowData.push({ t: 'n', v: 0, f: fMix });
+
+                } else if (col.type === 'geral') {
+                    grandRowData.push("");
+                    const rangeFat = colCellsForGrandTotal[col.id].fat;
+                    const fFat = rangeFat.length > 0 ? rangeFat.join("+") : "0";
+                    grandRowData.push({ t: 'n', v: 0, f: fFat });
+
+                    const rangeVol = colCellsForGrandTotal[col.id].vol;
+                    const fVol = rangeVol.length > 0 ? rangeVol.join("+") : "0";
+                    grandRowData.push({ t: 'n', v: 0, f: fVol });
+
+                    const rangePos = colCellsForGrandTotal[col.id].pos;
+                    const fPos = rangePos.length > 0 ? rangePos.join("+") : "0";
+                    grandRowData.push({ t: 'n', v: 0, f: fPos });
+
+                } else if (col.type === 'pedev') {
+                    const rangePos = colCellsForGrandTotal[col.id].pos;
+                    const fPos = rangePos.length > 0 ? rangePos.join("+") : "0";
+                    grandRowData.push({ t: 'n', v: 0, f: fPos });
+                }
+            });
+            ws_data.push(grandRowData);
+
+            // Create Sheet
+            const ws = XLSX.utils.aoa_to_sheet(ws_data);
+            ws['!merges'] = merges;
+
+            // Add Sheet to Workbook
+            XLSX.utils.book_append_sheet(wb, ws, "Metas SV");
+            XLSX.writeFile(wb, "Metas_Fechamento_SV.xlsx");
+        }
 
         function getGoalsFilteredData() {
             const sellersSet = new Set(selectedGoalsGvSellers);
@@ -9024,6 +9368,8 @@
                 }
             });
 
+            document.getElementById('goals-sv-export-xlsx-btn').addEventListener('click', exportGoalsSvXLSX);
+
             document.addEventListener('click', (e) => {
                 if (!goalsGvSupervisorFilterBtn.contains(e.target) && !goalsGvSupervisorFilterDropdown.contains(e.target)) goalsGvSupervisorFilterDropdown.classList.add('hidden');
                 if (!goalsGvSellerFilterBtn.contains(e.target) && !goalsGvSellerFilterDropdown.contains(e.target)) goalsGvSellerFilterDropdown.classList.add('hidden');
@@ -9523,6 +9869,7 @@
                         <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"><\/script>
                         <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>
                         <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"><\/script>
+                        <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"><\/script>
                         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
                         <style>
                             /* Estilo base do tema escuro */
@@ -10413,8 +10760,8 @@
                             <!-- Tab Content: Meta SV -->
                             <div id="goals-sv-content" class="hidden">
                                 <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
-                                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
-                                        <div class="relative">
+                                    <div class="flex flex-col md:flex-row justify-between items-end gap-4">
+                                        <div class="relative w-full md:w-64">
                                             <label for="goals-sv-supervisor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label>
                                             <button id="goals-sv-supervisor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
                                                 <span id="goals-sv-supervisor-filter-text">Todos</span>
@@ -10422,6 +10769,10 @@
                                             </button>
                                             <div id="goals-sv-supervisor-filter-dropdown" class="hidden absolute z-50 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
                                         </div>
+                                        <button id="goals-sv-export-xlsx-btn" class="w-full md:w-auto bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 px-6 rounded-lg flex items-center justify-center gap-2 shadow-lg transition-colors">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                            Exportar Excel (com Fórmulas)
+                                        </button>
                                     </div>
                                 </div>
                                 
