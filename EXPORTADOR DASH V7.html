@@ -3015,61 +3015,89 @@
             const filteredClients = getGoalsFilteredData();
             if (filteredClients.length === 0) return;
 
-            const cacheKey = currentGoalsSupplier + (currentGoalsBrand ? `_${currentGoalsBrand}` : '');
+            let keysToProcess = [];
+            if (currentGoalsSupplier === 'ELMA_ALL') {
+                keysToProcess = ['707', '708', '752'];
+            } else if (currentGoalsSupplier === 'FOODS_ALL') {
+                keysToProcess = ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
+            } else {
+                const cacheKey = currentGoalsSupplier + (currentGoalsBrand ? `_${currentGoalsBrand}` : '');
+                keysToProcess = [cacheKey];
+            }
 
-            // Calculate Local Totals for Share Distribution
-            // We distribute the input value proportionally among the currently filtered clients
-            let localTotalAvg = 0;
-            const clientAvgs = [];
+            // 1. Calculate Total Denominator (Sum of Averages of all target keys for all filtered clients)
+            let totalDenominator = 0;
+            const distributionMap = new Map(); // Map<ClientCod, Map<Key, AvgValue>>
 
             filteredClients.forEach(client => {
                 const codCli = client['Código'];
                 const clientHistoryIds = optimizedData.indices.history.byClient.get(codCli);
-                let sumVal = 0;
                 
-                if (clientHistoryIds) {
-                    clientHistoryIds.forEach(id => {
-                        const sale = optimizedData.historyById.get(id);
-                        if (String(sale.CODFOR) !== currentGoalsSupplier) return;
-                        if (currentGoalsBrand) {
-                            const desc = normalize(sale.DESCRICAO || '');
-                            if (currentGoalsBrand === 'TODDYNHO') { if (!desc.includes('TODDYNHO')) return; }
-                            else if (currentGoalsBrand === 'TODDY') { if (!desc.includes('TODDY') || desc.includes('TODDYNHO')) return; }
-                            else if (currentGoalsBrand === 'QUAKER_KEROCOCO') { if (!desc.includes('QUAKER') && !desc.includes('KEROCOCO')) return; }
-                        }
-                        
-                        if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
-                            if (type === 'fat') sumVal += sale.VLVENDA;
-                            else sumVal += sale.TOTPESOLIQ;
-                        }
-                    });
-                }
-                const avg = sumVal / QUARTERLY_DIVISOR;
-                
-                // Correction: `calculateDistributedGoals` does `/1000` for volume. We must match.
-                const finalAvg = type === 'vol' ? avg / 1000 : avg;
-                
-                localTotalAvg += finalAvg;
-                clientAvgs.push({ cod: codCli, avg: finalAvg });
+                if (!distributionMap.has(codCli)) distributionMap.set(codCli, new Map());
+                const clientMap = distributionMap.get(codCli);
+
+                keysToProcess.forEach(targetKey => {
+                    let sumVal = 0;
+                    if (clientHistoryIds) {
+                        clientHistoryIds.forEach(id => {
+                            const sale = optimizedData.historyById.get(id);
+                            
+                            // Check if sale belongs to targetKey
+                            let saleKey = String(sale.CODFOR);
+                            const codFor = String(sale.CODFOR);
+                            
+                            // Special handling for broken down categories (FOODS)
+                            if (codFor === '1119') {
+                                const desc = normalize(sale.DESCRICAO || '');
+                                if (desc.includes('TODDYNHO')) saleKey = '1119_TODDYNHO';
+                                else if (desc.includes('TODDY')) saleKey = '1119_TODDY';
+                                else if (desc.includes('QUAKER') || desc.includes('KEROCOCO')) saleKey = '1119_QUAKER_KEROCOCO';
+                                else if (targetKey.startsWith('1119_')) saleKey = null; // If targeting a sub-brand but this product doesn't match, exclude it
+                            }
+
+                            if (saleKey === targetKey) {
+                                if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
+                                    if (type === 'fat') sumVal += sale.VLVENDA;
+                                    else sumVal += sale.TOTPESOLIQ;
+                                }
+                            }
+                        });
+                    }
+                    
+                    // Apply divisor
+                    let avg = sumVal / QUARTERLY_DIVISOR;
+                    if (type === 'vol') avg = avg / 1000; // Tons
+
+                    clientMap.set(targetKey, avg);
+                    totalDenominator += avg;
+                });
             });
 
-            // Update Global Client Goals
-            clientAvgs.forEach(c => {
-                let share = localTotalAvg > 0 ? (c.avg / localTotalAvg) : 0;
-                // If local total is 0, distribute equally? Or 0? Usually 0.
-                if (localTotalAvg === 0 && clientAvgs.length > 0) {
-                     share = 1 / clientAvgs.length;
-                }
+            // 2. Distribute
+            filteredClients.forEach(client => {
+                const codCli = client['Código'];
+                const clientMap = distributionMap.get(codCli);
                 
-                const newGoal = share * inputValue;
-                
-                if (!globalClientGoals.has(c.cod)) globalClientGoals.set(c.cod, new Map());
-                const cGoals = globalClientGoals.get(c.cod);
-                if (!cGoals.has(cacheKey)) cGoals.set(cacheKey, { fat: 0, vol: 0 });
-                
-                const g = cGoals.get(cacheKey);
-                if (type === 'fat') g.fat = newGoal;
-                else g.vol = newGoal;
+                if (!globalClientGoals.has(codCli)) globalClientGoals.set(codCli, new Map());
+                const cGoals = globalClientGoals.get(codCli);
+
+                keysToProcess.forEach(key => {
+                    const avg = clientMap.get(key) || 0;
+                    let share = totalDenominator > 0 ? (avg / totalDenominator) : 0;
+                    
+                    if (totalDenominator === 0) {
+                         const totalItems = filteredClients.length * keysToProcess.length;
+                         if (totalItems > 0) share = 1 / totalItems;
+                    }
+
+                    const newGoal = share * inputValue;
+
+                    if (!cGoals.has(key)) cGoals.set(key, { fat: 0, vol: 0 });
+                    const g = cGoals.get(key);
+                    
+                    if (type === 'fat') g.fat = newGoal;
+                    else g.vol = newGoal;
+                });
             });
             
             recalculateTotalGoals();
@@ -3174,30 +3202,22 @@
                 if (document.activeElement !== fatInput) {
                     fatInput.value = sumFat.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 }
-                fatInput.readOnly = isAggregatedTab;
-                if (isAggregatedTab) {
-                    fatInput.classList.add('opacity-50', 'cursor-not-allowed');
-                } else {
-                    fatInput.classList.remove('opacity-50', 'cursor-not-allowed');
-                }
+                fatInput.readOnly = false;
+                fatInput.classList.remove('opacity-50', 'cursor-not-allowed');
             }
             if (volInput) {
                 if (document.activeElement !== volInput) {
                     volInput.value = sumVol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
                 }
-                volInput.readOnly = isAggregatedTab;
-                if (isAggregatedTab) {
-                    volInput.classList.add('opacity-50', 'cursor-not-allowed');
-                } else {
-                    volInput.classList.remove('opacity-50', 'cursor-not-allowed');
-                }
+                volInput.readOnly = false;
+                volInput.classList.remove('opacity-50', 'cursor-not-allowed');
             }
             
             if (btnDistributeFat) {
-                btnDistributeFat.style.display = isAggregatedTab ? 'none' : '';
+                btnDistributeFat.style.display = '';
             }
             if (btnDistributeVol) {
-                btnDistributeVol.style.display = isAggregatedTab ? 'none' : '';
+                btnDistributeVol.style.display = '';
             }
 
             // Update Reference KPIs with Filtered Totals
