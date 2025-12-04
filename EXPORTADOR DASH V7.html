@@ -3569,9 +3569,14 @@
                     metaMix: Math.round(activeClientsCount * 0.60)
                 };
                 
+                let mixFoodsMeta = Math.round(activeClientsCount * 0.30);
+                if (sellerObj.code === '1001') {
+                    mixFoodsMeta = 0;
+                }
+
                 sellerObj.data['mix_foods'] = {
                     avgMix: mixStats.avgFoods,
-                    metaMix: Math.round(activeClientsCount * 0.30)
+                    metaMix: mixFoodsMeta
                 };
 
                 // 3. Geral Aggregate
