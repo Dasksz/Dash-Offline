@@ -35,24 +35,24 @@
             transform: scale(1.1);
         }
         .tooltip { position: relative; display: inline-block; cursor: pointer; }
-        .tooltip .tooltip-text { 
-            visibility: hidden; 
-            width: auto; 
-            min-width: 80px; 
+        .tooltip .tooltip-text {
+            visibility: hidden;
+            width: auto;
+            min-width: 80px;
             background-color: #334155; /* Alterado para fundo escuro no tooltip */
-            color: #fff; 
-            text-align: center; 
-            border-radius: 6px; 
-            padding: 5px 8px; 
-            position: absolute; 
-            z-index: 1001; 
-            bottom: 125%; 
-            left: 50%; 
-            transform: translateX(-50%); 
-            opacity: 0; 
-            transition: opacity 0.3s; 
-            pointer-events: none; 
-            white-space: nowrap; 
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 5px 8px;
+            position: absolute;
+            z-index: 1001;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            white-space: nowrap;
         }
         .tooltip:hover .tooltip-text { visibility: visible; opacity: 1; }
         input[type=number]::-webkit-inner-spin-button,
@@ -187,7 +187,7 @@
                     }
                 }
             }
-            
+
             // Fallback for ISO 8601 or other formats that new Date() can parse.
             // Try parsing the original string first, in case it's a valid ISO datetime.
             const isoDate = new Date(dateString);
@@ -203,9 +203,9 @@
         function parseBrazilianNumber(value) {
             if (typeof value === 'number') return value;
             if (typeof value !== 'string' || !value) return 0;
-            
+
             let numberString = value.replace(/R\$\s?/g, '').trim();
-            
+
             const lastComma = numberString.lastIndexOf(',');
             const lastDot = numberString.lastIndexOf('.');
 
@@ -214,7 +214,7 @@
             } else {
                 numberString = numberString.replace(/,/g, '');
             }
-            
+
             const number = parseFloat(numberString);
             return isNaN(number) ? 0 : number;
         }
@@ -314,9 +314,9 @@
 
                             const firstLine = lines[0];
                             const delimiter = firstLine.includes(';') ? ';' : ',';
-                            
+
                             const headers = lines.shift().trim().split(delimiter).map(h => h.replace(/"/g, '').trim().replace(/^\uFEFF/, ''));
-                            
+
                             jsonData = lines.map(line => {
                                 const values = line.split(delimiter);
                                 let row = {};
@@ -350,9 +350,9 @@
             return rawData.map(rawRow => {
                 const codCliStr = String(rawRow['CODCLI']).trim();
                 const clientInfo = clientMap.get(codCliStr) || {};
-                
+
                 // --- INÍCIO DA MODIFICAÇÃO: LÓGICA DE ATRIBUIÇÃO DE VENDEDOR ---
-                
+
                 // 1. Pega os valores padrão da linha de venda
                 let vendorName = String(rawRow['NOME'] || '');
                 let supervisorName = String(rawRow['SUPERV'] || '');
@@ -369,8 +369,8 @@
                     supervisorName = 'BALCAO';
                     codSupervisor = '';
                     isAmericanas = true;
-        
-                    if (clientInfo.rcas) { 
+
+                    if (clientInfo.rcas) {
                          clientInfo.rca1 = '1001';
                          if (!clientInfo.rcas.includes('1001')) {
                             clientInfo.rcas.unshift('1001');
@@ -382,7 +382,7 @@
                 if (!isAmericanas) {
                     const rca1Cliente = (clientInfo.rca1 || '').trim();
                     const codUsurVenda = codUsur; // Guarda o CODUSUR original da linha de venda
-                    
+
                     // Prioriza o RCA 1 do cadastro de clientes. Se não tiver, usa o RCA da linha de venda.
                     const codUsurParaBusca = rca1Cliente || codUsurVenda;
 
@@ -394,7 +394,7 @@
                         supervisorName = rcaInfo.SUPERV;
                         codSupervisor = rcaInfo.CODSUPERVISOR;
                         codUsur = codUsurParaBusca; // Define o CODUSUR final
-                    } 
+                    }
                     else if (rca1Cliente && rca1Cliente !== codUsurVenda) {
                         // Usou o RCA1 do cliente, não achou. Tenta um fallback com o RCA da linha de venda.
                         const fallbackInfo = newRcaSupervisorMap.get(codUsurVenda);
@@ -407,7 +407,7 @@
                             // Não achou em lugar nenhum, mantém os dados da linha (já definidos no passo 1)
                             codUsur = codUsurVenda;
                         }
-                    } 
+                    }
                     else {
                         // Se rca1Cliente estava vazio, codUsurParaBusca == codUsurVenda.
                         // Se não achou rcaInfo, significa que o codUsurVenda não está no mapa.
@@ -435,10 +435,10 @@
                 // --- INÍCIO DA MODIFICAÇÃO: REGRA TIPOVENDA ---
                 // Captura o tipo de venda primeiro
                 const tipoVenda = String(rawRow['TIPOVENDA'] || 'N/A').trim();
-                
+
                 // Apenas TIPOVENDA '1' e '9' contam para faturamento e peso
                 const isFaturamento = (tipoVenda === '1' || tipoVenda === '9');
-                
+
                 // Captura os valores originais
                 const vlVendaOriginal = parseBrazilianNumber(rawRow['VLVENDA']);
                 const vlBonificOriginal = parseBrazilianNumber(rawRow['VLBONIFIC']);
@@ -456,17 +456,16 @@
                     CODUSUR: codUsur, CODCLI: codCliStr, CLIENTE_NOME: clientInfo.nomeCliente || 'N/A',
                     CIDADE: clientInfo.cidade || 'N/A', BAIRRO: clientInfo.bairro || 'N/A',
                     QTVENDA: qtVenda,
-                    CODSUPERVISOR: codSupervisor, // Added to ensure supervisor code is available for indexing
-                    
+
                     // --- INÍCIO DA MODIFICAÇÃO: APLICAÇÃO DA REGRA ---
                     // Se não for faturamento (1 ou 9), VLVENDA é 0
                     VLVENDA: isFaturamento ? vlVendaOriginal : 0,
-                    
+
                     // Se não for faturamento, soma o que veio em VLVENDA (indevidamente) ao VLBONIFIC
                     VLBONIFIC: isFaturamento ? vlBonificOriginal : (vlVendaOriginal + vlBonificOriginal),
-                    
+
                     // Peso (tonelada) - [Instrução do usuário: Deve somar sempre, mesmo não sendo faturamento]
-                    TOTPESOLIQ: pesoOriginal, 
+                    TOTPESOLIQ: pesoOriginal,
                     DTPED: dtPed, DTSAIDA: dtSaida,
                     POSICAO: String(rawRow['POSICAO'] || ''),
                     ESTOQUEUNIT: parseBrazilianNumber(rawRow['ESTOQUEUNIT']),
@@ -474,7 +473,7 @@
                     // Garante que o tipo de venda correto é passado
                     TIPOVENDA: tipoVenda,
                     // Adiciona a filial normalizada para permitir filtragem
-                    FILIAL: filialValue 
+                    FILIAL: filialValue
                     // --- FIM DA MODIFICAÇÃO ---
                 };
             });
@@ -485,7 +484,7 @@
             const date = new Date(Date.UTC(year, month, 1));
             // Ensure comparison is done in UTC terms
             const todayUTC = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-            
+
             while (date <= todayUTC && date.getUTCMonth() === month) {
                 const dayOfWeek = date.getUTCDay();
                 if (dayOfWeek >= 1 && dayOfWeek <= 5) {
@@ -791,7 +790,7 @@
             if (typeof dateString === 'number') {
                 return new Date(Math.round((dateString - 25569) * 86400 * 1000));
             }
-            
+
             if (typeof dateString !== 'string') return null;
 
             // Tentativa de parse para 'YYYY-MM-DDTHH:mm:ss.sssZ' ou 'YYYY-MM-DD'
@@ -825,7 +824,7 @@
 
             return null; // Retorna nulo se nenhum formato corresponder
         }
-        
+
         let allSalesData = embeddedData.detailed;
         let allHistoryData = embeddedData.history;
         let aggregatedOrders = embeddedData.byOrder;
@@ -911,10 +910,10 @@
                 } catch (e) {
                     console.warn(`Could not process client for Americanas logic:`, client, e);
                 }
-                
+
                 if (client.rca1) clientToCurrentSellerMap.set(codCli, String(client.rca1));
                 clientRamoMap.set(codCli, client.ramo || 'N/A');
-                
+
                 if (client.rcas) {
                     client.rcas.forEach(rca => {
                         if (rca) {
@@ -935,14 +934,14 @@
             optimizedData.productPastaMap = new Map();
             const supervisorToRcaMap = new Map();
             const workingDaysSet = new Set();
-            
+
             const processDatasetForIndices = (data, indexSet, dataMap, isHistory) => {
                 const { bySupervisor, byRca, byPasta, bySupplier, byClient, byPosition, byRede, byTipoVenda, byProduct, byCity, byFilial } = indexSet;
 
                 data.forEach((sale, i) => {
                     if (sale.DTPED && typeof sale.DTPED === 'string') sale.DTPED = parseDate(sale.DTPED);
                     if (sale.DTSAIDA && typeof sale.DTSAIDA === 'string') sale.DTSAIDA = parseDate(sale.DTSAIDA);
-                    
+
                     try {
                         if (sale.CODCLI !== americanasCodCli) {
                             const currentSellerCode = clientToCurrentSellerMap.get(sale.CODCLI);
@@ -958,17 +957,17 @@
                     } catch(e) {
                         console.warn('Error remapping seller for sale:', sale, e);
                     }
-                    
+
                     sale.SUPERV = sale.SUPERV || 'N/A';
                     sale.NOME = sale.NOME || 'N/A';
-                    
+
                     const id = `${isHistory ? 'h' : 'c'}_${i}`;
                     dataMap.set(id, sale);
 
                     const supervisor = sale.SUPERV, rca = sale.NOME, pasta = sale.OBSERVACAOFOR || 'N/A', supplier = sale.CODFOR;
                     const client = sale.CODCLI, position = sale.POSICAO || 'N/A', rede = clientRamoMap.get(client) || 'N/A';
                     const tipoVenda = sale.TIPOVENDA, product = sale.PRODUTO, city = (sale.CIDADE || 'N/A').toLowerCase(), filial = sale.FILIAL;
-                    
+
                     if (!bySupervisor.has(supervisor)) bySupervisor.set(supervisor, new Set()); bySupervisor.get(supervisor).add(id);
                     if (!byRca.has(rca)) byRca.set(rca, new Set()); byRca.get(rca).add(id);
                     if (!byPasta.has(pasta)) byPasta.set(pasta, new Set()); byPasta.get(pasta).add(id);
@@ -980,17 +979,17 @@
                     if (byProduct && product && !byProduct.has(product)) byProduct.set(product, new Set()); if (byProduct && product) byProduct.get(product).add(id);
                     if (byCity && city && !byCity.has(city)) byCity.set(city, new Set()); if (byCity && city) byCity.get(city).add(id);
                     if (byFilial && filial && !byFilial.has(filial)) byFilial.set(filial, new Set()); if (byFilial && filial) byFilial.get(filial).add(id);
-                    
+
                     if (sale.CODUSUR && supervisor) { if (!supervisorToRcaMap.has(supervisor)) supervisorToRcaMap.set(supervisor, new Set()); supervisorToRcaMap.get(supervisor).add(sale.CODUSUR); }
                     if (supplier && product) { if (!optimizedData.productsBySupplier.has(supplier)) optimizedData.productsBySupplier.set(supplier, new Set()); optimizedData.productsBySupplier.get(supplier).add(product); }
                     if (rca && sale.CODUSUR) { optimizedData.rcaCodeByName.set(rca, sale.CODUSUR); optimizedData.rcaNameByCode.set(sale.CODUSUR, rca); }
                     if (supervisor && sale.CODSUPERVISOR) { optimizedData.supervisorCodeByName.set(supervisor, sale.CODSUPERVISOR); }
                     if (client && filial) { clientLastBranch.set(client, filial); }
                     if (product && pasta && !optimizedData.productPastaMap.has(product)) { optimizedData.productPastaMap.set(product, pasta); }
-                    
+
                     const date = sale.DTPED;
                     if (date) { const dayOfWeek = date.getUTCDay(); if (dayOfWeek >= 1 && dayOfWeek <= 5) workingDaysSet.add(date.toISOString().split('T')[0]); }
-                    
+
                     if (product) {
                         const targetMap = isHistory ? optimizedData.salesByProduct.history : optimizedData.salesByProduct.current;
                         if (!targetMap.has(product)) targetMap.set(product, []);
@@ -998,14 +997,14 @@
                     }
                 });
             };
-            
+
             processDatasetForIndices(allSalesData, optimizedData.indices.current, optimizedData.salesById, false);
             processDatasetForIndices(allHistoryData, optimizedData.indices.history, optimizedData.historyById, true);
-            
+
             supervisorToRcaMap.forEach((rcas, supervisor) => {
                 optimizedData.rcasBySupervisor.set(supervisor, Array.from(rcas));
             });
-            
+
             try {
                 aggregatedOrders.forEach(sale => {
                     if (sale.DTPED && typeof sale.DTPED === 'string') sale.DTPED = parseDate(sale.DTPED);
@@ -1025,11 +1024,11 @@
             } catch(e) {
                 console.error("Error during seller remapping for aggregated orders", e);
             }
-            
+
             sortedWorkingDays = Array.from(workingDaysSet).sort((a, b) => new Date(a) - new Date(b));
             maxWorkingDaysStock = workingDaysSet.size > 0 ? workingDaysSet.size : 1;
             customWorkingDaysStock = maxWorkingDaysStock;
-        
+
             setTimeout(() => {
                 const maxDaysLabel = document.getElementById('max-working-days-label');
                 if (maxDaysLabel) maxDaysLabel.textContent = `(Máx: ${maxWorkingDaysStock})`;
@@ -1254,18 +1253,18 @@
         const goalsSvContent = document.getElementById('goals-sv-content');
         const goalsGvTableBody = document.getElementById('goals-gv-table-body');
         const goalsGvTotalValueEl = document.getElementById('goals-gv-total-value');
-        
+
         const goalsGvSupervisorFilterBtn = document.getElementById('goals-gv-supervisor-filter-btn');
         const goalsGvSupervisorFilterText = document.getElementById('goals-gv-supervisor-filter-text');
         const goalsGvSupervisorFilterDropdown = document.getElementById('goals-gv-supervisor-filter-dropdown');
-        
+
         const goalsGvSellerFilterBtn = document.getElementById('goals-gv-seller-filter-btn');
         const goalsGvSellerFilterText = document.getElementById('goals-gv-seller-filter-text');
         const goalsGvSellerFilterDropdown = document.getElementById('goals-gv-seller-filter-dropdown');
-        
+
         const goalsGvCodcliFilter = document.getElementById('goals-gv-codcli-filter');
         const clearGoalsGvFiltersBtn = document.getElementById('clear-goals-gv-filters-btn');
-        
+
         const goalsSvSupervisorFilterBtn = document.getElementById('goals-sv-supervisor-filter-btn');
         const goalsSvSupervisorFilterText = document.getElementById('goals-sv-supervisor-filter-text');
         const goalsSvSupervisorFilterDropdown = document.getElementById('goals-sv-supervisor-filter-dropdown');
@@ -1288,7 +1287,7 @@
         const mainHolidayPickerBtn = document.getElementById('main-holiday-picker-btn');
         const comparisonHolidayPickerBtn = document.getElementById('comparison-holiday-picker-btn');
         const calendarContainer = document.getElementById('calendar-container');
-        
+
         const tablePaginationControls = document.getElementById('table-pagination-controls');
         const prevPageBtn = document.getElementById('prev-page-btn');
         const nextPageBtn = document.getElementById('next-page-btn');
@@ -1388,9 +1387,9 @@
 
         function calculateGoalsMetrics() {
             // Helper to init metrics structure
-            const createMetric = () => ({ 
-                fat: 0, vol: 0, prevFat: 0, prevVol: 0, 
-                prevClientsSet: new Set(), 
+            const createMetric = () => ({
+                fat: 0, vol: 0, prevFat: 0, prevVol: 0,
+                prevClientsSet: new Set(),
                 quarterlyPosClientsSet: new Set(), // New Set for Quarter Active
                 monthlyClientsSets: new Map() // Map<MonthKey, Set<CodCli>>
             });
@@ -1423,17 +1422,17 @@
             activeClients.forEach(client => {
                 const codCli = client['Código'];
                 const clientHistoryIds = optimizedData.indices.history.byClient.get(codCli);
-                
+
                 // Temp accumulation for this client to ensure Positive Balance check
                 const clientTotals = {}; // key -> { prevFat: 0, monthlyFat: Map<MonthKey, val> }
 
                 if (clientHistoryIds) {
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
-                        
+
                         let key = null;
                         const codFor = String(sale.CODFOR);
-                        
+
                         if (codFor === '707') key = '707';
                         else if (codFor === '708') key = '708';
                         else if (codFor === '752') key = '752';
@@ -1456,7 +1455,7 @@
                                 if (isPrevMonth) {
                                     globalGoalsMetrics[key].prevFat += sale.VLVENDA;
                                     globalGoalsMetrics[key].prevVol += sale.TOTPESOLIQ;
-                                    
+
                                     // Initialize Client Goal with Prev Month Value
                                     if (!globalClientGoals.has(codCli)) globalClientGoals.set(codCli, new Map());
                                     const cGoals = globalClientGoals.get(codCli);
@@ -1470,9 +1469,9 @@
                             // 2. Accumulate for Client Count Check (Balance per period)
                             if (d) {
                                 if (!clientTotals[key]) clientTotals[key] = { prevFat: 0, monthlyFat: new Map() };
-                                
+
                                 if (isPrevMonth) clientTotals[key].prevFat += sale.VLVENDA;
-                                
+
                                 const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
                                 const currentMVal = clientTotals[key].monthlyFat.get(monthKey) || 0;
                                 clientTotals[key].monthlyFat.set(monthKey, currentMVal + sale.VLVENDA);
@@ -1501,7 +1500,7 @@
             // Calculate Averages and Finalize
             // First calculate basic metrics for leaf keys
             const leafKeys = ['707', '708', '752', '1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
-            
+
             // Helper for aggregation
             const aggregateToAll = (targetKey, sourceKeys) => {
                 const target = globalGoalsMetrics[targetKey];
@@ -1511,10 +1510,10 @@
                     target.vol += source.vol;
                     target.prevFat += source.prevFat;
                     target.prevVol += source.prevVol; // Already raw, keep raw for now
-                    
+
                     source.prevClientsSet.forEach(c => target.prevClientsSet.add(c));
                     source.quarterlyPosClientsSet.forEach(c => target.quarterlyPosClientsSet.add(c));
-                    
+
                     source.monthlyClientsSets.forEach((set, monthKey) => {
                         if (!target.monthlyClientsSets.has(monthKey)) {
                             target.monthlyClientsSets.set(monthKey, new Set());
@@ -1531,13 +1530,13 @@
             // Finalize calculations for ALL keys
             for (const key in globalGoalsMetrics) {
                 const m = globalGoalsMetrics[key];
-                
+
                 m.avgFat = m.fat / QUARTERLY_DIVISOR;
                 m.avgVol = (m.vol / 1000) / QUARTERLY_DIVISOR; // Tons
                 m.prevVol = m.prevVol / 1000; // Tons
-                
+
                 m.prevClients = m.prevClientsSet.size;
-                
+
                 let sumClients = 0;
                 m.monthlyClientsSets.forEach(set => sumClients += set.size);
                 m.avgClients = sumClients / QUARTERLY_DIVISOR;
@@ -1573,14 +1572,14 @@
         const coverageTipoVendaFilterBtn = document.getElementById('coverage-tipo-venda-filter-btn');
         const coverageTipoVendaFilterText = document.getElementById('coverage-tipo-venda-filter-text');
         const coverageTipoVendaFilterDropdown = document.getElementById('coverage-tipo-venda-filter-dropdown');
-        
+
         let mainTableState = {
             currentPage: 1,
             itemsPerPage: 50,
             filteredData: [],
             totalPages: 1
         };
-        
+
         let mixTableState = {
             currentPage: 1,
             itemsPerPage: 100,
@@ -1691,7 +1690,7 @@
             });
 
             const clientCodes = new Set(clients.map(c => c['Código']));
-            
+
             const filters = {
                 supervisor: supervisorsSet,
                 seller: sellersSet,
@@ -1700,9 +1699,9 @@
                 tipoVenda: tiposVendaSet,
                 clientCodes: clientCodes
             };
-            
+
             const sales = getFilteredDataFromIndices(optimizedData.indices.current, optimizedData.salesById, filters, excludeFilter);
-            
+
             return { clients, sales };
         }
 
@@ -1713,13 +1712,13 @@
                 const { sales } = getMixFilteredData({ excludeFilter: 'supervisor' });
                 selectedMixSupervisors = updateSupervisorFilter(document.getElementById('mix-supervisor-filter-dropdown'), document.getElementById('mix-supervisor-filter-text'), selectedMixSupervisors, sales);
             }
-            
+
             const { sales: salesSeller } = getMixFilteredData({ excludeFilter: 'seller' });
             selectedMixSellers = updateSellerFilter(selectedMixSupervisors, document.getElementById('mix-vendedor-filter-dropdown'), document.getElementById('mix-vendedor-filter-text'), selectedMixSellers, salesSeller, skipFilter === 'seller');
 
             const { sales: salesTV } = getMixFilteredData({ excludeFilter: 'tipoVenda' });
             selectedMixTiposVenda = updateTipoVendaFilter(document.getElementById('mix-tipo-venda-filter-dropdown'), document.getElementById('mix-tipo-venda-filter-text'), selectedMixTiposVenda, salesTV, skipFilter === 'tipoVenda');
-            
+
             if (skipFilter !== 'rede') {
                  const { clients: clientsRede } = getMixFilteredData({ excludeFilter: 'rede' });
                  if (mixRedeGroupFilter === 'com_rede') {
@@ -1759,14 +1758,14 @@
             const activeClientCodes = new Set(clients.map(c => c['Código']));
 
             // --- LÓGICA ESTRITA DE POSITIVAÇÃO (Idêntica ao Comparativo) ---
-            
+
             // 1. Agregar Valor Líquido por Produto por Cliente
             const clientProductNetValues = new Map(); // Map<CODCLI, Map<PRODUTO, NetValue>>
             const clientProductDesc = new Map(); // Map<PRODUTO, Descricao> (Cache)
 
             sales.forEach(s => {
                 if (!s.CODCLI || !s.PRODUTO) return;
-                
+
                 if (!clientProductNetValues.has(s.CODCLI)) {
                     clientProductNetValues.set(s.CODCLI, new Map());
                 }
@@ -1785,11 +1784,11 @@
 
             clientProductNetValues.forEach((productsMap, codCli) => {
                 const positivatedCats = new Set();
-                
+
                 productsMap.forEach((netValue, prodCode) => {
                     if (netValue > 1) {
                         const desc = normalize(clientProductDesc.get(prodCode) || '');
-                        
+
                         // Checar Salty
                         MIX_SALTY_CATEGORIES.forEach(cat => {
                             if (desc.includes(cat)) positivatedCats.add(cat);
@@ -1806,18 +1805,18 @@
             let positivadosSalty = 0;
             let positivadosFoods = 0;
             let positivadosBoth = 0;
-            
+
             const tableData = [];
 
             clients.forEach(client => {
                 const codcli = client['Código'];
                 const positivatedCats = clientPositivatedCategories.get(codcli) || new Set();
-                
+
                 // Determine Status based on "Buying ALL" (Strict Positive)
                 // O cliente deve ter positivado TODAS as categorias da lista para ser considerado "Positivado no KPI"
                 const hasSalty = MIX_SALTY_CATEGORIES.every(b => positivatedCats.has(b));
                 const hasFoods = MIX_FOODS_CATEGORIES.every(b => positivatedCats.has(b));
-                
+
                 if (hasSalty) positivadosSalty++;
                 if (hasFoods) positivadosFoods++;
                 if (hasSalty && hasFoods) positivadosBoth++;
@@ -1829,7 +1828,7 @@
                 MIX_FOODS_CATEGORIES.forEach(b => { if(!positivatedCats.has(b)) missing.push(b); });
 
                 const missingText = missing.length > 0 ? missing.join(', ') : '';
-                
+
                 // Resolve Vendor Name
                 const rcaCode = client.rcas[0];
                 let vendorName = 'N/A';
@@ -1881,12 +1880,12 @@
 
             // Charts
             const distributionData = [
-                positivadosBoth, 
-                positivadosSalty - positivadosBoth, 
-                positivadosFoods - positivadosBoth, 
+                positivadosBoth,
+                positivadosSalty - positivadosBoth,
+                positivadosFoods - positivadosBoth,
                 baseClientCount - (positivadosSalty + positivadosFoods - positivadosBoth)
             ];
-            
+
             createChart('mixDistributionChart', 'doughnut', ['Mix Ideal (Ambos)', 'Só Salty', 'Só Foods', 'Nenhum'], distributionData, {
                 backgroundColor: ['#a855f7', '#14b8a6', '#f59e0b', '#475569'],
                 plugins: { legend: { position: 'right' } }
@@ -1907,12 +1906,12 @@
                 .sort(([,a], [,b]) => b.both - a.both)
                 .slice(0, 10);
 
-            createChart('mixSellerChart', 'bar', sortedSellers.map(([name]) => getFirstName(name)), 
+            createChart('mixSellerChart', 'bar', sortedSellers.map(([name]) => getFirstName(name)),
                 [
                     { label: 'Mix Ideal', data: sortedSellers.map(([,s]) => s.both), backgroundColor: '#a855f7' },
                     { label: 'Salty Total', data: sortedSellers.map(([,s]) => s.salty), backgroundColor: '#14b8a6', hidden: true },
                     { label: 'Foods Total', data: sortedSellers.map(([,s]) => s.foods), backgroundColor: '#f59e0b', hidden: true }
-                ], 
+                ],
                 { scales: { x: { stacked: false }, y: { stacked: false } } }
             );
 
@@ -1927,7 +1926,7 @@
             });
 
             mixTableDataForExport = tableData;
-            
+
             mixTableState.filteredData = tableData;
             mixTableState.totalPages = Math.ceil(tableData.length / mixTableState.itemsPerPage);
             if (mixTableState.currentPage > mixTableState.totalPages && mixTableState.totalPages > 0) {
@@ -1948,7 +1947,7 @@
             let tableHTML = pageData.map(row => {
                 let saltyCols = MIX_SALTY_CATEGORIES.map(b => `<td class="px-1 py-2 text-center border-l border-slate-500">${row.brands.has(b) ? checkIcon : xIcon}</td>`).join('');
                 let foodsCols = MIX_FOODS_CATEGORIES.map(b => `<td class="px-1 py-2 text-center border-l border-slate-500">${row.brands.has(b) ? checkIcon : xIcon}</td>`).join('');
-                
+
                 return `
                 <tr class="hover:bg-slate-700/50 border-b border-slate-500 last:border-0">
                     <td class="px-2 py-2 font-medium text-slate-300 text-xs">${row.codcli}</td>
@@ -1970,7 +1969,7 @@
             `;
 
             document.getElementById('mix-table-body').innerHTML = tableHTML;
-            
+
             const controls = document.getElementById('mix-pagination-controls');
             const infoText = document.getElementById('mix-page-info-text');
             const prevBtn = document.getElementById('mix-prev-page-btn');
@@ -1988,8 +1987,8 @@
 
         async function exportMixPDF() {
             const { jsPDF } = window.jspdf;
-            const doc = new jsPDF('landscape'); 
-            
+            const doc = new jsPDF('landscape');
+
             const supervisor = document.getElementById('mix-supervisor-filter-text').textContent;
             const vendedor = document.getElementById('mix-vendedor-filter-text').textContent;
             const city = document.getElementById('mix-city-filter').value.trim();
@@ -2005,9 +2004,9 @@
             // Determine dynamic columns
             const saltyCols = MIX_SALTY_CATEGORIES.map(c => c.substring(0, 8)); // Truncate headers
             const foodsCols = MIX_FOODS_CATEGORIES.map(c => c.substring(0, 8));
-            
+
             const head = [['Cód', 'Cliente', 'Cidade', 'Vendedor', ...saltyCols, ...foodsCols]];
-            
+
             const body = mixTableDataForExport.map(row => {
                 const saltyCells = MIX_SALTY_CATEGORIES.map(b => row.brands.has(b) ? 'OK' : 'X');
                 const foodsCells = MIX_FOODS_CATEGORIES.map(b => row.brands.has(b) ? 'OK' : 'X');
@@ -2034,7 +2033,7 @@
                 { content: String(totalSalty), colSpan: MIX_SALTY_CATEGORIES.length, styles: { halign: 'center', fontStyle: 'bold', fontSize: 12, textColor: [45, 212, 191], fillColor: [50, 50, 50] } }, // Teal-400
                 { content: String(totalFoods), colSpan: MIX_FOODS_CATEGORIES.length, styles: { halign: 'center', fontStyle: 'bold', fontSize: 12, textColor: [250, 204, 21], fillColor: [50, 50, 50] } } // Yellow-400
             ];
-            
+
             body.push(footerRow);
 
             doc.autoTable({
@@ -2044,7 +2043,7 @@
                 theme: 'grid',
                 styles: { fontSize: 6, cellPadding: 1, textColor: [0, 0, 0], halign: 'center' },
                 headStyles: { fillColor: [20, 184, 166], textColor: 255, fontStyle: 'bold', fontSize: 8 },
-                columnStyles: { 
+                columnStyles: {
                     0: { halign: 'left', cellWidth: 15 },
                     1: { halign: 'left', cellWidth: 40 },
                     2: { halign: 'left', cellWidth: 25 },
@@ -2109,7 +2108,7 @@
             const readOnlyStyle = { fill: { fgColor: { rgb: "F1F5F9" } } }; // Light Slate
             const totalRowStyle = { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "334155" } }, border: { top: { style: "thick" } } };
             const grandTotalStyle = { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "0F172A" } }, border: { top: { style: "thick" } } };
-            
+
             // Format Strings
             const fmtMoney = "\"R$ \"#,##0.00";
             const fmtVol = "0.000";
@@ -2146,7 +2145,7 @@
             let colIdx = 2;
 
             const svColumns = [
-                { id: 'total_elma', label: 'TOTAL ELMA', type: 'standard', isAgg: true }, 
+                { id: 'total_elma', label: 'TOTAL ELMA', type: 'standard', isAgg: true },
                 { id: '707', label: 'EXTRUSADOS', type: 'standard' },
                 { id: '708', label: 'NÃO EXTRUSADOS', type: 'standard' },
                 { id: '752', label: 'TORCIDA', type: 'standard' },
@@ -2168,7 +2167,7 @@
                 colMap[col.id] = colIdx;
                 const style = { ...headerStyle };
                 if (colorMap[col.id]) style.fill = colorMap[col.id]; // Apply Group Color
-                
+
                 row1.push(createCell(col.label, style));
                 let span = 0;
                 if (col.type === 'standard') span = 4;
@@ -2185,7 +2184,7 @@
             // Row 2: Metric Names
             const row2 = [createCell("", headerStyle), createCell("", headerStyle)];
             svColumns.forEach(col => {
-                const style = { ...subHeaderStyle, font: { bold: true, color: { rgb: "FFFFFF" } } }; 
+                const style = { ...subHeaderStyle, font: { bold: true, color: { rgb: "FFFFFF" } } };
                 if (col.type === 'standard') {
                     row2.push(createCell("FATURAMENTO", style), createCell("", style), createCell("POSITIVAÇÃO", style), createCell("", style));
                     merges.push({ s: { r: 1, c: colMap[col.id] }, e: { r: 1, c: colMap[col.id] + 1 } });
@@ -2223,22 +2222,22 @@
             ws_data.push(row3);
 
             // --- 2. Data Rows ---
-            let currentRow = 3; 
-            const colCellsForGrandTotal = {}; 
+            let currentRow = 3;
+            const colCellsForGrandTotal = {};
             svColumns.forEach(c => colCellsForGrandTotal[c.id] = { fat: [], pos: [], vol: [], mix: [], avg: [] });
 
             currentGoalsSvData.forEach(sup => {
-                const sellers = sup.sellers; 
-                const colCellsForSupTotal = {}; 
+                const sellers = sup.sellers;
+                const colCellsForSupTotal = {};
                 svColumns.forEach(c => colCellsForSupTotal[c.id] = { fat: [], pos: [], vol: [], mix: [], avg: [] });
 
                 sellers.forEach(seller => {
                     const rowData = [createCell(seller.code), createCell(seller.name)];
-                    
+
                     svColumns.forEach(col => {
                         const d = seller.data[col.id] || { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0, avgFat: 0 };
                         const cIdx = colMap[col.id];
-                        const excelRow = currentRow + 1; 
+                        const excelRow = currentRow + 1;
                         const getColLet = (idx) => XLSX.utils.encode_col(idx);
 
                         // Highlight Logic
@@ -2248,21 +2247,21 @@
 
                         if (col.type === 'standard') {
                             rowData.push(createCell(d.metaFat, readOnlyStyle, fmtMoney));
-                            
+
                             // Formula for Aggregate Logic
                             if (col.id === 'total_elma' || col.id === 'total_foods') {
                                 const ids = col.id === 'total_elma' ? ['707', '708', '752'] : ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
-                                const compCols = ids.map(id => colMap[id] + 1); 
+                                const compCols = ids.map(id => colMap[id] + 1);
                                 const compColsPos = ids.map(id => colMap[id] + 3);
                                 const formulaFat = compCols.map(c => `${getColLet(c)}${excelRow}`).join("+");
                                 const formulaPos = compColsPos.map(c => `${getColLet(c)}${excelRow}`).join("+");
-                                
-                                rowData.push({ t: 'n', v: d.metaFat, f: formulaFat, s: { ...aggCellStyle, numFmt: fmtMoney }, z: fmtMoney }); 
+
+                                rowData.push({ t: 'n', v: d.metaFat, f: formulaFat, s: { ...aggCellStyle, numFmt: fmtMoney }, z: fmtMoney });
                                 rowData.push(createCell(d.metaPos, readOnlyStyle, fmtInt));
                                 rowData.push({ t: 'n', v: d.metaPos, f: formulaPos, s: { ...aggCellStyle, numFmt: fmtInt }, z: fmtInt });
                             } else {
                                 // Editable Cells
-                                rowData.push(createCell(d.metaFat, cellStyle, fmtMoney)); 
+                                rowData.push(createCell(d.metaFat, cellStyle, fmtMoney));
                                 rowData.push(createCell(d.metaPos, readOnlyStyle, fmtInt));
                                 rowData.push(createCell(d.metaPos, cellStyle, fmtInt));
                             }
@@ -2289,7 +2288,7 @@
                             const foodsIdx = colMap['total_foods'];
                             const elmaTonIdx = colMap['tonelada_elma'];
                             const foodsTonIdx = colMap['tonelada_foods'];
-                            
+
                             const fFat = `${getColLet(elmaIdx + 1)}${excelRow}+${getColLet(foodsIdx + 1)}${excelRow}`;
                             const fTon = `${getColLet(elmaTonIdx + 2)}${excelRow}+${getColLet(foodsTonIdx + 2)}${excelRow}`;
                             const fPos = `${getColLet(elmaIdx + 3)}${excelRow}+${getColLet(foodsIdx + 3)}${excelRow}`;
@@ -2322,7 +2321,7 @@
                 svColumns.forEach(col => {
                     const cIdx = colMap[col.id];
                     const getColLet = (idx) => XLSX.utils.encode_col(idx);
-                    
+
                     if (col.type === 'standard') {
                         const rangeFat = colCellsForSupTotal[col.id].fat;
                         const fFatRange = rangeFat.length > 0 ? `SUM(${rangeFat[0]}:${rangeFat[rangeFat.length-1]})` : "0";
@@ -2346,7 +2345,7 @@
                         const fVolRange = rangeVol.length > 0 ? `SUM(${rangeVol[0]}:${rangeVol[rangeVol.length-1]})` : "0";
                         supRowData.push({ t: 'n', v: 0, f: fVolRange, s: { ...totalRowStyle, numFmt: fmtVol }, z: fmtVol });
                         supRowData.push({ t: 'n', v: 0, f: fVolRange, s: { ...totalRowStyle, numFmt: fmtVol }, z: fmtVol });
-                        
+
                         colCellsForGrandTotal[col.id].vol.push(`${getColLet(cIdx+2)}${excelSupRow}`);
                         colCellsForGrandTotal[col.id].avg.push(`${getColLet(cIdx)}${excelSupRow}`);
 
@@ -2359,7 +2358,7 @@
                         const fMixRange = rangeMix.length > 0 ? `SUM(${rangeMix[0]}:${rangeMix[rangeMix.length-1]})` : "0";
                         supRowData.push({ t: 'n', v: 0, f: fMixRange, s: { ...totalRowStyle, numFmt: fmtInt }, z: fmtInt });
                         supRowData.push({ t: 'n', v: 0, f: fMixRange, s: { ...totalRowStyle, numFmt: fmtInt }, z: fmtInt });
-                        
+
                         colCellsForGrandTotal[col.id].mix.push(`${getColLet(cIdx+2)}${excelSupRow}`);
                         colCellsForGrandTotal[col.id].avg.push(`${getColLet(cIdx)}${excelSupRow}`);
 
@@ -2371,7 +2370,7 @@
                         const rangeFat = colCellsForSupTotal[col.id].fat;
                         const fFatRange = rangeFat.length > 0 ? `SUM(${rangeFat[0]}:${rangeFat[rangeFat.length-1]})` : "0";
                         supRowData.push({ t: 'n', v: 0, f: fFatRange, s: { ...totalRowStyle, numFmt: fmtMoney }, z: fmtMoney });
-                        
+
                         const rangeVol = colCellsForSupTotal[col.id].vol;
                         const fVolRange = rangeVol.length > 0 ? `SUM(${rangeVol[0]}:${rangeVol[rangeVol.length-1]})` : "0";
                         supRowData.push({ t: 'n', v: 0, f: fVolRange, s: { ...totalRowStyle, numFmt: fmtVol }, z: fmtVol });
@@ -2392,7 +2391,7 @@
                         colCellsForGrandTotal[col.id].pos.push(`${getColLet(cIdx)}${excelSupRow}`);
                     }
                 });
-                
+
                 ws_data.push(supRowData);
                 currentRow++;
             });
@@ -2459,7 +2458,7 @@
             // Create Sheet
             const ws = XLSX.utils.aoa_to_sheet(ws_data);
             ws['!merges'] = merges;
-            
+
             // Auto-width
             const wscols = [{ wch: 10 }, { wch: 20 }];
             for(let i = 2; i < 50; i++) wscols.push({ wch: 12 });
@@ -2522,9 +2521,9 @@
 
         function getMetricsForSupervisors(supervisorsList) {
             // Helper to init metrics structure
-            const createMetric = () => ({ 
-                fat: 0, vol: 0, prevFat: 0, prevVol: 0, 
-                prevClientsSet: new Set(), 
+            const createMetric = () => ({
+                fat: 0, vol: 0, prevFat: 0, prevVol: 0,
+                prevClientsSet: new Set(),
                 quarterlyPosClientsSet: new Set(), // New Set for Quarter Active
                 monthlyClientsSets: new Map() // Map<MonthKey, Set<CodCli>>
             });
@@ -2565,17 +2564,17 @@
             activeClients.forEach(client => {
                 const codCli = client['Código'];
                 const clientHistoryIds = optimizedData.indices.history.byClient.get(codCli);
-                
+
                 // Temp accumulation for this client to ensure Positive Balance check
                 const clientTotals = {}; // key -> { prevFat: 0, monthlyFat: Map<MonthKey, val> }
 
                 if (clientHistoryIds) {
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
-                        
+
                         let key = null;
                         const codFor = String(sale.CODFOR);
-                        
+
                         if (codFor === '707') key = '707';
                         else if (codFor === '708') key = '708';
                         else if (codFor === '752') key = '752';
@@ -2604,9 +2603,9 @@
                             // 2. Accumulate for Client Count Check (Balance per period)
                             if (d) {
                                 if (!clientTotals[key]) clientTotals[key] = { prevFat: 0, monthlyFat: new Map() };
-                                
+
                                 if (isPrevMonth) clientTotals[key].prevFat += sale.VLVENDA;
-                                
+
                                 const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
                                 const currentMVal = clientTotals[key].monthlyFat.get(monthKey) || 0;
                                 clientTotals[key].monthlyFat.set(monthKey, currentMVal + sale.VLVENDA);
@@ -2644,14 +2643,14 @@
             // Calculate Averages and Finalize
             for (const key in metricsMap) {
                 const m = metricsMap[key];
-                
+
                 m.avgFat = m.fat / QUARTERLY_DIVISOR;
                 m.avgVol = (m.vol / 1000) / QUARTERLY_DIVISOR; // Tons
                 m.prevVol = m.prevVol / 1000; // Tons
-                
+
                 m.prevClients = m.prevClientsSet.size;
                 m.quarterlyPos = m.quarterlyPosClientsSet.size; // New Metric
-                
+
                 let sumClients = 0;
                 m.monthlyClientsSets.forEach(set => sumClients += set.size);
                 m.avgClients = sumClients / QUARTERLY_DIVISOR;
@@ -2669,7 +2668,7 @@
             // Calculate Target Sums for Filtered Subset
             // 1. Identify clients matching the summary filter
             let filteredSummaryClients = allClientsData;
-            
+
             // Apply "Active" Filter logic (Consistent with other Goal Views)
             filteredSummaryClients = filteredSummaryClients.filter(c => {
                 const rca1 = String(c.rca1 || '').trim();
@@ -2726,21 +2725,21 @@
 
             const cardsHTML = summaryItems.map(item => {
                 const key = item.supplier + (item.brand ? `_${item.brand}` : '');
-                
-                // Use calculated sums if filter is active, otherwise global targets? 
+
+                // Use calculated sums if filter is active, otherwise global targets?
                 // Actually, if no filter is active, filteredSummaryClients = All Active, so the sum matches the global target.
                 // So we can always use summaryGoalsSums.
-                
+
                 const target = summaryGoalsSums[key] || { fat: 0, vol: 0 };
                 const metrics = displayMetrics[key] || { avgFat: 0, prevFat: 0 };
 
                 totalFat += target.fat;
                 totalVol += target.vol;
-                
+
                 if (metrics.quarterlyPosClientsSet) {
                     metrics.quarterlyPosClientsSet.forEach(clientCode => uniquePosClientsSet.add(clientCode));
                 }
-                
+
                 // Color mapping for classes
                 const colorMap = {
                     teal: 'border-teal-500 text-teal-400 bg-teal-900/10',
@@ -2750,7 +2749,7 @@
                     amber: 'border-amber-500 text-amber-400 bg-amber-900/10',
                     cyan: 'border-cyan-500 text-cyan-400 bg-cyan-900/10'
                 };
-                
+
                 const styleClass = colorMap[item.color] || colorMap.teal;
                 const textColor = styleClass.split(' ')[1];
 
@@ -2770,7 +2769,7 @@
                                     <span>Ant: <span class="text-slate-300">${metrics.prevFat.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></span>
                                 </div>
                             </div>
-                            
+
                             <div>
                                 <div class="flex justify-between items-baseline mb-1">
                                     <p class="text-xs text-slate-400 uppercase font-semibold">Meta Volume (Ton)</p>
@@ -2808,20 +2807,20 @@
             const totalPosEl = document.getElementById('summary-total-pos');
             const mixSaltyEl = document.getElementById('summary-mix-salty');
             const mixFoodsEl = document.getElementById('summary-mix-foods');
-            
+
             if(totalFatEl) totalFatEl.textContent = totalFat.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
             if(totalVolEl) totalVolEl.textContent = totalVol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-            
+
             const totalPosCount = uniquePosClientsSet.size;
             if(totalPosEl) totalPosEl.textContent = totalPosCount.toLocaleString('pt-BR');
-            
+
             if(mixSaltyEl) mixSaltyEl.textContent = Math.round(totalPosCount * 0.60).toLocaleString('pt-BR');
             if(mixFoodsEl) mixFoodsEl.textContent = Math.round(totalPosCount * 0.30).toLocaleString('pt-BR');
         }
 
         function calculateDistributedGoals(filteredClients, currentGoalsSupplier, currentGoalsBrand, goalFat, goalVol) {
             const cacheKey = currentGoalsSupplier + (currentGoalsBrand ? `_${currentGoalsBrand}` : '');
-            
+
             // Determine dates for Previous Month calc
             const currentDate = lastSaleDate;
             const prevMonthDate = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth() - 1, 1));
@@ -2887,22 +2886,22 @@
                         globalTotalAvgVol += ((sumVol / 1000) / QUARTERLY_DIVISOR);
                     }
                 });
-                
+
                 globalGoalsTotalsCache[cacheKey] = { fat: globalTotalAvgFat, vol: globalTotalAvgVol };
             }
-            
+
             const clientMetrics = [];
 
             filteredClients.forEach(client => {
                 const codCli = client['Código'];
                 const clientHistoryIds = optimizedData.indices.history.byClient.get(codCli);
-                
+
                 let sumFat = 0;
-                let sumVol = 0; 
+                let sumVol = 0;
                 let prevFat = 0;
                 let prevVol = 0;
                 const monthlyActivity = new Map(); // MonthKey -> Fat
-                
+
                 if (clientHistoryIds) {
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
@@ -2929,8 +2928,8 @@
                 }
 
                 const avgFat = sumFat / QUARTERLY_DIVISOR;
-                const avgVol = (sumVol / 1000) / QUARTERLY_DIVISOR; 
-                
+                const avgVol = (sumVol / 1000) / QUARTERLY_DIVISOR;
+
                 let activeMonthsCount = 0;
                 monthlyActivity.forEach(val => { if(val > 1) activeMonthsCount++; });
 
@@ -2943,14 +2942,14 @@
                 // Retrieve Stored Goal
                 let metaFat = 0;
                 let metaVol = 0;
-                
+
                 if (currentGoalsSupplier === 'ELMA_ALL' || currentGoalsSupplier === 'FOODS_ALL') {
                     if (globalClientGoals.has(codCli)) {
                         const cGoals = globalClientGoals.get(codCli);
-                        const keysToSum = currentGoalsSupplier === 'ELMA_ALL' 
-                            ? ['707', '708', '752'] 
+                        const keysToSum = currentGoalsSupplier === 'ELMA_ALL'
+                            ? ['707', '708', '752']
                             : ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
-                        
+
                         keysToSum.forEach(k => {
                             if (cGoals.has(k)) {
                                 const g = cGoals.get(k);
@@ -2989,7 +2988,7 @@
                     metaPos
                 });
             });
-            
+
             return clientMetrics;
         }
 
@@ -3012,7 +3011,7 @@
         function distributeGoals(type) {
             const inputId = type === 'fat' ? 'goal-global-fat' : 'goal-global-vol';
             const inputValue = parseInputMoney(inputId);
-            
+
             const filteredClients = getGoalsFilteredData();
             if (filteredClients.length === 0) return;
 
@@ -3033,7 +3032,7 @@
             filteredClients.forEach(client => {
                 const codCli = client['Código'];
                 const clientHistoryIds = optimizedData.indices.history.byClient.get(codCli);
-                
+
                 if (!distributionMap.has(codCli)) distributionMap.set(codCli, new Map());
                 const clientMap = distributionMap.get(codCli);
 
@@ -3078,7 +3077,7 @@
             filteredClients.forEach(client => {
                 const codCli = client['Código'];
                 const clientMap = distributionMap.get(codCli);
-                
+
                 if (!globalClientGoals.has(codCli)) globalClientGoals.set(codCli, new Map());
                 const cGoals = globalClientGoals.get(codCli);
 
@@ -3100,7 +3099,7 @@
                     else g.vol = newGoal;
                 });
             });
-            
+
             recalculateTotalGoals();
             updateGoalsView();
         }
@@ -3110,21 +3109,21 @@
             const msgEl = document.getElementById('confirmation-message');
             const confirmBtn = document.getElementById('confirmation-confirm-btn');
             const cancelBtn = document.getElementById('confirmation-cancel-btn');
-            
+
             msgEl.textContent = message;
             modal.classList.remove('hidden');
-            
+
             // Clean up old listeners to avoid duplicates
             const newConfirmBtn = confirmBtn.cloneNode(true);
             const newCancelBtn = cancelBtn.cloneNode(true);
             confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
             cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
-            
+
             newConfirmBtn.addEventListener('click', () => {
                 modal.classList.add('hidden');
                 onConfirm();
             });
-            
+
             newCancelBtn.addEventListener('click', () => {
                 modal.classList.add('hidden');
             });
@@ -3140,13 +3139,13 @@
             if (goalsGvCodcliFilter.value) {
                 return `Cliente "${goalsGvCodcliFilter.value}"`;
             }
-            
+
             // Default to Tab Name
             if (currentGoalsSupplier === '707') return 'EXTRUSADOS';
             if (currentGoalsSupplier === '708') return 'NÃO EXTRUSADOS';
             if (currentGoalsSupplier === '752') return 'TORCIDA';
             if (currentGoalsBrand) return currentGoalsBrand;
-            
+
             return 'filtro atual';
         }
 
@@ -3158,10 +3157,10 @@
             }
 
             const filteredClients = getGoalsFilteredData();
-            
+
             // Determine Current Key
             const cacheKey = currentGoalsSupplier + (currentGoalsBrand ? `_${currentGoalsBrand}` : '');
-            
+
             // Calculate projections
             // Pass 0 as goals since we are not calculating live from input here, but retrieving stored
             const clientMetrics = calculateDistributedGoals(filteredClients, currentGoalsSupplier, currentGoalsBrand, 0, 0);
@@ -3196,7 +3195,7 @@
             const volInput = document.getElementById('goal-global-vol');
             const btnDistributeFat = document.getElementById('btn-distribute-fat');
             const btnDistributeVol = document.getElementById('btn-distribute-vol');
-            
+
             const isAggregatedTab = currentGoalsSupplier === 'ELMA_ALL' || currentGoalsSupplier === 'FOODS_ALL';
 
             if (fatInput) {
@@ -3213,7 +3212,7 @@
                 volInput.readOnly = false;
                 volInput.classList.remove('opacity-50', 'cursor-not-allowed');
             }
-            
+
             if (btnDistributeFat) {
                 btnDistributeFat.style.display = '';
             }
@@ -3299,7 +3298,7 @@
 
         function getGoalsSvFilteredData() {
             const supervisorsSet = new Set(selectedGoalsSvSupervisors);
-            
+
             let clients = allClientsData;
 
             clients = clients.filter(c => {
@@ -3317,13 +3316,13 @@
                 });
                 clients = clients.filter(c => c.rcas.some(r => rcasSet.has(r)));
             }
-            
+
             return clients;
         }
 
         function recalculateGoalsSvTotals(input) {
             const { supId, colId, field, sellerId } = input.dataset;
-            
+
             // Helper to parse input value
             const parseVal = (str) => {
                 let val = parseFloat(str.replace(/\./g, '').replace(',', '.'));
@@ -3342,7 +3341,7 @@
                     const supInputs = document.querySelectorAll(`.goals-sv-input[data-sup-id="${supId}"][data-col-id="${cId}"][data-field="${fld}"]`);
                     supInputs.forEach(inp => supSum += parseVal(inp.value));
                 }
-                
+
                 const supTotalEl = document.getElementById(`total-sup-${supId}-${cId}-${fld}`);
                 if (supTotalEl) {
                     if (fld === 'fat') supTotalEl.textContent = supSum.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
@@ -3359,7 +3358,7 @@
                     const allInputs = document.querySelectorAll(`.goals-sv-input[data-col-id="${cId}"][data-field="${fld}"]`);
                     allInputs.forEach(inp => grandSum += parseVal(inp.value));
                 }
-                
+
                 const grandTotalEl = document.getElementById(`total-grand-${cId}-${fld}`);
                 if (grandTotalEl) {
                     if (fld === 'fat') grandTotalEl.textContent = grandSum.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
@@ -3374,10 +3373,10 @@
             // B. Row Aggregation Logic (Update Total Elma/Foods and Geral)
             const elmaIds = ['707', '708', '752'];
             const foodsIds = ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
-            
+
             let groupTotalId = null;
             let components = [];
-            
+
             if (elmaIds.includes(colId)) {
                 groupTotalId = 'total_elma';
                 components = elmaIds;
@@ -3385,7 +3384,7 @@
                 groupTotalId = 'total_foods';
                 components = foodsIds;
             }
-            
+
             // Only aggregate if we are editing a base column (not changing mix or tonnage directly if those were editable)
             if (groupTotalId) {
                 // 1. Recalculate Group Total (Row)
@@ -3394,14 +3393,14 @@
                     const el = document.querySelector(`.goals-sv-input[data-seller-id="${sellerId}"][data-col-id="${cId}"][data-field="${field}"]`);
                     if (el) groupSum += parseVal(el.value);
                 });
-                
+
                 // Update Group Total Input (Read-only)
                 const groupInput = document.querySelector(`.goals-sv-input[data-seller-id="${sellerId}"][data-col-id="${groupTotalId}"][data-field="${field}"]`);
                 if (groupInput) {
                     if (field === 'fat') groupInput.value = groupSum.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
                     else if (field === 'vol') groupInput.value = groupSum.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3});
                     else groupInput.value = groupSum; // Pos
-                    
+
                     // Update Column Totals for the Group Column
                     updateColumnTotals(groupTotalId, field);
 
@@ -3422,11 +3421,11 @@
             if (field === 'fat' || field === 'vol') {
                 const elmaInput = document.querySelector(`.goals-sv-input[data-seller-id="${sellerId}"][data-col-id="total_elma"][data-field="${field}"]`);
                 const foodsInput = document.querySelector(`.goals-sv-input[data-seller-id="${sellerId}"][data-col-id="total_foods"][data-field="${field}"]`);
-                
+
                 let elmaVal = elmaInput ? parseVal(elmaInput.value) : 0;
                 let foodsVal = foodsInput ? parseVal(foodsInput.value) : 0;
                 let geralSum = elmaVal + foodsVal;
-                
+
                 // Map field 'vol' to 'ton' for Geral if needed, or keep consistent
                 // In column definitions: 'tonelada_elma' is type 'tonnage' (field 'vol'). 'geral' is type 'geral'.
                 // Geral uses field 'fat' and 'ton'.
@@ -3436,7 +3435,7 @@
                 if (geralCell) {
                     if (geralField === 'fat') geralCell.textContent = geralSum.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
                     else geralCell.textContent = geralSum.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3});
-                    
+
                     // Update Column Totals for Geral
                     updateColumnTotals('geral', geralField);
                 }
@@ -3445,10 +3444,10 @@
 
         function updateGoalsSvView() {
             const filteredClients = getGoalsSvFilteredData();
-            
+
             // Define Column Blocks (Metrics Config)
             const svColumns = [
-                { id: 'total_elma', label: 'TOTAL ELMA', type: 'standard', isAgg: true, colorClass: 'text-teal-400', components: ['707', '708', '752'] }, 
+                { id: 'total_elma', label: 'TOTAL ELMA', type: 'standard', isAgg: true, colorClass: 'text-teal-400', components: ['707', '708', '752'] },
                 { id: '707', label: 'EXTRUSADOS', type: 'standard', supplier: '707', brand: null, colorClass: 'text-slate-300' },
                 { id: '708', label: 'NÃO EXTRUSADOS', type: 'standard', supplier: '708', brand: null, colorClass: 'text-slate-300' },
                 { id: '752', label: 'TORCIDA', type: 'standard', supplier: '752', brand: null, colorClass: 'text-slate-300' },
@@ -3467,7 +3466,7 @@
             // 1. Fetch Metrics for each Base Category
             const metricsByCat = {};
             const baseCategories = svColumns.filter(c => c.type === 'standard' && !c.isAgg);
-            
+
             baseCategories.forEach(cat => {
                 const target = goalsTargets[cat.id] || { fat: 0, vol: 0 };
                 // Using 0 as goal to retrieve stored metas inside the function
@@ -3507,11 +3506,11 @@
                 metricsByCat[catId].forEach(client => {
                     const sellerObj = initSeller(client);
                     if (!sellerObj.data[catId]) sellerObj.data[catId] = { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgFat: 0 };
-                    
+
                     sellerObj.data[catId].metaFat += client.metaFat;
                     sellerObj.data[catId].metaVol += client.metaVol;
                     sellerObj.data[catId].metaPos += client.metaPos;
-                    sellerObj.data[catId].avgVol += client.avgVol; 
+                    sellerObj.data[catId].avgVol += client.avgVol;
                     sellerObj.data[catId].avgFat += client.avgFat; // Added avgFat for Geral calculation
                 });
             });
@@ -3522,23 +3521,23 @@
                 if (!rcaCode) return { avgSalty: 0, avgFoods: 0 };
 
                 const historyIds = optimizedData.indices.history.byRca.get(sellerName) || [];
-                const monthlyData = new Map(); 
+                const monthlyData = new Map();
 
                 historyIds.forEach(id => {
                     const sale = optimizedData.historyById.get(id);
                     const d = parseDate(sale.DTPED);
                     if (!d) return;
-                    
+
                     const mKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
                     if (!monthlyData.has(mKey)) monthlyData.set(mKey, new Map());
-                    
+
                     const cMap = monthlyData.get(mKey);
                     if (!cMap.has(sale.CODCLI)) cMap.set(sale.CODCLI, { salty: new Set(), foods: new Set(), val: 0 });
-                    
+
                     const cData = cMap.get(sale.CODCLI);
                     cData.val += sale.VLVENDA;
-                    
-                    if (sale.VLVENDA > 0) { 
+
+                    if (sale.VLVENDA > 0) {
                          const desc = normalize(sale.DESCRICAO);
                          MIX_SALTY_CATEGORIES.forEach(cat => { if (desc.includes(cat)) cData.salty.add(cat); });
                          MIX_FOODS_CATEGORIES.forEach(cat => { if (desc.includes(cat)) cData.foods.add(cat); });
@@ -3547,8 +3546,8 @@
 
                 let sumSalty = 0;
                 let sumFoods = 0;
-                
-                const months = Array.from(monthlyData.keys()).sort().slice(-3); 
+
+                const months = Array.from(monthlyData.keys()).sort().slice(-3);
                 const divisor = months.length > 0 ? months.length : 1;
 
                 months.forEach(m => {
@@ -3562,7 +3561,7 @@
                     sumSalty += mSalty;
                     sumFoods += mFoods;
                 });
-                
+
                 return {
                     avgSalty: sumSalty / divisor,
                     avgFoods: sumFoods / divisor
@@ -3588,11 +3587,11 @@
 
                 // 2. Mix Metrics
                 const sellerClients = filteredClients.filter(c => {
-                    const code = c.rcas[0]; 
+                    const code = c.rcas[0];
                     const name = optimizedData.rcaNameByCode.get(code) || code;
                     return name === sellerObj.name;
                 });
-                
+
                 let activeClientsCount = 0;
                 sellerClients.forEach(c => {
                     const hIds = optimizedData.indices.history.byClient.get(c['Código']);
@@ -3606,16 +3605,16 @@
                         activeClientsCount++;
                     }
                 });
-                
+
                 sellerObj.metaPosTotal = activeClientsCount;
 
                 const mixStats = calculateMixMetrics(sellerObj);
-                
+
                 sellerObj.data['mix_salty'] = {
                     avgMix: mixStats.avgSalty,
                     metaMix: Math.round(activeClientsCount * 0.60)
                 };
-                
+
                 let mixFoodsMeta = Math.round(activeClientsCount * 0.30);
                 if (sellerObj.code === '1001') {
                     mixFoodsMeta = 0;
@@ -3630,7 +3629,7 @@
                 // Sum of Total Elma + Total Foods
                 const totalElma = sellerObj.data['total_elma'] || { metaFat: 0, metaVol: 0, avgFat: 0 };
                 const totalFoods = sellerObj.data['total_foods'] || { metaFat: 0, metaVol: 0, avgFat: 0 };
-                
+
                 sellerObj.data['geral'] = {
                     avgFat: (totalElma.avgFat || 0) + (totalFoods.avgFat || 0),
                     metaFat: totalElma.metaFat + totalFoods.metaFat,
@@ -3659,7 +3658,7 @@
                 }
                 const group = supervisorGroups.get(supName);
                 group.sellers.push(seller);
-                
+
                 // Aggregate Supervisor Totals
                 svColumns.forEach(col => {
                     if (!group.totals[col.id]) group.totals[col.id] = { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0, avgFat: 0 };
@@ -3712,7 +3711,7 @@
                         <th rowspan="3" class="px-2 py-2 text-center w-16 border-r border-b border-slate-700">CÓD</th>
                         <th rowspan="3" class="px-3 py-2 text-left w-48 border-r border-b border-slate-700">VENDEDOR</th>
             `;
-            
+
             // Row 1: Groups
             svColumns.forEach(col => {
                 let colspan = 2;
@@ -3720,11 +3719,11 @@
                 if (col.type === 'tonnage') colspan = 3; // Avg, Meta, Adj
                 if (col.type === 'mix') colspan = 3; // Avg, Meta, Adj
                 if (col.type === 'geral') colspan = 4; // AvgFat, MetaFat, MetaTon, MetaPos
-                
+
                 headerHTML += `<th colspan="${colspan}" class="px-2 py-2 text-center font-bold border-r border-b border-slate-700 ${col.colorClass}">${col.label}</th>`;
             });
             headerHTML += `</tr><tr>`;
-            
+
             // Row 2: Metric Names
             svColumns.forEach(col => {
                 if (col.type === 'standard') {
@@ -3812,10 +3811,10 @@
                         bodyHTML += `<tr class="hover:bg-slate-800 border-b border-slate-800">`;
                         bodyHTML += `<td class="px-2 py-1 text-center text-slate-400 font-mono">${seller.code}</td>`;
                         bodyHTML += `<td class="px-2 py-1 text-left text-white font-medium truncate max-w-[200px]" title="${seller.name}">${getFirstName(seller.name)}</td>`;
-                        
+
                         svColumns.forEach(col => {
                             const d = seller.data[col.id] || { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0, avgFat: 0 };
-                            
+
                             if (col.type === 'standard') {
                                 // Read-only logic for Aggregates (Total Elma / Total Foods)
                                 const isReadOnly = col.isAgg;
@@ -3862,11 +3861,11 @@
                     bodyHTML += `<tr class="bg-slate-800 font-bold border-b border-slate-600">`;
                     bodyHTML += `<td class="px-2 py-2 text-center text-slate-400 font-mono">${sup.code}</td>`;
                     bodyHTML += `<td class="px-2 py-2 text-left text-white uppercase tracking-wider">${sup.name}</td>`;
-                    
+
                     svColumns.forEach(col => {
                         const d = sup.totals[col.id];
                         const color = col.id.includes('total') || col.type === 'tonnage' || col.type === 'mix' ? 'text-white' : 'text-slate-300';
-                        
+
                         if (col.type === 'standard') {
                             bodyHTML += `
                                 <td class="px-1 py-1 text-right ${color} border-r border-slate-700">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
@@ -3897,12 +3896,12 @@
                             // Pre-calculate Total PEDEV for Supervisor (90% of Supervisor Total Elma Pos)
                             const totalElmaPos = sup.totals['total_elma'] ? sup.totals['total_elma'].metaPos : 0;
                             const pedevPos = Math.round(totalElmaPos * 0.9);
-                            
+
                             // Update the totals object so Grand Total accumulation works correctly later?
                             // No, Grand Total accumulation happened BEFORE this loop.
                             // We need to update Grand Total separately or let it be sum of sellers (which is close enough).
                             // But for Supervisor row display, we want the exact calculation.
-                            
+
                             bodyHTML += `
                                 <td class="px-1 py-1 text-center text-pink-400 border-r border-slate-700" id="total-sup-${sup.id}-pedev-pos">${pedevPos}</td>
                             `;
@@ -3913,9 +3912,8 @@
 
                 // Grand Total Row (Geral PRIME)
                 bodyHTML += `<tr class="bg-[#0f172a] font-bold text-white border-t-2 border-slate-500 sticky bottom-0 z-20">`;
-                bodyHTML += `<td class="px-2 py-3 text-center uppercase tracking-wider">GV</td>`;
-                bodyHTML += `<td class="px-2 py-3 text-left uppercase tracking-wider">Geral PRIME</td>`;
-                
+                bodyHTML += `<td colspan="2" class="px-4 py-3 text-right uppercase tracking-wider">Geral PRIME</td>`;
+
                 svColumns.forEach(col => {
                     const d = grandTotals[col.id];
                     if (col.type === 'standard') {
@@ -3950,7 +3948,7 @@
                         `;
                     }
                 });
-                
+
                 // Correction for Grand Total PEDEV (Calculation based on Grand Total Elma)
                 // This is a post-render fix script effectively, but better done inline if possible.
                 // We just rendered the row using `grandTotals['pedev']`.
@@ -3960,7 +3958,7 @@
                 // Or better, update `grandTotals` object before the loop if I could access the code block before.
                 // Since I am only replacing this block, I will inject a script update or just leave it as sum of sellers.
                 // Sum of Sellers is generally acceptable for Grand Totals.
-                
+
                 bodyHTML += `</tr>`;
             }
 
@@ -3969,7 +3967,7 @@
         }
 
         function handleGoalsFilterChange() {
-            // Update Dropdown Lists based on available data? 
+            // Update Dropdown Lists based on available data?
             // Standard pattern: Update filter lists based on selection of others?
             // For now, simpler: Just update the view.
             if (window.goalsUpdateTimeout) clearTimeout(window.goalsUpdateTimeout);
@@ -3980,7 +3978,7 @@
                 // But we can stick to standard updateSellerFilter using 'allSalesData' or 'allClientsData'?
                 // updateSellerFilter uses a sales/data array.
                 // Let's use allSalesData for consistency with other views to populate seller lists.
-                
+
                 updateGoalsView();
             }, 50);
         }
@@ -3989,15 +3987,15 @@
             selectedGoalsGvSupervisors = [];
             selectedGoalsGvSellers = [];
             goalsGvCodcliFilter.value = '';
-            
+
             selectedGoalsGvSupervisors = updateSupervisorFilter(goalsGvSupervisorFilterDropdown, goalsGvSupervisorFilterText, selectedGoalsGvSupervisors, allSalesData);
             selectedGoalsGvSellers = updateSellerFilter(selectedGoalsGvSupervisors, goalsGvSellerFilterDropdown, goalsGvSellerFilterText, selectedGoalsGvSellers, allSalesData);
-            
+
             updateGoalsView();
         }
 
         // <!-- INÍCIO DO CÓDIGO RESTAURADO -->
-        
+
         function getCoverageFilteredData(options = {}) {
             const { excludeFilter = null } = options;
             const isExcluded = (f) => excludeFilter === f || (Array.isArray(excludeFilter) && excludeFilter.includes(f));
@@ -4038,7 +4036,7 @@
                 });
             }
             const clientCodes = new Set(clients.map(c => c['Código']));
-            
+
             // --- Sales Filtering (Optimized via Indices) ---
             const filters = {
                 supervisor: supervisorsSet,
@@ -4062,10 +4060,10 @@
                 sales = sales.filter(unitPriceFilter);
                 history = history.filter(unitPriceFilter);
             }
-            
+
             return { sales, history, clients };
         }
-        
+
         function updateAllCoverageFilters(options = {}) {
             const { skipFilter = null } = options;
 
@@ -4096,7 +4094,7 @@
                  updateCoverageView();
             }, 10);
         }
-        
+
         function resetCoverageFilters() {
             selectedCoverageSupervisors = [];
             coverageCityFilter.value = '';
@@ -4116,7 +4114,7 @@
             updateAllCoverageFilters();
             updateCoverageView();
         }
-        
+
         function updateCoverageView() {
             const { clients, sales, history } = getCoverageFilteredData();
             const productsToAnalyze = [...new Set([...sales.map(s => s.PRODUTO), ...history.map(s => s.PRODUTO)])];
@@ -4137,7 +4135,7 @@
             const activeClientsForCoverage = clients.filter(c => {
                 const codcli = c['Código'];
                 const rca1 = String(c.rca1 || '').trim();
-                
+
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 return (isAmericanas || rca1 !== '53' || clientsWithSalesThisMonth.has(codcli));
             });
@@ -4230,7 +4228,7 @@
 
             // Pre-calculate global dates for Trend
             const endDate = parseDate(sortedWorkingDays[sortedWorkingDays.length - 1]);
-            
+
             productsToAnalyze.forEach(productCode => {
                 const productInfo = productDetailsMap.get(productCode) || { descricao: `Produto ${productCode}`};
 
@@ -4239,7 +4237,7 @@
 
                 // --- OTIMIZAÇÃO CRÍTICA: Iterar apenas os compradores do produto em vez de todos os clientes ativos ---
                 // Reduz a complexidade de O(Produtos * Clientes) para O(Total Vendas)
-                
+
                 // Check Current
                 const buyersCurrent = productClientsCurrent.get(productCode);
                 if (buyersCurrent) {
@@ -4263,7 +4261,7 @@
                 }
 
                 const coverageCurrent = activeClientsCount > 0 ? (clientsWhoGotProductCurrent / activeClientsCount) * 100 : 0;
-                
+
                 if (coverageCurrent > topCoverageItem.coverage) {
                     topCoverageItem = {
                         name: `(${productCode}) ${productInfo.descricao}`,
@@ -4277,7 +4275,7 @@
                 // Trend Calculation
                 // Use the map we built
                 const productAllSales = trendSalesMap.get(productCode) || [];
-                
+
                 const productCadastroDate = parseDate(productInfo.dtCadastro);
                 let productFirstWorkingDayIndex = 0;
                 if (productCadastroDate) {
@@ -4286,7 +4284,7 @@
                     if (productFirstWorkingDayIndex === -1) productFirstWorkingDayIndex = sortedWorkingDays.length;
                 }
                 const productMaxLifeInWorkingDays = sortedWorkingDays.length - productFirstWorkingDayIndex;
-                
+
                 const hasHistory = productAllSales.some(s => {
                     const d = parseDate(s.DTPED);
                     return d && (d.getUTCFullYear() < currentYear || (d.getUTCFullYear() === currentYear && d.getUTCMonth() < currentMonth));
@@ -4307,11 +4305,11 @@
                         effectiveDaysToCalculate = productMaxLifeInWorkingDays;
                     }
                 }
-                
+
                 const daysDivisor = effectiveDaysToCalculate > 0 ? effectiveDaysToCalculate : 1;
                 const targetIndex = Math.max(0, sortedWorkingDays.length - daysDivisor);
                 const startDate = parseDate(sortedWorkingDays[targetIndex]);
-                
+
                 let totalQtySoldInRange = 0;
                 // Optimization: Iterate only the pre-filtered array for this product
                 productAllSales.forEach(sale => {
@@ -4323,7 +4321,7 @@
 
                 const dailyAvgSale = totalQtySoldInRange / daysDivisor;
                 const trendDays = dailyAvgSale > 0 ? (stockQty / dailyAvgSale) : (stockQty > 0 ? Infinity : 0);
-                
+
                 // Box Quantities (Pre-calculated)
                 const boxesSoldCurrentMonth = boxesSoldCurrentMap.get(productCode) || 0;
                 const boxesSoldPreviousMonth = boxesSoldPreviousMap.get(productCode) || 0;
@@ -4363,7 +4361,7 @@
             const selectionCoveragePercentPrevious = activeClientsCount > 0 ? (selectionCoveredCountPrevious / activeClientsCount) * 100 : 0;
             coverageSelectionCoverageValueKpiPrevious.textContent = `${selectionCoveragePercentPrevious.toFixed(2)}%`;
             coverageSelectionCoverageCountKpiPrevious.textContent = `${selectionCoveredCountPrevious.toLocaleString('pt-BR')} de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
-            
+
             tableData.sort((a, b) => {
                 return b.stockQty - a.stockQty;
             });
@@ -4407,7 +4405,7 @@
                 } else {
                     pdvVariationContent = `<span>-</span>`;
                 }
-                
+
                 return `
                     <tr class="hover:bg-slate-700/50">
                         <td class="px-2 py-1.5 text-xs">${item.descricao}</td>
@@ -4425,11 +4423,11 @@
             // Render Top 10 Cities Chart
             const salesByCity = {};
             const salesBySeller = {};
-            
+
             sales.forEach(s => {
                 const city = s.CIDADE || 'N/A';
                 salesByCity[city] = (salesByCity[city] || 0) + s.QTVENDA_EMBALAGEM_MASTER;
-                
+
                 const seller = s.NOME || 'N/A';
                 salesBySeller[seller] = (salesBySeller[seller] || 0) + s.QTVENDA_EMBALAGEM_MASTER;
             });
@@ -4501,7 +4499,7 @@
                 if (chartTitle) chartTitle.textContent = 'Top 10 Vendedores (Quantidade de Caixas)';
             }
         }
-        
+
         // <!-- FIM DO CÓDIGO RESTAURADO -->
 
         function getUniqueMonthCount(data) {
@@ -4526,7 +4524,7 @@
             const faturamentoMap = new Map();
 
             // --- INÍCIO DA MODIFICAÇÃO: KPIs de Cobertura e SKU ---
-            
+
             // 1. Lógica de Positivação (Cobertura)
             // Registar clientes que tiveram *qualquer* operação (Venda OU Bonificação)
             const positiveClients = new Set();
@@ -4610,7 +4608,7 @@
             if (pluginsToRegister.length > 0) {
                 try { Chart.register(...pluginsToRegister); } catch (e) {}
             }
-            
+
             const professionalPalette = ['#14b8a6', '#6366f1', '#ec4899', '#f97316', '#8b5cf6', '#06b6d4', '#f59e0b', '#ef4444', '#22c55e'];
 
             let finalDatasets;
@@ -4619,12 +4617,12 @@
             } else {
                  finalDatasets = [{ data: chartData || [], backgroundColor: canvasId === 'customerStatusChart' ? ['#2dd4bf', '#f59e0b'] : professionalPalette }];
             }
-            
+
             let baseOptions = { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 25 } }, plugins: { legend: { display: false, labels: {color: '#cbd5e1'} }, datalabels: { display: false } }, scales: { y: { beginAtZero: true, grace: '5%', ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255, 255, 255, 0.05)'} }, x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255, 255, 255, 0.05)'} } } };
             let typeDefaults = {};
             if (type === 'bar') typeDefaults = { layout: { padding: { right: 30, top: 30 } }, plugins: { datalabels: { display: true, anchor: 'end', align: 'end', offset: -4, color: '#cbd5e1', font: { size: 10 }, formatter: (v) => (v > 1000 ? (v/1000).toFixed(1) + 'k' : v.toFixed(0)) } } };
             if (type === 'doughnut') typeDefaults = { maintainAspectRatio: true, scales: { y: { display: false }, x: { display: false } }, plugins: { legend: { position: 'top', labels: { color: '#cbd5e1' } }, datalabels: { display: true, color: '#fff', font: { size: 11, weight: 'bold' }, formatter: (v, ctx) => { const total = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0); if(total === 0 || v === 0) return ''; const p = (v / total) * 100; return p > 5 ? p.toFixed(0) + '%' : ''; } } } };
-            
+
             // 1. Sempre construir um objeto de opções novo e limpo
             const options = mergeDeep({}, baseOptions, typeDefaults, optionsOverrides);
 
@@ -4632,7 +4630,7 @@
                 charts[canvasId].data.labels = labels;
                 charts[canvasId].data.datasets = finalDatasets;
                 // 2. Substituir as opções antigas pelas novas, em vez de tentar um merge
-                charts[canvasId].options = options; 
+                charts[canvasId].options = options;
                 charts[canvasId].update();
                 return;
             }
@@ -4643,7 +4641,7 @@
             container.appendChild(newCanvas);
             container.style.display = ''; container.style.alignItems = ''; container.style.justifyContent = '';
             const ctx = newCanvas.getContext('2d');
-            
+
             charts[canvasId] = new Chart(ctx, { type, data: { labels, datasets: finalDatasets }, options });
         }
 
@@ -4694,7 +4692,7 @@
                 }
                 return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${classes}">${posicao}</span>`;
             };
-            
+
             tableBody.innerHTML = pageData.map(row => `
                 <tr class="hover:bg-slate-700">
                     <td class="px-4 py-2"><a href="#" class="text-teal-400 hover:underline" data-pedido-id="${row.PEDIDO}">${row.PEDIDO}</a></td>
@@ -4770,7 +4768,7 @@
             const currentMonthRevenue = currentSales.reduce((sum, sale) => sum + sale.VLVENDA, 0);
             const trend = passedWorkingDays > 0 && totalWorkingDays > 0 ? (currentMonthRevenue / passedWorkingDays) * totalWorkingDays : 0;
             const lineChartDataset = [{ label: 'Valor', data: [averageMonthlyRevenue, trend], fill: true, borderColor: '#14b8a6', backgroundColor: 'rgba(20, 184, 166, 0.1)', tension: 0.2, pointRadius: 6, pointBackgroundColor: '#14b8a6', pointBorderColor: '#FFF', pointBorderWidth: 2, pointHoverRadius: 8 }];
-            
+
             const formatLabelValue = (v) => {
                 if (typeof v !== 'number') return ''; // Proteção contra valores não numéricos
                 return (v >= 1000000 ? (v / 1000000).toFixed(2) + ' M' : (v / 1000).toFixed(0) + 'k');
@@ -4797,7 +4795,7 @@
                 const rca1 = String(c.rca1 || '').trim();
 
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                
+
                 // Regra de inclusão (Americanas ou RCA 1 diferente de 53)
                 return (isAmericanas || rca1 !== '53' || clientsWithSalesThisMonth.has(c['Código']));
             });
@@ -4814,7 +4812,7 @@
 
             const intersectSets = (sets) => {
                 if (sets.length === 0) return new Set();
-                
+
                 // --- OPTIMIZATION START ---
                 // Sort sets by size to intersect the smallest sets first.
                 sets.sort((a, b) => a.size - b.size);
@@ -4822,7 +4820,7 @@
                 let result = new Set(sets[0]);
                 for (let i = 1; i < sets.length; i++) {
                     if (result.size === 0) break; // Stop early if the result is already empty
-                    
+
                     const currentSet = sets[i];
                     for (const id of result) {
                         if (!currentSet.has(id)) {
@@ -4843,7 +4841,7 @@
                     if (indices.byClient.has(codcli)) {
                         setsToIntersect.push(indices.byClient.get(codcli));
                     } else {
-                        return []; 
+                        return [];
                     }
                 } else {
                     if (selectedMainSupervisors.length > 0) {
@@ -4894,7 +4892,7 @@
                     setsToIntersect.push(supplierIds);
                 }
 
-                if (indices.byPosition && posicao) { 
+                if (indices.byPosition && posicao) {
                     hasFilter = true;
                     if (indices.byPosition.has(posicao)) {
                         setsToIntersect.push(indices.byPosition.get(posicao));
@@ -4902,7 +4900,7 @@
                         return [];
                     }
                 }
-                
+
                 if (mainRedeGroupFilter) {
                     hasFilter = true;
                     const redeIds = new Set();
@@ -4913,11 +4911,11 @@
                 }
 
                 if (setsToIntersect.length === 0 && hasFilter) {
-                    return []; 
+                    return [];
                 }
-                
+
                 if (setsToIntersect.length === 0 && !hasFilter) {
-                    return Array.from(dataMap.values()); 
+                    return Array.from(dataMap.values());
                 }
 
                 const finalIds = intersectSets(setsToIntersect);
@@ -4926,7 +4924,7 @@
 
             const filteredSalesData = getFilteredIds(optimizedData.indices.current, optimizedData.salesById);
             const filteredHistoryData = getFilteredIds(optimizedData.indices.history, optimizedData.historyById);
-            
+
             const filteredTableData = aggregatedOrders.filter(order => {
                 let matches = true;
                 if (mainRedeGroupFilter) {
@@ -4985,7 +4983,7 @@
         function updateSupervisorFilter(dropdown, filterText, selectedArray, dataSource, skipRender = false) {
             if (!dropdown || !filterText) return selectedArray;
             const supervisors = [...new Set(dataSource.map(item => item.SUPERV).filter(Boolean))].sort();
-            
+
             selectedArray = selectedArray.filter(sup => supervisors.includes(sup));
 
             if (!skipRender) {
@@ -5012,7 +5010,7 @@
             } else {
                 sellersToShow = [...new Set(dataSource.map(item => item.NOME).filter(Boolean))].sort();
             }
-            
+
             selectedArray = selectedArray.filter(seller => sellersToShow.includes(seller));
 
             if (!skipRender) {
@@ -5165,7 +5163,7 @@
             updateRedeFilter(stockRedeFilterDropdown, stockComRedeBtnText, selectedStockRedes, allClientsData, 'Com Rede');
 
             document.querySelectorAll('#stock-fornecedor-toggle-container .fornecedor-btn').forEach(b => b.classList.remove('active'));
-            
+
             customWorkingDaysStock = maxWorkingDaysStock;
             const daysInput = document.getElementById('stock-working-days-input');
             if(daysInput) daysInput.value = customWorkingDaysStock;
@@ -5183,7 +5181,7 @@
             const tiposVendaSet = new Set(selectedCityTiposVenda);
 
             let clients = allClientsData;
-            
+
             if (excludeFilter !== 'rede') {
                  if (cityRedeGroupFilter === 'com_rede') {
                     clients = clients.filter(c => c.ramo && c.ramo !== 'N/A');
@@ -5216,13 +5214,13 @@
             if (excludeFilter !== 'city' && cityInput) {
                 clients = clients.filter(c => c.cidade && c.cidade.toLowerCase() === cityInput);
             }
-            
+
             if (excludeFilter !== 'codcli' && codCli) {
                  clients = clients.filter(c => String(c['Código']) === codCli);
             }
 
             const clientCodes = new Set(clients.map(c => c['Código']));
-            
+
             const supervisorSet = new Set(selectedCitySupervisors);
 
             const filters = {
@@ -5232,9 +5230,9 @@
                 tipoVenda: tiposVendaSet,
                 clientCodes: clientCodes
             };
-            
+
             const sales = getFilteredDataFromIndices(optimizedData.indices.current, optimizedData.salesById, filters, excludeFilter);
-            
+
             return { clients, sales };
         }
 
@@ -5245,13 +5243,13 @@
                 const { sales } = getCityFilteredData({ excludeFilter: 'supervisor' });
                 selectedCitySupervisors = updateSupervisorFilter(document.getElementById('city-supervisor-filter-dropdown'), document.getElementById('city-supervisor-filter-text'), selectedCitySupervisors, sales);
             }
-            
+
             const { sales: salesSeller } = getCityFilteredData({ excludeFilter: 'seller' });
             selectedCitySellers = updateSellerFilter(selectedCitySupervisors, cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, salesSeller, skipFilter === 'seller');
 
             const { sales: salesTV } = getCityFilteredData({ excludeFilter: 'tipoVenda' });
             selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, salesTV, skipFilter === 'tipoVenda');
-            
+
             if (skipFilter !== 'rede') {
                  const { clients: clientsRede } = getCityFilteredData({ excludeFilter: 'rede' });
                  if (cityRedeGroupFilter === 'com_rede') {
@@ -5296,7 +5294,7 @@
             const referenceDate = lastSaleDate;
             const currentMonth = referenceDate.getUTCMonth();
             const currentYear = referenceDate.getUTCFullYear();
-            
+
             const selectedTiposVendaSet = new Set(selectedCityTiposVenda);
 
             // Pre-aggregate "Sales This Month" for Status Classification
@@ -5442,7 +5440,7 @@
             const cityChartOptions = { indexAxis: 'y', scales: { x: { grace: '15%' } }, plugins: { datalabels: { align: 'end', anchor: 'end', color: '#cbd5e1', font: { size: 14, weight: 'bold' }, formatter: (value) => (value / 1000).toFixed(1) + 'k', offset: 8 } } };
             const totalFaturamentoCidade = salesForAnalysis.reduce((sum, item) => sum + item.VLVENDA, 0);
             totalFaturamentoCidadeEl.textContent = totalFaturamentoCidade.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-            
+
             if (totalClientesCidadeEl) {
                 totalClientesCidadeEl.textContent = clientsForAnalysis.length.toLocaleString('pt-BR');
             }
@@ -5506,7 +5504,7 @@
 
         function updateWeeklyView() {
             const selectedSupervisors = Array.from(weeklySupervisorFilter.querySelectorAll('input:checked')).map(cb => cb.value);
-            
+
             // Optimize using indices
             const filters = {};
             if (selectedSupervisors.length > 0) {
@@ -5514,13 +5512,13 @@
                  // Indices for 'bySupervisor' is a Map<Name, Set<Id>>.
                  // We can manually intersect or just pass null if complex multiselect logic isn't supported by that helper yet.
                  // But getFilteredDataFromIndices doesn't support multiple supervisors array directly in 'filters.supervisor'.
-                 // However, we can filter after or adapt. 
+                 // However, we can filter after or adapt.
                  // Let's manually use the indices here for maximum speed if we want to replace O(N).
             }
-            
+
             // Actually, getFilteredDataFromIndices doesn't support multi-supervisor array yet, only single.
             // Let's stick to a simpler optimization: Use the pasta filter index if available.
-            
+
             let dataForGeneralCharts;
 
             if (currentWeeklyFornecedor) {
@@ -5663,23 +5661,23 @@
             const weeks = [];
             // Find the first day of the month
             const firstOfMonth = new Date(Date.UTC(year, month, 1));
-            
+
             // Find the Sunday on or before the 1st
             const dayOfWeek = firstOfMonth.getUTCDay(); // 0 (Sun) to 6 (Sat)
             let currentStart = new Date(firstOfMonth);
             currentStart.setUTCDate(firstOfMonth.getUTCDate() - dayOfWeek);
-            
+
             // Find the last day of the month
             const lastOfMonth = new Date(Date.UTC(year, month + 1, 0));
-            
+
             // Iterate weeks until we cover the last day of the month
             while (currentStart <= lastOfMonth) {
                 const currentEnd = new Date(currentStart);
                 currentEnd.setUTCDate(currentStart.getUTCDate() + 6);
                 currentEnd.setUTCHours(23, 59, 59, 999);
-                
+
                 weeks.push({ start: new Date(currentStart), end: currentEnd });
-                
+
                 // Move to next Sunday
                 currentStart.setUTCDate(currentStart.getUTCDate() + 7);
             }
@@ -5856,16 +5854,16 @@
             const currentYear = lastSaleDate.getUTCFullYear();
             const currentMonth = lastSaleDate.getUTCMonth();
             const currentMonthWeeks = getMonthWeeks(currentYear, currentMonth);
-            
+
             const metrics = {
-                current: { 
-                    fat: 0, peso: 0, clients: 0, 
-                    mixPepsico: 0, positivacaoSalty: 0, positivacaoFoods: 0 
+                current: {
+                    fat: 0, peso: 0, clients: 0,
+                    mixPepsico: 0, positivacaoSalty: 0, positivacaoFoods: 0
                 },
-                history: { 
+                history: {
                     fat: 0, peso: 0,
-                    avgFat: 0, avgPeso: 0, avgClients: 0, 
-                    avgMixPepsico: 0, avgPositivacaoSalty: 0, avgPositivacaoFoods: 0 
+                    avgFat: 0, avgPeso: 0, avgClients: 0,
+                    avgMixPepsico: 0, avgPositivacaoSalty: 0, avgPositivacaoFoods: 0
                 },
                 charts: {
                     weeklyCurrent: new Array(currentMonthWeeks.length).fill(0),
@@ -5899,11 +5897,11 @@
                     metrics.current.fat += s.VLVENDA;
                     metrics.current.peso += s.TOTPESOLIQ;
                 }
-                
+
                 if (s.CODCLI) {
                     // Accumulate for Positive Check (using VLVENDA which is 0 for non-1/9 anyway, but keeping consistent)
                     currentClientsSet.set(s.CODCLI, (currentClientsSet.get(s.CODCLI) || 0) + s.VLVENDA);
-                    
+
                     if (!currentClientProductMap.has(s.CODCLI)) currentClientProductMap.set(s.CODCLI, new Map());
                     const cMap = currentClientProductMap.get(s.CODCLI);
                     if (!cMap.has(s.PRODUTO)) cMap.set(s.PRODUTO, { val: 0, desc: s.DESCRICAO, codfor: String(s.CODFOR) });
@@ -5944,7 +5942,7 @@
                 prods.forEach(pData => {
                     if (pData.val > 1) {
                         if (pepsicoCodfors.has(pData.codfor)) pepsicoCount++;
-                        
+
                         const desc = norm(pData.desc);
                         saltyCategories.forEach(cat => { if (desc.includes(cat)) boughtCatsSalty.add(cat); });
                         foodsCategories.forEach(cat => { if (desc.includes(cat)) boughtCatsFoods.add(cat); });
@@ -5977,7 +5975,7 @@
                 }
             });
             debugMixList.sort((a, b) => a.mix - b.mix);
-            
+
             console.group("Diagnóstico Mix Pepsico");
             console.log(`Total Soma Mix: ${sumMix}`);
             console.log(`Total Clientes no Denominador: ${countMixClients}`);
@@ -5992,9 +5990,9 @@
 
             // --- 3. Process History Sales (Single Pass) ---
             const historyMonths = new Map(); // MonthKey -> { fat, clientMap, weekSales: [] }
-            
+
             // Cache week ranges for history months to avoid recalculating
-            const monthWeeksCache = new Map(); 
+            const monthWeeksCache = new Map();
 
             historySales.forEach(s => {
                 // Filter: Only Type 1 and 9 count for Metrics (Fat/Peso/Charts)
@@ -6007,12 +6005,12 @@
 
                 const d = parseDate(s.DTPED);
                 if (!d) return;
-                
+
                 const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
-                
+
                 if (!historyMonths.has(monthKey)) {
-                    historyMonths.set(monthKey, { 
-                        fat: 0, 
+                    historyMonths.set(monthKey, {
+                        fat: 0,
                         clients: new Map(), // Client -> Total
                         productMap: new Map() // Client -> Product -> Data
                     });
@@ -6022,10 +6020,10 @@
                 if (isValidType) {
                     mData.fat += s.VLVENDA;
                 }
-                
+
                 if (s.CODCLI) {
                     mData.clients.set(s.CODCLI, (mData.clients.get(s.CODCLI) || 0) + s.VLVENDA);
-                    
+
                     if (!mData.productMap.has(s.CODCLI)) mData.productMap.set(s.CODCLI, new Map());
                     const cMap = mData.productMap.get(s.CODCLI);
                     if (!cMap.has(s.PRODUTO)) cMap.set(s.PRODUTO, { val: 0, desc: s.DESCRICAO, codfor: String(s.CODFOR) });
@@ -6044,7 +6042,7 @@
                 }
                 const weeks = monthWeeksCache.get(monthKey);
                 const wIdx = weeks.findIndex(w => d >= w.start && d <= w.end);
-                
+
                 // Map to Current Month's structure (0..4)
                 if (wIdx !== -1 && wIdx < metrics.charts.weeklyHistory.length && isValidType) {
                     metrics.charts.weeklyHistory[wIdx] += s.VLVENDA;
@@ -6061,18 +6059,18 @@
             metrics.history.avgFat = metrics.history.fat / QUARTERLY_DIVISOR;
             metrics.history.avgPeso = metrics.history.peso / QUARTERLY_DIVISOR;
             metrics.charts.weeklyHistory = metrics.charts.weeklyHistory.map(v => v / QUARTERLY_DIVISOR);
-            
+
             // Normalize Supervisor History
             Object.values(metrics.charts.supervisorData).forEach(d => d.history /= QUARTERLY_DIVISOR);
 
             // Process Monthly KPIs (Clients, Mix)
             // Sort months to ensure we take the last 3 if there are more
             const sortedMonths = Array.from(historyMonths.keys()).sort();
-            
-            // Apply Logic: If first month has < 20 days of data, maybe skip? 
+
+            // Apply Logic: If first month has < 20 days of data, maybe skip?
             // Original code: if (firstSaleInFirstMonth && firstSaleInFirstMonth.getUTCDate() > 20) sortedMonths.shift();
             // We'll stick to simple slice(-3) for performance and consistency with requested "Last 3 months" logic.
-            const monthsToProcess = sortedMonths.slice(-3); 
+            const monthsToProcess = sortedMonths.slice(-3);
 
             let sumClients = 0;
             let sumMixPep = 0;
@@ -6081,7 +6079,7 @@
 
             monthsToProcess.forEach(mKey => {
                 const mData = historyMonths.get(mKey);
-                
+
                 // Clients
                 let posClients = 0;
                 mData.clients.forEach(v => { if(v > 1) posClients++; });
@@ -6118,14 +6116,14 @@
                 sumMixPep += (mCountMixClients > 0 ? mSumMix / mCountMixClients : 0);
                 sumPosSalty += mCountSalty;
                 sumPosFoods += mCountFoods;
-                
+
                 // For Monthly Chart (Labels and Values)
                 const [y, m] = mKey.split('-');
                 const label = new Date(Date.UTC(parseInt(y), parseInt(m), 1)).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit', timeZone: 'UTC' });
-                metrics.charts.monthlyData.push({ 
-                    label, 
-                    fat: mData.fat, 
-                    clients: posClients 
+                metrics.charts.monthlyData.push({
+                    label,
+                    fat: mData.fat,
+                    clients: posClients
                 });
             });
 
@@ -6158,7 +6156,7 @@
                     sortedMonths.shift();
                 }
             }
-            
+
             const monthsToAverage = sortedMonths.slice(-3);
 
             const kpiValues = monthsToAverage.map(monthKey => {
@@ -6318,7 +6316,7 @@
                 // --- OPTIMIZATION START ---
                 // Sort sets by size to intersect the smallest sets first.
                 setsToIntersect.sort((a, b) => a.size - b.size);
-                
+
                 // Start with the smallest set.
                 resultIds = new Set(setsToIntersect[0]);
 
@@ -6439,7 +6437,7 @@
             const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
 
             const products = [...new Map(dataSource.map(s => [s.PRODUTO, s.DESCRICAO])).entries()].sort((a,b) => a[1].localeCompare(b[1]));
-            
+
             // Filter selectedArray to keep only items present in the current dataSource
             const availableProductCodes = new Set(products.map(p => p[0]));
             selectedArray = selectedArray.filter(code => availableProductCodes.has(code));
@@ -6613,10 +6611,10 @@
 
         function updateComparisonView() {
             const { currentSales, historySales } = getComparisonFilteredData();
-            
+
             // --- USE OPTIMIZED METRIC CALCULATION ---
             const m = calculateUnifiedMetrics(currentSales, historySales);
-            
+
             // --- Update KPI Cards ---
             renderKpiCards([
                 { title: 'Faturamento Total', current: m.current.fat, history: m.history.avgFat, format: 'currency' },
@@ -6632,10 +6630,10 @@
             const currentYear = lastSaleDate.getUTCFullYear();
             const currentMonth = lastSaleDate.getUTCMonth();
             const currentMonthWeeks = getMonthWeeks(currentYear, currentMonth);
-            
+
             // Clone weekly current data to apply tendency if needed
             let weeklyCurrentData = [...m.charts.weeklyCurrent];
-            
+
             if (useTendencyComparison) {
                 const today = lastSaleDate;
                 const currentWeekIndex = currentMonthWeeks.findIndex(w => today >= w.start && today <= w.end);
@@ -6654,11 +6652,11 @@
                                 if (d <= today) workingDaysPassed++;
                             }
                         }
-                        
-                        // We need the ACTUAL sales for this week to project. 
+
+                        // We need the ACTUAL sales for this week to project.
                         // `weeklyCurrentData[i]` already has the actual sales so far.
                         const salesSoFar = weeklyCurrentData[i];
-                        
+
                         if (workingDaysPassed > 0 && totalWorkingDays > 0) {
                             const dailyAverage = salesSoFar / workingDaysPassed;
                             weeklyCurrentData[i] = dailyAverage * totalWorkingDays;
@@ -6675,12 +6673,12 @@
             }
 
             // --- Render Charts ---
-            
+
             if (comparisonChartType === 'weekly') {
                 monthlyComparisonChartContainer.classList.add('hidden');
                 weeklyComparisonChartContainer.classList.remove('hidden');
                 comparisonChartTitle.textContent = 'Comparativo de Faturamento Semanal';
-                
+
                 const weekLabels = currentMonthWeeks.map((w, i) => `Semana ${i + 1}`);
 
                 createChart('weeklyComparisonChart', 'line', weekLabels, [
@@ -6694,7 +6692,7 @@
             } else if (comparisonChartType === 'monthly') {
                 weeklyComparisonChartContainer.classList.add('hidden');
                 monthlyComparisonChartContainer.classList.remove('hidden');
-                
+
                 const metricToggle = document.getElementById('comparison-monthly-metric-container');
                 if (metricToggle) metricToggle.classList.remove('hidden');
 
@@ -6711,7 +6709,7 @@
                     const firstSaleDate = parseDate(currentSales[0].DTPED) || new Date();
                     currentMonthLabel = firstSaleDate.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
                 }
-                
+
                 // Tendency for Monthly Chart (Only Fat)
                 let currentVal = isFat ? m.current.fat : m.current.clients;
                 if (isFat && useTendencyComparison) {
@@ -6782,20 +6780,20 @@
             // --- Daily Chart Update (Simplified logic re-using existing complexity or keeping as is) ---
             // The daily chart logic is complex and relies on specific day distribution.
             // For now, let's keep the daily logic from the previous implementation but source data from our filtered set if possible
-            // OR re-implement simplified. 
+            // OR re-implement simplified.
             // Given the user complaint is "Slow", re-calculating daily distribution for history IS slow.
-            // Let's implement a lighter version or skip if not critical? 
+            // Let's implement a lighter version or skip if not critical?
             // The user likes the visual. I will optimize the Daily Chart loop.
-            
+
             // Optimized Daily Chart Logic:
             // Instead of looping History Sales again, we could have pre-aggregated it in `calculateUnifiedMetrics`.
-            // But `calculateUnifiedMetrics` returned `weeklyHistory`. 
+            // But `calculateUnifiedMetrics` returned `weeklyHistory`.
             // Let's do a simplified daily breakdown here, but optimized.
-            
-            const salesByWeekAndDay = {}; 
+
+            const salesByWeekAndDay = {};
             // Init
             currentMonthWeeks.forEach((w, i) => { salesByWeekAndDay[i + 1] = new Array(7).fill(0); });
-            
+
             // Current Sales Daily Distribution (Fast)
             currentSales.forEach(s => {
                 const d = parseDate(s.DTPED);
@@ -6831,9 +6829,9 @@
                         }
                     }
                 });
-                
+
                 const weekdayWeights = weekdayTotals.map(val => totalHistorySales > 0 ? val / totalHistorySales : 0);
-                
+
                 // Fallback to even distribution if no history
                 if (totalHistorySales === 0) {
                     for(let i=1; i<=5; i++) weekdayWeights[i] = 0.2;
@@ -6841,7 +6839,7 @@
 
                 const today = lastSaleDate;
                 const currentWeekIndex = currentMonthWeeks.findIndex(w => today >= w.start && today <= w.end);
-                
+
                 if (currentWeekIndex !== -1) {
                     const week = currentMonthWeeks[currentWeekIndex];
                     const remainingDaysIndices = [];
@@ -6850,15 +6848,15 @@
                             remainingDaysIndices.push(d.getUTCDay());
                         }
                     }
-                    
+
                     const currentWeekTotal = weeklyCurrentData[currentWeekIndex]; // Projected total
                     const currentWeekSold = m.charts.weeklyCurrent[currentWeekIndex]; // Actual sold
                     const toDistribute = Math.max(0, currentWeekTotal - currentWeekSold);
-                    
+
                     if (remainingDaysIndices.length > 0 && toDistribute > 0) {
                         let weightSum = 0;
                         remainingDaysIndices.forEach(idx => weightSum += weekdayWeights[idx]);
-                        
+
                         // Fallback local if remaining days have no historical weight (unlikely but possible)
                         const localWeights = {};
                         if (weightSum === 0) {
@@ -6876,7 +6874,7 @@
                         }
                     }
                 }
-                
+
                 // For future weeks, distribute proportionally across working days
                 for (let i = currentWeekIndex + 1; i < currentMonthWeeks.length; i++) {
                     const proj = weeklyCurrentData[i];
@@ -6891,7 +6889,7 @@
                     if (workingDaysIndices.length > 0) {
                         let weightSum = 0;
                         workingDaysIndices.forEach(idx => weightSum += weekdayWeights[idx]);
-                        
+
                         const localWeights = {};
                         if (weightSum === 0) {
                              workingDaysIndices.forEach(idx => { localWeights[idx] = 1; weightSum += 1; });
@@ -6939,8 +6937,8 @@
             const supervisorTableBody = document.getElementById('supervisorComparisonTableBody');
             const supData = m.charts.supervisorData;
             const supRows = Object.entries(supData).map(([sup, data]) => {
-                const variation = data.history > 0 ? ((data.current - data.history) / data.history) * 100 : (data.current > 0 ? 100 : 0); 
-                const colorClass = variation > 0 ? 'text-green-400' : variation < 0 ? 'text-red-400' : 'text-slate-400'; 
+                const variation = data.history > 0 ? ((data.current - data.history) / data.history) * 100 : (data.current > 0 ? 100 : 0);
+                const colorClass = variation > 0 ? 'text-green-400' : variation < 0 ? 'text-red-400' : 'text-slate-400';
                 return `<tr class="hover:bg-slate-700"><td class="px-4 py-2">${sup}</td><td class="px-4 py-2 text-right">${data.history.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td class="px-4 py-2 text-right">${data.current.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td><td class="px-4 py-2 text-right ${colorClass}">${variation.toFixed(2)}%</td></tr>`;
             }).join('');
             supervisorTableBody.innerHTML = supRows;
@@ -7012,11 +7010,11 @@
                         const pastaDoProduto = optimizedData.productPastaMap.get(productCode) || '';
                         if (pastaDoProduto !== currentPasta) return;
                     }
-                    
+
                     productsWithFilteredActivity.add(productCode);
                 }
             });
-            
+
             // Pre-calculate global dates for trend
             const endDate = parseDate(sortedWorkingDays[sortedWorkingDays.length - 1]);
 
@@ -7043,19 +7041,19 @@
 
                 const productCadastroDate = parseDate(details.dtCadastro);
                 let productFirstWorkingDayIndex = 0;
-                
+
                 if (productCadastroDate) {
                     const cadastroDateString = productCadastroDate.toISOString().split('T')[0];
                     productFirstWorkingDayIndex = sortedWorkingDays.findIndex(d => d >= cadastroDateString);
                     if (productFirstWorkingDayIndex === -1) {
-                        productFirstWorkingDayIndex = sortedWorkingDays.length; 
+                        productFirstWorkingDayIndex = sortedWorkingDays.length;
                     }
                 }
-                
+
                 const productMaxLifeInWorkingDays = sortedWorkingDays.length - productFirstWorkingDayIndex;
                 const daysFromBox = customWorkingDaysStock;
                 let effectiveDaysToCalculate;
-                
+
                 const isFactuallyNewOrReactivated = (!hasHistory && soldThisMonth);
 
                 if (isFactuallyNewOrReactivated) {
@@ -7065,14 +7063,14 @@
                     if (daysFromBox > 0) {
                         effectiveDaysToCalculate = Math.min(daysFromBox, productMaxLifeInWorkingDays);
                     } else {
-                        effectiveDaysToCalculate = productMaxLifeInWorkingDays; 
+                        effectiveDaysToCalculate = productMaxLifeInWorkingDays;
                     }
                 }
-                
+
                 const daysDivisor = effectiveDaysToCalculate > 0 ? effectiveDaysToCalculate : 1;
-                const targetIndex = Math.max(0, sortedWorkingDays.length - daysDivisor); 
+                const targetIndex = Math.max(0, sortedWorkingDays.length - daysDivisor);
                 const startDate = parseDate(sortedWorkingDays[targetIndex]);
-                
+
                 let totalQtySoldInRange = 0;
                 // Optimized loop: only iterating relevant sales for this product
                 productAllSales.forEach(sale => {
@@ -7168,12 +7166,12 @@
 
                     if (p.currentMonthSalesQty >= p.monthlyAvgSale) {
                         growth.push(productWithVariation); // <-- Usamos o objeto modificado
-                    } else if (p.currentMonthSalesQty < p.monthlyAvgSale && p.monthlyAvgSale > 0) { 
+                    } else if (p.currentMonthSalesQty < p.monthlyAvgSale && p.monthlyAvgSale > 0) {
                         decline.push(productWithVariation); // <-- Usamos o objeto modificado
                     }
-                 } else if (p.soldThisMonth && !p.hasHistory) { 
+                 } else if (p.soldThisMonth && !p.hasHistory) {
                     newProducts.push(p);
-                 } else if (!p.soldThisMonth && p.hasHistory) { 
+                 } else if (!p.soldThisMonth && p.hasHistory) {
                     lostProducts.push(p);
                  }
             });
@@ -7203,14 +7201,14 @@
             };
 
             // --- INÍCIO DA MODIFICAÇÃO: Alterar ordenação ---
-            
+
             // "Produtos com Crescimento": Ordenar da maior variação (positiva) para a menor.
             growth.sort((a, b) => b.variation - a.variation);
-            
+
             // "Produtos com Queda": Ordenar da maior variação negativa (-100%) para a menor (-10%).
             // (a.variation - b.variation) coloca os números mais negativos primeiro.
             decline.sort((a, b) => a.variation - b.variation);
-            
+
             // --- FIM DA MODIFICAÇÃO ---
 
             newProducts.sort((a,b) => b.currentMonthSalesQty - a.currentMonthSalesQty);
@@ -7265,7 +7263,7 @@
             innovationsMonthCategoryFilter.value = '';
             selectedInnovationsMonthSellers = [];
             selectedInnovationsMonthTiposVenda = [];
-            
+
             selectedInnovationsSupervisors = updateSupervisorFilter(document.getElementById('innovations-month-supervisor-filter-dropdown'), document.getElementById('innovations-month-supervisor-filter-text'), selectedInnovationsSupervisors, allSalesData);
             updateSellerFilter(selectedInnovationsSupervisors, innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
             selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
@@ -7295,7 +7293,7 @@
             const categories = globalInnovationCategories || {};
             const currentFilterValue = innovationsMonthCategoryFilter.value;
             const allCategories = Object.keys(categories).sort();
-            
+
             // Only update dropdown if empty or number of items changed significantly (simplistic check)
             if (innovationsMonthCategoryFilter.options.length <= 1 && allCategories.length > 0) {
                 innovationsMonthCategoryFilter.innerHTML = '<option value="">Todas as Categorias</option>';
@@ -7333,7 +7331,7 @@
             const activeClientCodes = new Set(activeClients.map(c => c['Código']));
 
             // --- OPTIMIZED AGGREGATION LOGIC ---
-            
+
             // Determine types to use
             const availableTypes = new Set([...allSalesData.map(s => s.TIPOVENDA), ...allHistoryData.map(s => s.TIPOVENDA)]);
             let currentSelection = selectedInnovationsMonthTiposVenda.length > 0 ? selectedInnovationsMonthTiposVenda : Array.from(availableTypes);
@@ -7347,11 +7345,11 @@
             } else {
                 const mainTypes = currentSelection.filter(t => t !== '5' && t !== '11');
                 const bonusTypes = currentSelection.filter(t => t === '5' || t === '11');
-                
+
                 // Optimized Map Building (2 passes instead of 4)
                 mapsCurrent = buildInnovationSalesMaps(allSalesData, mainTypes, bonusTypes);
                 mapsPrevious = buildInnovationSalesMaps(allHistoryData, mainTypes, bonusTypes);
-                
+
                 viewState.inovacoes.lastTypesKey = currentSelectionKey;
                 viewState.inovacoes.cache = { mapsCurrent, mapsPrevious };
             }
@@ -7363,14 +7361,14 @@
             const productResults = {};
 
             for (const cat in categories) {
-                categoryResults[cat] = { 
-                    current: new Set(), 
+                categoryResults[cat] = {
+                    current: new Set(),
                     previous: new Set(),
                     bonusCurrent: new Set(),
                     bonusPrevious: new Set()
                 };
                 categories[cat].productCodes.forEach(p => {
-                    productResults[p] = { current: new Set(), previous: new Set() }; 
+                    productResults[p] = { current: new Set(), previous: new Set() };
                 });
             }
 
@@ -7397,11 +7395,11 @@
                                 }
                             }
                         }
-                        
+
                         if (!soldBySelected) return;
 
                         const targetSetField = isCurrent ? 'current' : 'previous';
-                        
+
                         // Add to Category Set (Normal or Bonus)
                         if (categoryResults[category]) {
                             if (isBonus) {
@@ -7430,14 +7428,14 @@
             let topCoverageItem = { name: '-', coverage: 0, clients: 0 };
 
             // Consolidate Product Results for Top Item
-            // We need to merge Main and Bonus for product coverage if needed, 
+            // We need to merge Main and Bonus for product coverage if needed,
             // but `processMap` populated `productResults` separately for main/bonus?
             // Wait, `processMap` handles Main and Bonus calls sequentially.
-            // `productResults[prodCode].current` is a Set. 
+            // `productResults[prodCode].current` is a Set.
             // If we call processMap for Main, it adds clients.
             // If we call processMap for Bonus, it adds clients to SAME Set.
             // So `productResults` automatically handles the UNION of Main and Bonus coverage per product.
-            
+
             if (selectedCategory && categories[selectedCategory]) {
                 categories[selectedCategory].products.forEach(product => {
                     const pCode = String(product.Codigo).trim();
@@ -7455,14 +7453,14 @@
                     const set = categoryResults[cat].current; // Main coverage
                     // Wait, original logic: "gotItCurrent" if sales OR bonus.
                     // My categoryResults structure separates them. I need to union them for the metric?
-                    // Original logic: 
+                    // Original logic:
                     // clientsWhoGotAnyVisibleProductCurrent.add(codcli) if (Sales OR Bonus) of ANY product in category.
-                    
+
                     // Let's create a Union Set for the category coverage metric
                     const unionSet = new Set([...categoryResults[cat].current, ...categoryResults[cat].bonusCurrent]);
                     const count = unionSet.size;
                     const coverage = activeClientsCount > 0 ? (count / activeClientsCount) * 100 : 0;
-                    
+
                     if (coverage > topCoverageItem.coverage) {
                         topCoverageItem = { name: cat, coverage, clients: count };
                     }
@@ -7477,24 +7475,24 @@
 
             for (const cat in categoryResults) {
                 if (selectedCategory && cat !== selectedCategory) continue;
-                
+
                 // Merge sets into global KPI sets
                 categoryResults[cat].current.forEach(c => clientsWhoGotAnyVisibleProductCurrent.add(c));
                 categoryResults[cat].previous.forEach(c => clientsWhoGotAnyVisibleProductPrevious.add(c));
                 categoryResults[cat].bonusCurrent.forEach(c => clientsWhoGotBonusAnyVisibleProductCurrent.add(c));
                 categoryResults[cat].bonusPrevious.forEach(c => clientsWhoGotBonusAnyVisibleProductPrevious.add(c));
-                
+
                 // Prepare Analysis Object for Chart/Table
                 const currentUnion = new Set([...categoryResults[cat].current, ...categoryResults[cat].bonusCurrent]);
                 const previousUnion = new Set([...categoryResults[cat].previous, ...categoryResults[cat].bonusPrevious]);
-                
-                // NOTE: The chart/table in original code used "coverageCurrent" derived from 
+
+                // NOTE: The chart/table in original code used "coverageCurrent" derived from
                 // (clientsCurrentCount / activeClientsCount).
                 // clientsCurrentCount was incremented if (Sales OR Bonus).
-                
+
                 const countCurr = currentUnion.size;
                 const countPrev = previousUnion.size;
-                
+
                 const covCurr = activeClientsCount > 0 ? (countCurr / activeClientsCount) * 100 : 0;
                 const covPrev = activeClientsCount > 0 ? (countPrev / activeClientsCount) * 100 : 0;
                 const varPct = covPrev > 0 ? ((covCurr - covPrev) / covPrev) * 100 : (covCurr > 0 ? Infinity : 0);
@@ -7515,7 +7513,7 @@
             // It kept them separate for the KPI cards at the top.
             // "Innovations Month Selection Coverage" -> Sales
             // "Innovations Month Bonus Coverage" -> Bonus
-            
+
             const selectionCoveredCountCurrent = clientsWhoGotAnyVisibleProductCurrent.size;
             const selectionCoveragePercentCurrent = activeClientsCount > 0 ? (selectionCoveredCountCurrent / activeClientsCount) * 100 : 0;
             const selectionCoveredCountPrevious = clientsWhoGotAnyVisibleProductPrevious.size;
@@ -7588,7 +7586,7 @@
 
             chartLabels.forEach(categoryName => {
                 const categoryData = categories[categoryName];
-                
+
                 categoryData.products.forEach((product) => {
                     const productCode = product.Codigo;
                     const productName = product.Produto;
@@ -7597,12 +7595,12 @@
                     // Re-calculate per product using the Product Results Sets
                     // Optimization: productResults[productCode] already contains sets of clients who bought
                     const pRes = productResults[productCode];
-                    
+
                     // IMPORTANT: productResults contains ALL clients who bought.
                     // We must filter by 'activeClientCodes' if not already done?
                     // 'processMap' already checked: `if (!activeClientCodes.has(codCli)) return;`
                     // So the sets in productResults are already filtered by active clients.
-                    
+
                     const clientsCurrentCount = pRes ? pRes.current.size : 0;
                     const clientsPreviousCount = pRes ? pRes.previous.size : 0;
 
@@ -7681,14 +7679,14 @@
             const clientInnovationStatus = activeClients.map(client => {
                 const codcli = client['Código'];
                 const status = {};
-                
+
                 chartLabels.forEach(catName => {
                     // Check if client exists in Main OR Bonus sets for this category
                     const inMain = categoryResults[catName].current.has(codcli);
                     const inBonus = categoryResults[catName].bonusCurrent.has(codcli);
                     status[catName] = inMain || inBonus;
                 });
-                
+
                 return { ...client, innovationStatus: status };
             });
 
@@ -7712,7 +7710,7 @@
                 const startIndex = (page - 1) * itemsPerPage;
                 const endIndex = startIndex + itemsPerPage;
                 const pageData = clientInnovationStatus.slice(startIndex, endIndex);
-                
+
                 const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-400 mx-auto" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>`;
                 const xIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-400 mx-auto" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>`;
 
@@ -7745,7 +7743,7 @@
                         infoText.textContent = `Página ${page} de ${totalPages} (${clientInnovationStatus.length} clientes)`;
                         prevBtn.disabled = page === 1;
                         nextBtn.disabled = page === totalPages;
-                        
+
                         // Clone and replace buttons to remove old event listeners
                         const newPrevBtn = prevBtn.cloneNode(true);
                         const newNextBtn = nextBtn.cloneNode(true);
@@ -8149,7 +8147,7 @@
             doc.autoTable({ head: [tableColumn], body: tableRows, startY: 60, theme: 'grid', styles: { fontSize: 8, cellPadding: 1.5, textColor: [0, 0, 0] }, headStyles: { fillColor: [41, 128, 185], textColor: 255, fontSize: 8, fontStyle: 'bold' }, alternateRowStyles: { fillColor: [240, 248, 255] }, margin: { top: 10 } });
             const pageCount = doc.internal.getNumberOfPages();
             for(let i = 1; i <= pageCount; i++) { doc.setPage(i); doc.setFontSize(9); doc.setTextColor(10); doc.text(`Página ${i} de ${pageCount}`, doc.internal.pageSize.width / 2, doc.internal.pageSize.height - 10, { align: 'center' }); }
-            
+
             let fileNameParam = 'geral';
             if (selectedCitySellers.length === 1) {
                 fileNameParam = getFirstName(selectedCitySellers[0]);
@@ -8229,7 +8227,7 @@
                     document.body.setAttribute('data-loading', 'true');
                     loaderText.textContent = text;
                     loader.classList.remove('opacity-0', 'pointer-events-none');
-                    setTimeout(resolve, 50); 
+                    setTimeout(resolve, 50);
                 } else {
                     resolve();
                 }
@@ -8260,7 +8258,7 @@
         async function navigateTo(view) {
             const sideMenu = document.getElementById('side-menu');
             const sidebarOverlay = document.getElementById('sidebar-overlay');
-            
+
             if (sideMenu) sideMenu.classList.add('-translate-x-full');
             if (sidebarOverlay) sidebarOverlay.classList.add('hidden');
 
@@ -8276,7 +8274,7 @@
                 mix: 'Mix'
             };
             const friendlyName = viewNameMap[view] || 'a página';
-            
+
             await showLoader(`Carregando ${friendlyName}...`);
 
             // This function now runs after the loader is visible
@@ -8290,7 +8288,7 @@
                     const icon = link.querySelector('svg');
                     if(icon) icon.classList.remove('text-white');
                 });
-                
+
                 const activeLink = document.querySelector(`.nav-link[data-target="${view}"]`);
                 if (activeLink) {
                     activeLink.classList.add('bg-slate-700', 'text-white');
@@ -8330,7 +8328,7 @@
                     case 'estoque':
                         stockView.classList.remove('hidden');
                         if (viewState.estoque.dirty) {
-                            handleStockFilterChange(); 
+                            handleStockFilterChange();
                             viewState.estoque.dirty = false;
                         }
                         break;
@@ -8346,14 +8344,14 @@
                         cityView.classList.remove('hidden');
                         if (viewState.cidades.dirty) {
                             updateAllCityFilters();
-                            updateCityView(); 
+                            updateCityView();
                             viewState.cidades.dirty = false;
                         }
                         break;
                     case 'semanal':
                         weeklyView.classList.remove('hidden');
                         if (viewState.semanal.dirty) {
-                            populateWeeklyFilters(); 
+                            populateWeeklyFilters();
                             updateWeeklyView();
                             viewState.semanal.dirty = false;
                         }
@@ -8385,9 +8383,9 @@
                         break;
                 }
             };
-            
+
             updateContent();
-            
+
             await hideLoader();
         }
 
@@ -8424,7 +8422,7 @@
                     const { value, checked } = e.target;
                     if (checked) selectedMainSupervisors.push(value);
                     else selectedMainSupervisors = selectedMainSupervisors.filter(s => s !== value);
-                    
+
                     selectedSellers = []; // Reset sellers when supervisor changes to avoid inconsistent state? Or keep valid intersection?
                     // Better: Re-run updateSellerFilter which filters 'selectedSellers' to only keep valid ones.
                     selectedMainSupervisors = updateSupervisorFilter(supervisorFilterDropdown, document.getElementById('supervisor-filter-text'), selectedMainSupervisors, allSalesData);
@@ -8442,7 +8440,7 @@
                     const { value, checked } = e.target;
                     if (checked) selectedMainSuppliers.push(value);
                     else selectedMainSuppliers = selectedMainSuppliers.filter(s => s !== value);
-                    
+
                     let supplierDataSource = [...allSalesData, ...allHistoryData];
                     if (currentFornecedor) {
                         supplierDataSource = supplierDataSource.filter(s => s.OBSERVACAOFOR === currentFornecedor);
@@ -8454,26 +8452,26 @@
             });
 
             vendedorFilterBtn.addEventListener('click', () => vendedorFilterDropdown.classList.toggle('hidden'));
-            vendedorFilterDropdown.addEventListener('change', (e) => { 
-                if (e.target.type === 'checkbox') { 
-                    const { value, checked } = e.target; 
-                    if (checked) selectedSellers.push(value); else selectedSellers = selectedSellers.filter(s => s !== value); 
-                    selectedSellers = updateSellerFilter(selectedMainSupervisors, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData); 
-                    mainTableState.currentPage = 1; 
-                    updateDashboard(); 
-                } 
+            vendedorFilterDropdown.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox') {
+                    const { value, checked } = e.target;
+                    if (checked) selectedSellers.push(value); else selectedSellers = selectedSellers.filter(s => s !== value);
+                    selectedSellers = updateSellerFilter(selectedMainSupervisors, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData);
+                    mainTableState.currentPage = 1;
+                    updateDashboard();
+                }
             });
-            
+
             tipoVendaFilterBtn.addEventListener('click', () => tipoVendaFilterDropdown.classList.toggle('hidden'));
-            tipoVendaFilterDropdown.addEventListener('change', (e) => { 
-                if (e.target.type === 'checkbox') { 
-                    const { value, checked } = e.target; 
-                    if (checked) selectedTiposVenda.push(value); 
-                    else selectedTiposVenda = selectedTiposVenda.filter(s => s !== value); 
-                    selectedTiposVenda = updateTipoVendaFilter(tipoVendaFilterDropdown, tipoVendaFilterText, selectedTiposVenda, allSalesData); 
-                    mainTableState.currentPage = 1; 
-                    updateDashboard(); 
-                } 
+            tipoVendaFilterDropdown.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox') {
+                    const { value, checked } = e.target;
+                    if (checked) selectedTiposVenda.push(value);
+                    else selectedTiposVenda = selectedTiposVenda.filter(s => s !== value);
+                    selectedTiposVenda = updateTipoVendaFilter(tipoVendaFilterDropdown, tipoVendaFilterText, selectedTiposVenda, allSalesData);
+                    mainTableState.currentPage = 1;
+                    updateDashboard();
+                }
             });
 
             posicaoFilter.addEventListener('change', () => { mainTableState.currentPage = 1; updateDashboard(); });
@@ -8484,7 +8482,7 @@
                 debouncedUpdateDashboard();
             });
             clearFiltersBtn.addEventListener('click', () => { resetMainFilters(); markDirty('dashboard'); markDirty('pedidos'); });
-            
+
             prevPageBtn.addEventListener('click', () => {
                 if (mainTableState.currentPage > 1) {
                     mainTableState.currentPage--;
@@ -8539,23 +8537,23 @@
                     const { value, checked } = e.target;
                     if (checked) selectedCitySupervisors.push(value);
                     else selectedCitySupervisors = selectedCitySupervisors.filter(s => s !== value);
-                    
+
                     selectedCitySellers = [];
                     handleCityFilterChange();
                 }
             });
 
             cityVendedorFilterBtn.addEventListener('click', () => cityVendedorFilterDropdown.classList.toggle('hidden'));
-            cityVendedorFilterDropdown.addEventListener('change', (e) => { 
-                if (e.target.type === 'checkbox') { 
-                    const { value, checked } = e.target; 
+            cityVendedorFilterDropdown.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox') {
+                    const { value, checked } = e.target;
                     if (checked) {
                         if (!selectedCitySellers.includes(value)) selectedCitySellers.push(value);
                     } else {
                         selectedCitySellers = selectedCitySellers.filter(s => s !== value);
                     }
-                    handleCityFilterChange({ skipFilter: 'seller' }); 
-                } 
+                    handleCityFilterChange({ skipFilter: 'seller' });
+                }
             });
 
             cityTipoVendaFilterBtn.addEventListener('click', () => cityTipoVendaFilterDropdown.classList.toggle('hidden'));
@@ -8607,23 +8605,23 @@
                 debouncedUpdateCity();
             });
 
-            cityNameFilter.addEventListener('input', (e) => { 
-                e.target.value = e.target.value.replace(/[0-9]/g, ''); 
-                const { clients } = getCityFilteredData({ excludeFilter: 'city' }); 
-                updateCitySuggestions(cityNameFilter, citySuggestions, clients); 
-            });
-            cityNameFilter.addEventListener('focus', () => { 
+            cityNameFilter.addEventListener('input', (e) => {
+                e.target.value = e.target.value.replace(/[0-9]/g, '');
                 const { clients } = getCityFilteredData({ excludeFilter: 'city' });
-                citySuggestions.classList.remove('manual-hide'); 
-                updateCitySuggestions(cityNameFilter, citySuggestions, clients); 
+                updateCitySuggestions(cityNameFilter, citySuggestions, clients);
+            });
+            cityNameFilter.addEventListener('focus', () => {
+                const { clients } = getCityFilteredData({ excludeFilter: 'city' });
+                citySuggestions.classList.remove('manual-hide');
+                updateCitySuggestions(cityNameFilter, citySuggestions, clients);
             });
             cityNameFilter.addEventListener('blur', () => setTimeout(() => citySuggestions.classList.add('hidden'), 150));
-            cityNameFilter.addEventListener('keydown', (e) => { 
-                if (e.key === 'Enter') { 
-                    citySuggestions.classList.add('hidden', 'manual-hide'); 
-                    handleCityFilterChange(); 
-                    e.target.blur(); 
-                } 
+            cityNameFilter.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    citySuggestions.classList.add('hidden', 'manual-hide');
+                    handleCityFilterChange();
+                    e.target.blur();
+                }
             });
 
             document.addEventListener('click', (e) => {
@@ -8631,20 +8629,20 @@
                 if (!fornecedorFilterBtn.contains(e.target) && !fornecedorFilterDropdown.contains(e.target)) fornecedorFilterDropdown.classList.add('hidden');
                 if (!vendedorFilterBtn.contains(e.target) && !vendedorFilterDropdown.contains(e.target)) vendedorFilterDropdown.classList.add('hidden');
                 if (!tipoVendaFilterBtn.contains(e.target) && !tipoVendaFilterDropdown.contains(e.target)) tipoVendaFilterDropdown.classList.add('hidden');
-                
+
                 if (!citySupervisorFilterBtn.contains(e.target) && !citySupervisorFilterDropdown.contains(e.target)) citySupervisorFilterDropdown.classList.add('hidden');
                 if (!cityVendedorFilterBtn.contains(e.target) && !cityVendedorFilterDropdown.contains(e.target)) cityVendedorFilterDropdown.classList.add('hidden');
                 if (!cityTipoVendaFilterBtn.contains(e.target) && !cityTipoVendaFilterDropdown.contains(e.target)) cityTipoVendaFilterDropdown.classList.add('hidden');
                 if (!cityComRedeBtn.contains(e.target) && !cityRedeFilterDropdown.contains(e.target)) cityRedeFilterDropdown.classList.add('hidden');
                 if (!mainComRedeBtn.contains(e.target) && !mainRedeFilterDropdown.contains(e.target)) mainRedeFilterDropdown.classList.add('hidden');
-                
+
                 if (!comparisonSupervisorFilterBtn.contains(e.target) && !comparisonSupervisorFilterDropdown.contains(e.target)) comparisonSupervisorFilterDropdown.classList.add('hidden');
                 if (!comparisonComRedeBtn.contains(e.target) && !comparisonRedeFilterDropdown.contains(e.target)) comparisonRedeFilterDropdown.classList.add('hidden');
                 if (!comparisonVendedorFilterBtn.contains(e.target) && !comparisonVendedorFilterDropdown.contains(e.target)) comparisonVendedorFilterDropdown.classList.add('hidden');
                 if (!comparisonTipoVendaFilterBtn.contains(e.target) && !comparisonTipoVendaFilterDropdown.contains(e.target)) comparisonTipoVendaFilterDropdown.classList.add('hidden');
                 if (!comparisonSupplierFilterBtn.contains(e.target) && !comparisonSupplierFilterDropdown.contains(e.target)) comparisonSupplierFilterDropdown.classList.add('hidden');
                 if (!comparisonProductFilterBtn.contains(e.target) && !comparisonProductFilterDropdown.contains(e.target)) comparisonProductFilterDropdown.classList.add('hidden');
-                
+
                 if (!stockSupervisorFilterBtn.contains(e.target) && !stockSupervisorFilterDropdown.contains(e.target)) stockSupervisorFilterDropdown.classList.add('hidden');
                 if (!stockComRedeBtn.contains(e.target) && !stockRedeFilterDropdown.contains(e.target)) stockRedeFilterDropdown.classList.add('hidden');
                 if (!stockVendedorFilterBtn.contains(e.target) && !stockVendedorFilterDropdown.contains(e.target)) stockVendedorFilterDropdown.classList.add('hidden');
@@ -8664,11 +8662,11 @@
                 else if (!stockCityFilter.contains(e.target)) stockCitySuggestions.classList.add('hidden');
             });
 
-            fornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(btn => { 
-                btn.addEventListener('click', () => { 
-                    const fornecedor = btn.dataset.fornecedor; 
-                    if (currentFornecedor === fornecedor) { currentFornecedor = ''; btn.classList.remove('active'); } else { currentFornecedor = fornecedor; fornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); } 
-                    
+            fornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const fornecedor = btn.dataset.fornecedor;
+                    if (currentFornecedor === fornecedor) { currentFornecedor = ''; btn.classList.remove('active'); } else { currentFornecedor = fornecedor; fornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
+
                     let supplierDataSource = [...allSalesData, ...allHistoryData];
                     if (currentFornecedor) {
                         supplierDataSource = supplierDataSource.filter(s => s.OBSERVACAOFOR === currentFornecedor);
@@ -8676,11 +8674,11 @@
                     selectedMainSuppliers = updateSupplierFilter(document.getElementById('fornecedor-filter-dropdown'), document.getElementById('fornecedor-filter-text'), selectedMainSuppliers, supplierDataSource, 'main');
 
                     selectedMainSupervisors = updateSupervisorFilter(document.getElementById('supervisor-filter-dropdown'), document.getElementById('supervisor-filter-text'), selectedMainSupervisors, allSalesData);
-                    selectedSellers = []; 
-                    updateSellerFilter(selectedMainSupervisors, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData); 
-                    mainTableState.currentPage = 1; 
-                    updateDashboard(); 
-                }); 
+                    selectedSellers = [];
+                    updateSellerFilter(selectedMainSupervisors, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData);
+                    mainTableState.currentPage = 1;
+                    updateDashboard();
+                });
             });
 
             const updateWeekly = () => {
@@ -8688,12 +8686,12 @@
                 updateWeeklyView();
             };
 
-            weeklyFornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(btn => { 
-                btn.addEventListener('click', () => { 
-                    const fornecedor = btn.dataset.fornecedor; 
-                    if (currentWeeklyFornecedor === fornecedor) { currentWeeklyFornecedor = ''; btn.classList.remove('active'); } else { currentWeeklyFornecedor = fornecedor; weeklyFornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); } 
-                    updateWeekly(); 
-                }); 
+            weeklyFornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const fornecedor = btn.dataset.fornecedor;
+                    if (currentWeeklyFornecedor === fornecedor) { currentWeeklyFornecedor = ''; btn.classList.remove('active'); } else { currentWeeklyFornecedor = fornecedor; weeklyFornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
+                    updateWeekly();
+                });
             });
             weeklySupervisorFilter.addEventListener('change', updateWeekly);
             clearWeeklyFiltersBtn.addEventListener('click', () => { resetWeeklyFilters(); markDirty('semanal'); });
@@ -8817,7 +8815,7 @@
                 updateComparisonProductFilter();
                 comparisonProductFilterDropdown.classList.toggle('hidden');
             });
-            
+
             const debouncedComparisonProductSearch = debounce(updateComparisonProductFilter, 250);
             comparisonProductFilterDropdown.addEventListener('input', (e) => {
                 if (e.target.id === 'comparison-product-search-input') {
@@ -8848,11 +8846,11 @@
                     updateStockProductFilter();
                 }
             });
-        
+
             stockFilialFilter.addEventListener('change', handleStockFilterChange);
             clearStockFiltersBtn.addEventListener('click', resetStockFilters);
             stockFornecedorToggleContainer.addEventListener('click', (e) => { if (e.target.tagName === 'BUTTON') { const fornecedor = e.target.dataset.fornecedor; if (currentStockFornecedor === fornecedor) { currentStockFornecedor = ''; e.target.classList.remove('active'); } else { currentStockFornecedor = fornecedor; stockFornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(b => b.classList.remove('active')); e.target.classList.add('active'); } handleStockFilterChange(); } });
-            
+
             const stockSupervisorFilterBtn = document.getElementById('stock-supervisor-filter-btn');
             const stockSupervisorFilterDropdown = document.getElementById('stock-supervisor-filter-dropdown');
             stockSupervisorFilterBtn.addEventListener('click', () => stockSupervisorFilterDropdown.classList.toggle('hidden'));
@@ -8861,7 +8859,7 @@
                     const { value, checked } = e.target;
                     if (checked) selectedStockSupervisors.push(value);
                     else selectedStockSupervisors = selectedStockSupervisors.filter(s => s !== value);
-                    
+
                     selectedStockSellers = [];
                     handleStockFilterChange();
                 }
@@ -9055,7 +9053,7 @@
                     const { value, checked } = e.target;
                     if (checked) selectedInnovationsSupervisors.push(value);
                     else selectedInnovationsSupervisors = selectedInnovationsSupervisors.filter(s => s !== value);
-                    
+
                     selectedInnovationsMonthSellers = [];
                     updateSellerFilter(selectedInnovationsSupervisors, innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, selectedInnovationsMonthSellers, allSalesData);
                     debouncedUpdateInnovationsMonth();
@@ -9123,7 +9121,7 @@
 
 
             document.getElementById('export-coverage-pdf-btn').addEventListener('click', exportCoveragePDF);
-            
+
             const coverageChartToggleBtn = document.getElementById('coverage-chart-toggle-btn');
             if (coverageChartToggleBtn) {
                 coverageChartToggleBtn.addEventListener('click', () => {
@@ -9163,19 +9161,19 @@
 
                     btn.classList.remove('text-slate-400', 'font-medium');
                     btn.classList.add('active', 'text-teal-400', 'font-bold', 'border-b-2', 'border-teal-400');
-                    
+
                     const indicator = document.createElement('span');
                     indicator.className = 'w-2 h-2 rounded-full bg-teal-400 inline-block indicator mr-2';
                     btn.prepend(indicator);
 
                     currentGoalsSupplier = btn.dataset.supplier;
                     currentGoalsBrand = btn.dataset.brand || null;
-                    
+
                     const cacheKey = currentGoalsSupplier + (currentGoalsBrand ? `_${currentGoalsBrand}` : '');
-                    
+
                     // --- Update Metrics Display and Pre-fill Inputs ---
                     const metrics = globalGoalsMetrics[cacheKey];
-                    
+
                     if (!goalsTargets[cacheKey]) {
                         goalsTargets[cacheKey] = { fat: 0, vol: 0 };
                     }
@@ -9190,7 +9188,7 @@
                     // Update Input Fields
                     const fatInput = document.getElementById('goal-global-fat');
                     const volInput = document.getElementById('goal-global-vol');
-                    
+
                     if (fatInput) fatInput.value = target.fat.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                     if (volInput) volInput.value = target.vol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
                     // ----------------------------------------------------------
@@ -9206,13 +9204,13 @@
             const btnSummary = document.getElementById('goals-category-summary-btn');
             const subTabsElmaChips = document.getElementById('goals-sub-tabs-elmachips');
             const subTabsFoods = document.getElementById('goals-sub-tabs-foods');
-            
+
             // Containers
             const goalsMainContainer = document.getElementById('goals-input-cards');
             const goalsTableContainer = document.getElementById('goals-table-container'); // Main table wrapper
             const goalsFiltersContainer = document.querySelector('#goals-gv-content > div.mb-4'); // Filters wrapper
             const goalsSummaryContainer = document.getElementById('goals-summary-content');
-            
+
             // Filter Wrappers
             const wrapperSupervisor = document.getElementById('goals-gv-supervisor-filter-wrapper');
             const wrapperSeller = document.getElementById('goals-gv-seller-filter-wrapper');
@@ -9230,7 +9228,7 @@
                 // Hide All Sub-tabs
                 if(subTabsElmaChips) subTabsElmaChips.classList.add('hidden');
                 if(subTabsFoods) subTabsFoods.classList.add('hidden');
-                
+
                 // Toggle Content
                 if (view === 'summary') {
                     if(btnSummary) {
@@ -9240,10 +9238,10 @@
                     if(goalsSummaryContainer) goalsSummaryContainer.classList.remove('hidden');
                     if(goalsMainContainer) goalsMainContainer.classList.add('hidden');
                     if(goalsTableContainer) goalsTableContainer.classList.add('hidden');
-                    
+
                     // HIDE Main Filters Container completely
                     if(goalsFiltersContainer) goalsFiltersContainer.classList.add('hidden');
-                    
+
                     // Ensure Summary Filters are initialized/visible (they are inside summary container)
                     updateGoalsSummaryView();
                 } else {
@@ -9251,7 +9249,7 @@
                     if(goalsSummaryContainer) goalsSummaryContainer.classList.add('hidden');
                     if(goalsMainContainer) goalsMainContainer.classList.remove('hidden');
                     if(goalsTableContainer) goalsTableContainer.classList.remove('hidden');
-                    
+
                     // SHOW Main Filters Container and all wrappers
                     if(goalsFiltersContainer) goalsFiltersContainer.classList.remove('hidden');
                     if(wrapperSupervisor) wrapperSupervisor.classList.remove('hidden');
@@ -9264,7 +9262,7 @@
                             btnElmaChips.classList.add('bg-[#0d9488]', 'text-white', 'shadow-lg', 'border-teal-500/50');
                         }
                         if(subTabsElmaChips) subTabsElmaChips.classList.remove('hidden');
-                        
+
                         // Select First Tab of Elma Chips
                         const firstTab = subTabsElmaChips.querySelector('.goals-sub-tab');
                         if (firstTab) firstTab.click();
@@ -9274,12 +9272,12 @@
                             btnFoods.classList.add('bg-[#0d9488]', 'text-white', 'shadow-lg', 'border-teal-500/50');
                         }
                         if(subTabsFoods) subTabsFoods.classList.remove('hidden');
-                        
+
                         // Select First Tab of Foods
                         const firstTab = subTabsFoods.querySelector('.goals-sub-tab');
                         if (firstTab) firstTab.click();
                     }
-                    
+
                     // --- FIX: Update Inputs for Default Selection when Switching Category ---
                     // When clicking "Elma Chips" or "Foods", we default to the first tab.
                     // We need to ensure the inputs are loaded for that default tab.
@@ -9328,14 +9326,14 @@
                     const { value, checked } = e.target;
                     if (checked) selectedGoalsGvSupervisors.push(value);
                     else selectedGoalsGvSupervisors = selectedGoalsGvSupervisors.filter(s => s !== value);
-                    
+
                     selectedGoalsGvSupervisors = updateSupervisorFilter(goalsGvSupervisorFilterDropdown, goalsGvSupervisorFilterText, selectedGoalsGvSupervisors, allSalesData, true);
 
-                    // Reset sellers or keep intersection? 
+                    // Reset sellers or keep intersection?
                     // Standard: Update Seller Options based on Supervisor
                     selectedGoalsGvSellers = [];
                     selectedGoalsGvSellers = updateSellerFilter(selectedGoalsGvSupervisors, goalsGvSellerFilterDropdown, goalsGvSellerFilterText, selectedGoalsGvSellers, allSalesData);
-                    
+
                     updateGoals();
                 }
             });
@@ -9346,9 +9344,9 @@
                     const { value, checked } = e.target;
                     if (checked) selectedGoalsGvSellers.push(value);
                     else selectedGoalsGvSellers = selectedGoalsGvSellers.filter(s => s !== value);
-                    
+
                     selectedGoalsGvSellers = updateSellerFilter(selectedGoalsGvSupervisors, goalsGvSellerFilterDropdown, goalsGvSellerFilterText, selectedGoalsGvSellers, allSalesData, true);
-                    
+
                     updateGoals();
                 }
             });
@@ -9365,13 +9363,13 @@
 
             if (goalsSummarySupervisorFilterBtn && goalsSummarySupervisorFilterDropdown) {
                 goalsSummarySupervisorFilterBtn.addEventListener('click', () => goalsSummarySupervisorFilterDropdown.classList.toggle('hidden'));
-                
+
                 goalsSummarySupervisorFilterDropdown.addEventListener('change', (e) => {
                     if (e.target.type === 'checkbox') {
                         const { value, checked } = e.target;
                         if (checked) selectedGoalsSummarySupervisors.push(value);
                         else selectedGoalsSummarySupervisors = selectedGoalsSummarySupervisors.filter(s => s !== value);
-                        
+
                         updateSupervisorFilter(goalsSummarySupervisorFilterDropdown, document.getElementById('goals-summary-supervisor-filter-text'), selectedGoalsSummarySupervisors, allSalesData, true);
                         updateGoalsSummaryView();
                     }
@@ -9420,7 +9418,7 @@
             // Add Input Listeners for Real-time State Updates
             const fatInput = document.getElementById('goal-global-fat');
             const volInput = document.getElementById('goal-global-vol');
-            
+
             // REMOVED: Automatic update on change/input to prevent overwriting user input before distribution.
             // Values are now read directly from the input when the "Distribute" button is clicked.
 
@@ -9433,7 +9431,7 @@
                     const { value, checked } = e.target;
                     if (checked) selectedGoalsSvSupervisors.push(value);
                     else selectedGoalsSvSupervisors = selectedGoalsSvSupervisors.filter(s => s !== value);
-                    
+
                     selectedGoalsSvSupervisors = updateSupervisorFilter(goalsSvSupervisorFilterDropdown, goalsSvSupervisorFilterText, selectedGoalsSvSupervisors, allSalesData, true);
                     updateGoalsSvView();
                 }
@@ -9506,10 +9504,10 @@
             });
 
             document.getElementById('mix-filial-filter').addEventListener('change', updateMix);
-            
+
             const mixCityFilter = document.getElementById('mix-city-filter');
             const mixCitySuggestions = document.getElementById('mix-city-suggestions');
-            
+
             mixCityFilter.addEventListener('input', (e) => {
                 e.target.value = e.target.value.replace(/[0-9]/g, '');
                 const { clients } = getMixFilteredData({ excludeFilter: 'city' });
@@ -9558,11 +9556,11 @@
                     const { value, checked } = e.target;
                     if (checked) selectedMixRedes.push(value);
                     else selectedMixRedes = selectedMixRedes.filter(r => r !== value);
-                    
+
                     mixRedeGroupFilter = 'com_rede';
                     document.getElementById('mix-rede-group-container').querySelectorAll('button').forEach(b => b.classList.remove('active'));
                     document.getElementById('mix-com-rede-btn').classList.add('active');
-                    
+
                     handleMixFilterChange({ skipFilter: 'rede' });
                 }
             });
@@ -9575,7 +9573,7 @@
                 markDirty('mix');
                 updateMixView();
             });
-            
+
             document.getElementById('mix-prev-page-btn').addEventListener('click', () => {
                 if (mixTableState.currentPage > 1) {
                     mixTableState.currentPage--;
@@ -9606,7 +9604,7 @@
             const debouncedHandleCoverageChange = debounce(updateCoverage, 400);
 
             coverageFilialFilter.addEventListener('change', updateCoverage);
-            
+
             const coverageSupervisorFilterBtn = document.getElementById('coverage-supervisor-filter-btn');
             const coverageSupervisorFilterDropdown = document.getElementById('coverage-supervisor-filter-dropdown');
             coverageSupervisorFilterBtn.addEventListener('click', () => coverageSupervisorFilterDropdown.classList.toggle('hidden'));
@@ -9615,7 +9613,7 @@
                     const { value, checked } = e.target;
                     if (checked) selectedCoverageSupervisors.push(value);
                     else selectedCoverageSupervisors = selectedCoverageSupervisors.filter(s => s !== value);
-                    
+
                     selectedCoverageSellers = [];
                     updateCoverage();
                 }
@@ -9780,7 +9778,7 @@
         selectedMainSuppliers = updateSupplierFilter(document.getElementById('fornecedor-filter-dropdown'), document.getElementById('fornecedor-filter-text'), selectedMainSuppliers, [...allSalesData, ...allHistoryData], 'main');
         selectedCitySupervisors = updateSupervisorFilter(document.getElementById('city-supervisor-filter-dropdown'), document.getElementById('city-supervisor-filter-text'), selectedCitySupervisors, allSalesData);
         selectedStockSupervisors = updateSupervisorFilter(document.getElementById('stock-supervisor-filter-dropdown'), document.getElementById('stock-supervisor-filter-text'), selectedStockSupervisors, [...allSalesData, ...allHistoryData]);
-        
+
         updateSellerFilter(selectedMainSupervisors, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData);
         updateTipoVendaFilter(tipoVendaFilterDropdown, tipoVendaFilterText, selectedTiposVenda, allSalesData);
         updateSellerFilter(selectedCitySupervisors, cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData);
@@ -9810,10 +9808,10 @@
 
         initializeRedeFilters();
         setupEventListeners();
-        
+
         // Assegura que os dados históricos estão prontos antes da primeira renderização
         calculateHistoricalBests();
-        
+
         // --- Initialization for Goals Metrics ---
         calculateGoalsMetrics();
         // Initialize Targets with Defaults (Pre-fill)
@@ -9833,7 +9831,7 @@
             const vi = document.getElementById('goal-global-vol');
             if (fi) fi.value = defGoalsMetric.prevFat.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             if (vi) vi.value = defGoalsMetric.prevVol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-            
+
             const refAvgFat = document.getElementById('ref-avg-fat');
             const refPrevFat = document.getElementById('ref-prev-fat');
             const refAvgVol = document.getElementById('ref-avg-vol');
@@ -9945,87 +9943,87 @@
                         <style>
                             /* Estilo base do tema escuro */
                             body { font-family: 'Inter', sans-serif; background-color: #0d1126; }
-                            
+
                             /* Scrollbars personalizadas para o tema escuro */
                             ::-webkit-scrollbar { width: 8px; }
                             ::-webkit-scrollbar-track { background: #161e3d; } /* Cor de fundo da trilha */
                             ::-webkit-scrollbar-thumb { background: #4a5568; border-radius: 10px; } /* Cor do "polegar" */
                             ::-webkit-scrollbar-corner { background: #161e3d; }
-                            
+
                             /* Cabeçalhos de tabela fixos (sticky) */
-                            .sticky-header th { 
-                                position: sticky; 
-                                top: 0; 
-                                z-index: 10; 
+                            .sticky-header th {
+                                position: sticky;
+                                top: 0;
+                                z-index: 10;
                                 background-color: #161e3d; /* Cor de fundo escura para o cabeçalho */
                                 border-bottom: 2px solid #2d3748; /* Borda escura */
                             }
                             .hidden { display: none; }
-                            
+
                             /* Estilo de botões ativos (filtros, toggles) */
-                            .metric-btn.active, .monthly-metric-btn.active, .fornecedor-btn.active, .comparison-toggle-btn.active, .group-btn.active, #main-rede-group-container > div > button.active, #city-rede-group-container > div > button.active, #comparison-rede-group-container > div > button.active, #stock-rede-group-container > div > button.active { 
+                            .metric-btn.active, .monthly-metric-btn.active, .fornecedor-btn.active, .comparison-toggle-btn.active, .group-btn.active, #main-rede-group-container > div > button.active, #city-rede-group-container > div > button.active, #comparison-rede-group-container > div > button.active, #stock-rede-group-container > div > button.active {
                                 background-color: #38b2ac; /* teal-500 */
-                                color: #FFF; 
+                                color: #FFF;
                             }
-                            
+
                             /* Overlay do modal */
-                            .modal-overlay { 
-                                position: fixed; 
-                                top: 0; left: 0; right: 0; bottom: 0; 
+                            .modal-overlay {
+                                position: fixed;
+                                top: 0; left: 0; right: 0; bottom: 0;
                                 background: rgba(0,0,0,0.7); /* Overlay mais escuro */
-                                display: flex; 
-                                align-items: center; 
-                                justify-content: center; 
-                                z-index: 1000; 
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                z-index: 1000;
                             }
-                            
+
                             /* Tooltip */
                             .tooltip { position: relative; display: inline-block; cursor: pointer; }
-                            .tooltip .tooltip-text { 
-                                visibility: hidden; 
-                                width: auto; 
-                                min-width: 80px; 
+                            .tooltip .tooltip-text {
+                                visibility: hidden;
+                                width: auto;
+                                min-width: 80px;
                                 background-color: #1f2937; /* bg-gray-800 */
-                                color: #fff; 
-                                text-align: center; 
-                                border-radius: 6px; 
-                                padding: 5px 8px; 
-                                position: absolute; 
-                                z-index: 1001; 
-                                bottom: 125%; 
-                                left: 50%; 
-                                transform: translateX(-50%); 
-                                opacity: 0; 
-                                transition: opacity 0.3s; 
-                                pointer-events: none; 
-                                white-space: nowrap; 
+                                color: #fff;
+                                text-align: center;
+                                border-radius: 6px;
+                                padding: 5px 8px;
+                                position: absolute;
+                                z-index: 1001;
+                                bottom: 125%;
+                                left: 50%;
+                                transform: translateX(-50%);
+                                opacity: 0;
+                                transition: opacity 0.3s;
+                                pointer-events: none;
+                                white-space: nowrap;
                             }
                             .tooltip:hover .tooltip-text { visibility: visible; opacity: 1; }
-                            
+
                             /* Scrollbar customizada para elementos internos */
                             .custom-scrollbar::-webkit-scrollbar { width: 8px; }
                             .custom-scrollbar::-webkit-scrollbar-track { background: #161e3d; }
                             .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #4a5568; border-radius: 10px; }
-                            
+
                             /* Estilo dos cartões KPI */
-                            .kpi-card { 
+                            .kpi-card {
                                 background-color: #1d2347; /* Fundo do cartão */
-                                border-radius: 0.5rem; 
-                                padding: 1.5rem; 
-                                text-align: center; 
+                                border-radius: 0.5rem;
+                                padding: 1.5rem;
+                                text-align: center;
                                 border: 1px solid #2d3748; /* Borda (slate-700) */
-                                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); 
+                                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
                             }
-                            
+
                             /* Botão de tendência de estoque ativo */
         .stock-trend-btn.active, .coverage-trend-btn.active {
                                 outline: 2px solid #38b2ac; /* Destaque teal-500 */
-                                outline-offset: 2px; 
-                                transform: scale(1.1); 
+                                outline-offset: 2px;
+                                transform: scale(1.1);
                             }
-                            
+
                             /* Remove setas de input[type=number] */
-                            input[type=number]::-webkit-inner-spin-button, 
+                            input[type=number]::-webkit-inner-spin-button,
                             input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
                             input[type=number] { -moz-appearance: textfield; }
                         </style>
@@ -10104,7 +10102,7 @@
                             </div>
                         </aside>
                         <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-40 hidden glass-effect"></div>
-                        
+
                         <div id="page-transition-loader" class="fixed inset-0 bg-black/30 backdrop-blur-sm z-[9999] flex items-center justify-center transition-opacity duration-300">
                             <div class="flex flex-col items-center">
                                 <svg class="animate-spin -ml-1 mr-3 h-10 w-10 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -10162,7 +10160,7 @@
                                     </div>
                                     <!-- Botões de Navegação removidos (movidos para sidebar) -->
                                 </div>
-                                
+
                                 <!-- Container de Filtros -->
                                 <div id="main-filters" class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
                                     <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 items-end">
@@ -10255,7 +10253,7 @@
                                 </main>
                             </div>
                         </div>
-                        
+
                         <!-- Ecrã de Cidades -->
                         <div id="city-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
@@ -10336,7 +10334,7 @@
                                 <div class="bg-[#1d2347] p-4 rounded-lg mt-6 border border-slate-700 shadow-sm"><div class="flex justify-between items-center mb-4 px-4"><h3 class="text-lg font-semibold text-white">Clientes S/ Vendas no Mês</h3><button id="export-inactive-pdf-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg text-sm">Exportar Relatório</button></div><div class="overflow-x-auto custom-scrollbar" style="max-height: 40vh;"><table class="min-w-full text-sm text-left text-slate-300"><thead class="text-xs text-slate-400 uppercase sticky-header"><tr><th class="px-4 py-3">Código</th><th class="px-4 py-3">Nome Fantasia</th><th class="px-4 py-3">Cidade</th><th class="px-4 py-3">Bairro</th><th class="px-4 py-3 text-center">Última Compra</th><th class="px-4 py-3">RCA 1</th></tr></thead><tbody id="city-inactive-detail-table-body" class="divide-y divide-slate-700"></tbody></table></div></div>
                             </div>
                         </div>
-                        
+
                         <!-- Ecrã Semanal -->
                         <div id="weekly-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
@@ -10362,7 +10360,7 @@
                                 <div class="grid grid-cols-1 gap-6"><div class="grid grid-cols-1 lg:grid-cols-2 gap-6"><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 class="text-lg font-semibold text-white mb-4 text-center">Ranking de Positivação</h2><div id="positivacaoChartContainer" class="relative h-80"></div></div><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 class="text-lg font-semibold text-white mb-4 text-center">Ranking de Mix de Produtos (Por PDV)</h2><div id="mixChartContainer" class="relative h-80"></div></div></div><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 class="text-lg font-semibold text-white mb-4 text-center">Top 10 Vendedores (Faturamento)</h2><div id="topSellersChartContainer" class="relative h-80"></div></div></div>
                             </div>
                         </div>
-                        
+
                         <!-- Ecrã Comparativo -->
                         <div id="comparison-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
@@ -10472,7 +10470,7 @@
                                 <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 class="text-lg font-semibold text-white text-center mb-4">Variação de Faturamento por Supervisor</h2><div class="overflow-x-auto custom-scrollbar" style="max-height: 40vh;"><table class="min-w-full text-sm text-left text-slate-300"><thead class="text-xs text-slate-400 uppercase sticky-header"><tr><th class="px-4 py-3">Supervisor</th><th class="px-4 py-3 text-right">Média Trim.</th><th class="px-4 py-3 text-right">Fat. Mês Atual</th><th class="px-4 py-3 text-right">Variação</th></tr></thead><tbody id="supervisorComparisonTableBody" class="divide-y divide-slate-700"></tbody></table></div></div>
                             </div>
                         </div>
-                        
+
                         <!-- Ecrã Estoque -->
                         <div id="stock-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
@@ -10643,7 +10641,7 @@
                                         <button id="goals-category-foods-btn" class="px-8 py-3 bg-[#334155] text-slate-400 font-bold rounded hover:bg-slate-700 transition-colors uppercase tracking-wider text-sm border border-slate-700">FOODS</button>
                                          <button id="goals-category-summary-btn" class="px-8 py-3 bg-[#334155] text-slate-400 font-bold rounded hover:bg-slate-700 transition-colors uppercase tracking-wider text-sm border border-slate-700">RESUMO</button>
                                     </div>
-                                    
+
                                     <!-- Sub-tabs Container -->
                                     <div id="goals-sub-tabs-container">
                                         <!-- Elma Chips Sub-tabs -->
@@ -10681,7 +10679,7 @@
                                             </div>
                                             <button id="clear-goals-summary-filters-btn" class="w-full sm:w-auto bg-slate-600 hover:bg-slate-500 text-white font-bold py-2.5 px-4 rounded-lg">Limpar Filtros</button>
                                         </div>
-                                        
+
                                         <!-- Totals Summary -->
                                         <div class="flex flex-wrap gap-6 bg-[#161e3d] p-3 rounded-lg border border-slate-700/50 w-full lg:w-auto justify-end">
                                             <div class="text-right px-2">
@@ -10846,7 +10844,7 @@
                                         </button>
                                     </div>
                                 </div>
-                                
+
                                 <!-- Consolidated Table (SV) -->
                                 <div id="goals-sv-table-container" class="bg-[#1d2347] border border-slate-700 shadow-sm rounded-lg overflow-hidden">
                                     <div class="overflow-auto custom-scrollbar" style="max-height: 75vh;">
@@ -11244,7 +11242,7 @@
                                 <div id="modal-footer-total" class="p-6 border-t border-slate-700 flex justify-between items-center"></div>
                             </div>
                         </div>
-                        
+
                         <!-- Modal Detalhes do Cliente -->
                         <div id="client-details-modal" class="modal-overlay hidden">
                             <div class="bg-slate-800 rounded-lg shadow-2xl max-w-2xl w-full m-4 border border-slate-700">
@@ -11252,7 +11250,7 @@
                                 <div id="client-modal-content" class="p-6 text-slate-300"></div>
                             </div>
                         </div>
-                        
+
                         <!-- Modal Feriados -->
                         <div id="holiday-modal" class="modal-overlay hidden">
                             <div class="bg-slate-800 rounded-lg shadow-2xl max-w-xs w-full m-4 text-slate-300 border border-slate-700">
@@ -11285,7 +11283,7 @@
                             </div>
                         </div>
                         </div> <!-- End content-wrapper -->
-                        
+
                         <script id="embedded-data" type="application/json">
                             ${jsonDataString}
                         <\/script>
