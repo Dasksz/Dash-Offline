@@ -2815,8 +2815,20 @@
             const totalPosCount = uniquePosClientsSet.size;
             if(totalPosEl) totalPosEl.textContent = totalPosCount.toLocaleString('pt-BR');
             
-            if(mixSaltyEl) mixSaltyEl.textContent = Math.round(totalPosCount * 0.60).toLocaleString('pt-BR');
-            if(mixFoodsEl) mixFoodsEl.textContent = Math.round(totalPosCount * 0.30).toLocaleString('pt-BR');
+            // Calculate base for Mix Goals (Exclude Americanas / Seller 1001)
+            let mixBaseCount = 0;
+            uniquePosClientsSet.forEach(clientCode => {
+                const client = clientMapForKPIs.get(String(clientCode));
+                if (client) {
+                     const rca1 = String(client.rca1 || '').trim();
+                     if (rca1 !== '1001') {
+                         mixBaseCount++;
+                     }
+                }
+            });
+
+            if(mixSaltyEl) mixSaltyEl.textContent = Math.round(mixBaseCount * 0.60).toLocaleString('pt-BR');
+            if(mixFoodsEl) mixFoodsEl.textContent = Math.round(mixBaseCount * 0.30).toLocaleString('pt-BR');
         }
 
         function calculateDistributedGoals(filteredClients, currentGoalsSupplier, currentGoalsBrand, goalFat, goalVol) {
@@ -3611,9 +3623,14 @@
 
                 const mixStats = calculateMixMetrics(sellerObj);
                 
+                let mixSaltyMeta = Math.round(activeClientsCount * 0.60);
+                if (sellerObj.code === '1001') {
+                    mixSaltyMeta = 0;
+                }
+
                 sellerObj.data['mix_salty'] = {
                     avgMix: mixStats.avgSalty,
-                    metaMix: Math.round(activeClientsCount * 0.60)
+                    metaMix: mixSaltyMeta
                 };
                 
                 let mixFoodsMeta = Math.round(activeClientsCount * 0.30);
