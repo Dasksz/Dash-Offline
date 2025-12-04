@@ -1366,6 +1366,7 @@
         let currentGoalsBrand = null;
         let currentGoalsSvSupplier = '707';
         let currentGoalsSvBrand = null;
+        let currentGoalsSvData = [];
         let goalsTableState = {
             currentPage: 1,
             itemsPerPage: 100,
@@ -2082,6 +2083,391 @@
         }
 
         // --- GOALS VIEW LOGIC ---
+
+        function exportGoalsSvXLSX() {
+            if (typeof XLSX === 'undefined') {
+                alert("Erro: Biblioteca XLSX não carregada. Verifique sua conexão com a internet.");
+                return;
+            }
+
+            if (!currentGoalsSvData || currentGoalsSvData.length === 0) {
+                try { updateGoalsSvView(); } catch (e) { console.error(e); }
+                if (!currentGoalsSvData || currentGoalsSvData.length === 0) {
+                    alert("Sem dados para exportar.");
+                    return;
+                }
+            }
+
+            const wb = XLSX.utils.book_new();
+            const ws_data = [];
+
+            // Estilos
+            const headerStyle = { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "0F172A" } }, alignment: { horizontal: "center", vertical: "center" }, border: { bottom: { style: "thin", color: { rgb: "475569" } } } };
+            const subHeaderStyle = { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "1E293B" } }, alignment: { horizontal: "center", vertical: "center" }, border: { bottom: { style: "thin", color: { rgb: "334155" } } } };
+            const editableStyle = { fill: { fgColor: { rgb: "FEF9C3" } }, border: { top: { style: "thin" }, bottom: { style: "thin" }, left: { style: "thin" }, right: { style: "thin" } } }; // Light Yellow
+            const readOnlyStyle = { fill: { fgColor: { rgb: "F1F5F9" } } }; // Light Slate
+            const totalRowStyle = { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "334155" } }, border: { top: { style: "thick" } } };
+            const grandTotalStyle = { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "0F172A" } }, border: { top: { style: "thick" } } };
+
+            // Format Strings
+            const fmtMoney = "\"R$ \"#,##0.00";
+            const fmtVol = "0.000";
+            const fmtInt = "0";
+            const fmtDec1 = "0.0";
+
+            // Cores de Grupo
+            const colorMap = {
+                'total_elma': { fgColor: { rgb: "14B8A6" } }, // Teal
+                'total_foods': { fgColor: { rgb: "F59E0B" } }, // Amber/Yellow
+                'tonelada_elma': { fgColor: { rgb: "F97316" } }, // Orange
+                'tonelada_foods': { fgColor: { rgb: "F97316" } },
+                'mix_salty': { fgColor: { rgb: "14B8A6" } },
+                'mix_foods': { fgColor: { rgb: "F59E0B" } },
+                'geral': { fgColor: { rgb: "3B82F6" } }, // Blue
+                'pedev': { fgColor: { rgb: "EC4899" } } // Pink
+            };
+
+            const createCell = (v, s = {}, z = null) => {
+                const cell = { v, t: 'n' };
+                if (z) {
+                    cell.z = z;
+                    cell.s = { ...s, numFmt: z };
+                } else {
+                    cell.s = s;
+                }
+                if (typeof v === 'string') cell.t = 's';
+                return cell;
+            };
+
+            // --- 1. Headers ---
+            const row1 = [createCell("CÓD", headerStyle), createCell("VENDEDOR", headerStyle)];
+            const merges = [{ s: { r: 0, c: 0 }, e: { r: 2, c: 0 } }, { s: { r: 0, c: 1 }, e: { r: 2, c: 1 } }];
+            let colIdx = 2;
+
+            const svColumns = [
+                { id: 'total_elma', label: 'TOTAL ELMA', type: 'standard', isAgg: true },
+                { id: '707', label: 'EXTRUSADOS', type: 'standard' },
+                { id: '708', label: 'NÃO EXTRUSADOS', type: 'standard' },
+                { id: '752', label: 'TORCIDA', type: 'standard' },
+                { id: 'tonelada_elma', label: 'TONELADA ELMA', type: 'tonnage', isAgg: true },
+                { id: 'mix_salty', label: 'MIX SALTY', type: 'mix', isAgg: true },
+                { id: 'total_foods', label: 'TOTAL FOODS', type: 'standard', isAgg: true },
+                { id: '1119_TODDYNHO', label: 'TODDYNHO', type: 'standard' },
+                { id: '1119_TODDY', label: 'TODDY', type: 'standard' },
+                { id: '1119_QUAKER_KEROCOCO', label: 'QUAKER / KEROCOCO', type: 'standard' },
+                { id: 'tonelada_foods', label: 'TONELADA FOODS', type: 'tonnage', isAgg: true },
+                { id: 'mix_foods', label: 'MIX FOODS', type: 'mix', isAgg: true },
+                { id: 'geral', label: 'GERAL', type: 'geral', isAgg: true },
+                { id: 'pedev', label: 'AUDITORIA PEDEV', type: 'pedev', isAgg: true }
+            ];
+
+            const colMap = {};
+
+            svColumns.forEach(col => {
+                colMap[col.id] = colIdx;
+                const style = { ...headerStyle };
+                if (colorMap[col.id]) style.fill = colorMap[col.id]; // Apply Group Color
+
+                row1.push(createCell(col.label, style));
+                let span = 0;
+                if (col.type === 'standard') span = 4;
+                else if (col.type === 'tonnage' || col.type === 'mix') span = 3;
+                else if (col.type === 'geral') span = 4;
+                else if (col.type === 'pedev') span = 1;
+
+                merges.push({ s: { r: 0, c: colIdx }, e: { r: 0, c: colIdx + span - 1 } });
+                for (let k = 1; k < span; k++) row1.push(createCell("", style));
+                colIdx += span;
+            });
+            ws_data.push(row1);
+
+            // Row 2: Metric Names
+            const row2 = [createCell("", headerStyle), createCell("", headerStyle)];
+            svColumns.forEach(col => {
+                const style = { ...subHeaderStyle, font: { bold: true, color: { rgb: "FFFFFF" } } };
+                if (col.type === 'standard') {
+                    row2.push(createCell("FATURAMENTO", style), createCell("", style), createCell("POSITIVAÇÃO", style), createCell("", style));
+                    merges.push({ s: { r: 1, c: colMap[col.id] }, e: { r: 1, c: colMap[col.id] + 1 } });
+                    merges.push({ s: { r: 1, c: colMap[col.id] + 2 }, e: { r: 1, c: colMap[col.id] + 3 } });
+                } else if (col.type === 'tonnage') {
+                    row2.push(createCell("MÉDIA TRIM.", style), createCell("META TON", style), createCell("", style));
+                    merges.push({ s: { r: 1, c: colMap[col.id] + 1 }, e: { r: 1, c: colMap[col.id] + 2 } });
+                } else if (col.type === 'mix') {
+                    row2.push(createCell("MÉDIA TRIM.", style), createCell("META MIX", style), createCell("", style));
+                    merges.push({ s: { r: 1, c: colMap[col.id] + 1 }, e: { r: 1, c: colMap[col.id] + 2 } });
+                } else if (col.type === 'geral') {
+                    row2.push(createCell("FATURAMENTO", style), createCell("", style), createCell("TONELADA", style), createCell("POSITIVAÇÃO", style));
+                    merges.push({ s: { r: 1, c: colMap[col.id] }, e: { r: 1, c: colMap[col.id] + 1 } });
+                } else {
+                    row2.push(createCell("META", style));
+                }
+            });
+            ws_data.push(row2);
+
+            // Row 3: Subtitles
+            const row3 = [createCell("", subHeaderStyle), createCell("", subHeaderStyle)];
+            svColumns.forEach(col => {
+                if (col.type === 'standard') {
+                    row3.push(createCell("Meta", subHeaderStyle), createCell("Ajuste", subHeaderStyle), createCell("Meta", subHeaderStyle), createCell("Ajuste", subHeaderStyle));
+                } else if (col.type === 'tonnage') {
+                    row3.push(createCell("Volume", subHeaderStyle), createCell("Volume", subHeaderStyle), createCell("Ajuste", subHeaderStyle));
+                } else if (col.type === 'mix') {
+                    row3.push(createCell("Qtd", subHeaderStyle), createCell("Meta", subHeaderStyle), createCell("Ajuste", subHeaderStyle));
+                } else if (col.type === 'geral') {
+                    row3.push(createCell("Média Trim.", subHeaderStyle), createCell("Meta", subHeaderStyle), createCell("Meta", subHeaderStyle), createCell("Meta", subHeaderStyle));
+                } else {
+                    row3.push(createCell("", subHeaderStyle));
+                }
+            });
+            ws_data.push(row3);
+
+            // --- 2. Data Rows ---
+            let currentRow = 3;
+            const colCellsForGrandTotal = {};
+            svColumns.forEach(c => colCellsForGrandTotal[c.id] = { fat: [], pos: [], vol: [], mix: [], avg: [] });
+
+            currentGoalsSvData.forEach(sup => {
+                const sellers = sup.sellers;
+                const colCellsForSupTotal = {};
+                svColumns.forEach(c => colCellsForSupTotal[c.id] = { fat: [], pos: [], vol: [], mix: [], avg: [] });
+
+                sellers.forEach(seller => {
+                    const rowData = [createCell(seller.code), createCell(seller.name)];
+
+                    svColumns.forEach(col => {
+                        const d = seller.data[col.id] || { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0, avgFat: 0 };
+                        const cIdx = colMap[col.id];
+                        const excelRow = currentRow + 1;
+                        const getColLet = (idx) => XLSX.utils.encode_col(idx);
+
+                        // Highlight Logic
+                        const isEditable = !col.isAgg; // Base columns are editable (Yellow)
+                        const cellStyle = isEditable ? editableStyle : readOnlyStyle;
+                        const aggCellStyle = readOnlyStyle; // Aggregated columns (Light Grey)
+
+                        if (col.type === 'standard') {
+                            rowData.push(createCell(d.metaFat, readOnlyStyle, fmtMoney));
+
+                            // Formula for Aggregate Logic
+                            if (col.id === 'total_elma' || col.id === 'total_foods') {
+                                const ids = col.id === 'total_elma' ? ['707', '708', '752'] : ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
+                                const compCols = ids.map(id => colMap[id] + 1);
+                                const compColsPos = ids.map(id => colMap[id] + 3);
+                                const formulaFat = compCols.map(c => `${getColLet(c)}${excelRow}`).join("+");
+                                const formulaPos = compColsPos.map(c => `${getColLet(c)}${excelRow}`).join("+");
+
+                                rowData.push({ t: 'n', v: d.metaFat, f: formulaFat, s: { ...aggCellStyle, numFmt: fmtMoney }, z: fmtMoney });
+                                rowData.push(createCell(d.metaPos, readOnlyStyle, fmtInt));
+                                rowData.push({ t: 'n', v: d.metaPos, f: formulaPos, s: { ...aggCellStyle, numFmt: fmtInt }, z: fmtInt });
+                            } else {
+                                // Editable Cells
+                                rowData.push(createCell(d.metaFat, cellStyle, fmtMoney));
+                                rowData.push(createCell(d.metaPos, readOnlyStyle, fmtInt));
+                                rowData.push(createCell(d.metaPos, cellStyle, fmtInt));
+                            }
+
+                            colCellsForSupTotal[col.id].fat.push(`${getColLet(cIdx + 1)}${excelRow}`);
+                            colCellsForSupTotal[col.id].pos.push(`${getColLet(cIdx + 3)}${excelRow}`);
+
+                        } else if (col.type === 'tonnage') {
+                            rowData.push(createCell(d.avgVol, readOnlyStyle, fmtVol));
+                            rowData.push(createCell(d.metaVol, readOnlyStyle, fmtVol));
+                            rowData.push(createCell(d.metaVol, isEditable ? cellStyle : aggCellStyle, fmtVol));
+                            colCellsForSupTotal[col.id].vol.push(`${getColLet(cIdx + 2)}${excelRow}`);
+                            colCellsForSupTotal[col.id].avg.push(`${getColLet(cIdx)}${excelRow}`);
+
+                        } else if (col.type === 'mix') {
+                            rowData.push(createCell(d.avgMix, readOnlyStyle, fmtDec1));
+                            rowData.push(createCell(d.metaMix, readOnlyStyle, fmtInt));
+                            rowData.push(createCell(d.metaMix, isEditable ? cellStyle : aggCellStyle, fmtInt));
+                            colCellsForSupTotal[col.id].mix.push(`${getColLet(cIdx + 2)}${excelRow}`);
+                            colCellsForSupTotal[col.id].avg.push(`${getColLet(cIdx)}${excelRow}`);
+
+                        } else if (col.type === 'geral') {
+                            const elmaIdx = colMap['total_elma'];
+                            const foodsIdx = colMap['total_foods'];
+                            const elmaTonIdx = colMap['tonelada_elma'];
+                            const foodsTonIdx = colMap['tonelada_foods'];
+
+                            const fFat = `${getColLet(elmaIdx + 1)}${excelRow}+${getColLet(foodsIdx + 1)}${excelRow}`;
+                            const fTon = `${getColLet(elmaTonIdx + 2)}${excelRow}+${getColLet(foodsTonIdx + 2)}${excelRow}`;
+                            const fPos = `${getColLet(elmaIdx + 3)}${excelRow}+${getColLet(foodsIdx + 3)}${excelRow}`;
+
+                            rowData.push(createCell(d.avgFat, readOnlyStyle, fmtMoney));
+                            rowData.push({ t: 'n', v: d.metaFat, f: fFat, s: { ...aggCellStyle, numFmt: fmtMoney }, z: fmtMoney });
+                            rowData.push({ t: 'n', v: d.metaVol, f: fTon, s: { ...aggCellStyle, numFmt: fmtVol }, z: fmtVol });
+                            rowData.push({ t: 'n', v: d.metaPos, f: fPos, s: { ...aggCellStyle, numFmt: fmtInt }, z: fmtInt });
+
+                            colCellsForSupTotal[col.id].fat.push(`${getColLet(cIdx + 1)}${excelRow}`);
+                            colCellsForSupTotal[col.id].vol.push(`${getColLet(cIdx + 2)}${excelRow}`);
+                            colCellsForSupTotal[col.id].pos.push(`${getColLet(cIdx + 3)}${excelRow}`);
+                            colCellsForSupTotal[col.id].avg.push(`${getColLet(cIdx)}${excelRow}`);
+
+                        } else if (col.type === 'pedev') {
+                            const elmaIdx = colMap['total_elma'];
+                            const fPedev = `ROUND(${getColLet(elmaIdx + 3)}${excelRow}*0.9, 0)`;
+                            rowData.push({ t: 'n', v: d.metaPos, f: fPedev, s: { ...aggCellStyle, numFmt: fmtInt }, z: fmtInt });
+                            colCellsForSupTotal[col.id].pos.push(`${getColLet(cIdx)}${excelRow}`);
+                        }
+                    });
+                    ws_data.push(rowData);
+                    currentRow++;
+                });
+
+                // Supervisor Total Row
+                const supRowData = [createCell(sup.code, totalRowStyle), createCell(sup.name.toUpperCase(), totalRowStyle)];
+                const excelSupRow = currentRow + 1;
+
+                svColumns.forEach(col => {
+                    const cIdx = colMap[col.id];
+                    const getColLet = (idx) => XLSX.utils.encode_col(idx);
+
+                    if (col.type === 'standard') {
+                        const rangeFat = colCellsForSupTotal[col.id].fat;
+                        const fFatRange = rangeFat.length > 0 ? `SUM(${rangeFat[0]}:${rangeFat[rangeFat.length-1]})` : "0";
+                        supRowData.push({ t: 'n', v: 0, f: fFatRange, s: { ...totalRowStyle, numFmt: fmtMoney }, z: fmtMoney });
+                        supRowData.push({ t: 'n', v: 0, f: fFatRange, s: { ...totalRowStyle, numFmt: fmtMoney }, z: fmtMoney });
+
+                        const rangePos = colCellsForSupTotal[col.id].pos;
+                        const fPosRange = rangePos.length > 0 ? `SUM(${rangePos[0]}:${rangePos[rangePos.length-1]})` : "0";
+                        supRowData.push({ t: 'n', v: 0, f: fPosRange, s: { ...totalRowStyle, numFmt: fmtInt }, z: fmtInt });
+                        supRowData.push({ t: 'n', v: 0, f: fPosRange, s: { ...totalRowStyle, numFmt: fmtInt }, z: fmtInt });
+
+                        colCellsForGrandTotal[col.id].fat.push(`${getColLet(cIdx+1)}${excelSupRow}`);
+                        colCellsForGrandTotal[col.id].pos.push(`${getColLet(cIdx+3)}${excelSupRow}`);
+
+                    } else if (col.type === 'tonnage') {
+                        const rangeAvg = colCellsForSupTotal[col.id].avg;
+                        const fAvgRange = rangeAvg.length > 0 ? `SUM(${rangeAvg[0]}:${rangeAvg[rangeAvg.length-1]})` : "0";
+                        supRowData.push({ t: 'n', v: 0, f: fAvgRange, s: { ...totalRowStyle, numFmt: fmtVol }, z: fmtVol });
+
+                        const rangeVol = colCellsForSupTotal[col.id].vol;
+                        const fVolRange = rangeVol.length > 0 ? `SUM(${rangeVol[0]}:${rangeVol[rangeVol.length-1]})` : "0";
+                        supRowData.push({ t: 'n', v: 0, f: fVolRange, s: { ...totalRowStyle, numFmt: fmtVol }, z: fmtVol });
+                        supRowData.push({ t: 'n', v: 0, f: fVolRange, s: { ...totalRowStyle, numFmt: fmtVol }, z: fmtVol });
+
+                        colCellsForGrandTotal[col.id].vol.push(`${getColLet(cIdx+2)}${excelSupRow}`);
+                        colCellsForGrandTotal[col.id].avg.push(`${getColLet(cIdx)}${excelSupRow}`);
+
+                    } else if (col.type === 'mix') {
+                        const rangeAvg = colCellsForSupTotal[col.id].avg;
+                        const fAvgRange = rangeAvg.length > 0 ? `SUM(${rangeAvg[0]}:${rangeAvg[rangeAvg.length-1]})` : "0";
+                        supRowData.push({ t: 'n', v: 0, f: fAvgRange, s: { ...totalRowStyle, numFmt: fmtDec1 }, z: fmtDec1 });
+
+                        const rangeMix = colCellsForSupTotal[col.id].mix;
+                        const fMixRange = rangeMix.length > 0 ? `SUM(${rangeMix[0]}:${rangeMix[rangeMix.length-1]})` : "0";
+                        supRowData.push({ t: 'n', v: 0, f: fMixRange, s: { ...totalRowStyle, numFmt: fmtInt }, z: fmtInt });
+                        supRowData.push({ t: 'n', v: 0, f: fMixRange, s: { ...totalRowStyle, numFmt: fmtInt }, z: fmtInt });
+
+                        colCellsForGrandTotal[col.id].mix.push(`${getColLet(cIdx+2)}${excelSupRow}`);
+                        colCellsForGrandTotal[col.id].avg.push(`${getColLet(cIdx)}${excelSupRow}`);
+
+                    } else if (col.type === 'geral') {
+                        const rangeAvg = colCellsForSupTotal[col.id].avg;
+                        const fAvgRange = rangeAvg.length > 0 ? `SUM(${rangeAvg[0]}:${rangeAvg[rangeAvg.length-1]})` : "0";
+                        supRowData.push({ t: 'n', v: 0, f: fAvgRange, s: { ...totalRowStyle, numFmt: fmtMoney }, z: fmtMoney });
+
+                        const rangeFat = colCellsForSupTotal[col.id].fat;
+                        const fFatRange = rangeFat.length > 0 ? `SUM(${rangeFat[0]}:${rangeFat[rangeFat.length-1]})` : "0";
+                        supRowData.push({ t: 'n', v: 0, f: fFatRange, s: { ...totalRowStyle, numFmt: fmtMoney }, z: fmtMoney });
+
+                        const rangeVol = colCellsForSupTotal[col.id].vol;
+                        const fVolRange = rangeVol.length > 0 ? `SUM(${rangeVol[0]}:${rangeVol[rangeVol.length-1]})` : "0";
+                        supRowData.push({ t: 'n', v: 0, f: fVolRange, s: { ...totalRowStyle, numFmt: fmtVol }, z: fmtVol });
+
+                        const rangePos = colCellsForSupTotal[col.id].pos;
+                        const fPosRange = rangePos.length > 0 ? `SUM(${rangePos[0]}:${rangePos[rangePos.length-1]})` : "0";
+                        supRowData.push({ t: 'n', v: 0, f: fPosRange, s: { ...totalRowStyle, numFmt: fmtInt }, z: fmtInt });
+
+                        colCellsForGrandTotal[col.id].fat.push(`${getColLet(cIdx+1)}${excelSupRow}`);
+                        colCellsForGrandTotal[col.id].vol.push(`${getColLet(cIdx+2)}${excelSupRow}`);
+                        colCellsForGrandTotal[col.id].pos.push(`${getColLet(cIdx+3)}${excelSupRow}`);
+                        colCellsForGrandTotal[col.id].avg.push(`${getColLet(cIdx)}${excelSupRow}`);
+
+                    } else if (col.type === 'pedev') {
+                        const elmaIdx = colMap['total_elma'];
+                        const fPedev = `ROUND(${getColLet(elmaIdx + 3)}${excelSupRow}*0.9, 0)`;
+                        supRowData.push({ t: 'n', v: 0, f: fPedev, s: { ...totalRowStyle, numFmt: fmtInt }, z: fmtInt });
+                        colCellsForGrandTotal[col.id].pos.push(`${getColLet(cIdx)}${excelSupRow}`);
+                    }
+                });
+
+                ws_data.push(supRowData);
+                currentRow++;
+            });
+
+            // Grand Total Row
+            const grandRowData = [createCell("", grandTotalStyle), createCell("GERAL PRIME", grandTotalStyle)];
+            svColumns.forEach(col => {
+                if (col.type === 'standard') {
+                    const rangeFat = colCellsForGrandTotal[col.id].fat;
+                    const fFat = rangeFat.length > 0 ? rangeFat.join("+") : "0";
+                    grandRowData.push({ t: 'n', v: 0, f: fFat, s: { ...grandTotalStyle, numFmt: fmtMoney }, z: fmtMoney });
+                    grandRowData.push({ t: 'n', v: 0, f: fFat, s: { ...grandTotalStyle, numFmt: fmtMoney }, z: fmtMoney });
+
+                    const rangePos = colCellsForGrandTotal[col.id].pos;
+                    const fPos = rangePos.length > 0 ? rangePos.join("+") : "0";
+                    grandRowData.push({ t: 'n', v: 0, f: fPos, s: { ...grandTotalStyle, numFmt: fmtInt }, z: fmtInt });
+                    grandRowData.push({ t: 'n', v: 0, f: fPos, s: { ...grandTotalStyle, numFmt: fmtInt }, z: fmtInt });
+
+                } else if (col.type === 'tonnage') {
+                    const rangeAvg = colCellsForGrandTotal[col.id].avg;
+                    const fAvg = rangeAvg.length > 0 ? rangeAvg.join("+") : "0";
+                    grandRowData.push({ t: 'n', v: 0, f: fAvg, s: { ...grandTotalStyle, numFmt: fmtVol }, z: fmtVol });
+
+                    const rangeVol = colCellsForGrandTotal[col.id].vol;
+                    const fVol = rangeVol.length > 0 ? rangeVol.join("+") : "0";
+                    grandRowData.push({ t: 'n', v: 0, f: fVol, s: { ...grandTotalStyle, numFmt: fmtVol }, z: fmtVol });
+                    grandRowData.push({ t: 'n', v: 0, f: fVol, s: { ...grandTotalStyle, numFmt: fmtVol }, z: fmtVol });
+
+                } else if (col.type === 'mix') {
+                    const rangeAvg = colCellsForGrandTotal[col.id].avg;
+                    const fAvg = rangeAvg.length > 0 ? rangeAvg.join("+") : "0";
+                    grandRowData.push({ t: 'n', v: 0, f: fAvg, s: { ...grandTotalStyle, numFmt: fmtDec1 }, z: fmtDec1 });
+
+                    const rangeMix = colCellsForGrandTotal[col.id].mix;
+                    const fMix = rangeMix.length > 0 ? rangeMix.join("+") : "0";
+                    grandRowData.push({ t: 'n', v: 0, f: fMix, s: { ...grandTotalStyle, numFmt: fmtInt }, z: fmtInt });
+                    grandRowData.push({ t: 'n', v: 0, f: fMix, s: { ...grandTotalStyle, numFmt: fmtInt }, z: fmtInt });
+
+                } else if (col.type === 'geral') {
+                    const rangeAvg = colCellsForGrandTotal[col.id].avg;
+                    const fAvg = rangeAvg.length > 0 ? rangeAvg.join("+") : "0";
+                    grandRowData.push({ t: 'n', v: 0, f: fAvg, s: { ...grandTotalStyle, numFmt: fmtMoney }, z: fmtMoney });
+
+                    const rangeFat = colCellsForGrandTotal[col.id].fat;
+                    const fFat = rangeFat.length > 0 ? rangeFat.join("+") : "0";
+                    grandRowData.push({ t: 'n', v: 0, f: fFat, s: { ...grandTotalStyle, numFmt: fmtMoney }, z: fmtMoney });
+
+                    const rangeVol = colCellsForGrandTotal[col.id].vol;
+                    const fVol = rangeVol.length > 0 ? rangeVol.join("+") : "0";
+                    grandRowData.push({ t: 'n', v: 0, f: fVol, s: { ...grandTotalStyle, numFmt: fmtVol }, z: fmtVol });
+
+                    const rangePos = colCellsForGrandTotal[col.id].pos;
+                    const fPos = rangePos.length > 0 ? rangePos.join("+") : "0";
+                    grandRowData.push({ t: 'n', v: 0, f: fPos, s: { ...grandTotalStyle, numFmt: fmtInt }, z: fmtInt });
+
+                } else if (col.type === 'pedev') {
+                    const rangePos = colCellsForGrandTotal[col.id].pos;
+                    const fPos = rangePos.length > 0 ? rangePos.join("+") : "0";
+                    grandRowData.push({ t: 'n', v: 0, f: fPos, s: { ...grandTotalStyle, numFmt: fmtInt }, z: fmtInt });
+                }
+            });
+            ws_data.push(grandRowData);
+
+            // Create Sheet
+            const ws = XLSX.utils.aoa_to_sheet(ws_data);
+            ws['!merges'] = merges;
+
+            // Auto-width
+            const wscols = [{ wch: 10 }, { wch: 20 }];
+            for(let i = 2; i < 50; i++) wscols.push({ wch: 12 });
+            ws['!cols'] = wscols;
+
+            // Add Sheet to Workbook
+            XLSX.utils.book_append_sheet(wb, ws, "Metas SV");
+            XLSX.writeFile(wb, "Metas_Fechamento_SV.xlsx");
+        }
 
         function getGoalsFilteredData() {
             const sellersSet = new Set(selectedGoalsGvSellers);
@@ -3209,9 +3595,14 @@
                     metaMix: Math.round(activeClientsCount * 0.60)
                 };
                 
+                let mixFoodsMeta = Math.round(activeClientsCount * 0.30);
+                if (sellerObj.code === '1001') {
+                    mixFoodsMeta = 0;
+                }
+
                 sellerObj.data['mix_foods'] = {
                     avgMix: mixStats.avgFoods,
-                    metaMix: Math.round(activeClientsCount * 0.30)
+                    metaMix: mixFoodsMeta
                 };
 
                 // 3. Geral Aggregate
@@ -3268,6 +3659,8 @@
                 const totalElmaB = b.totals['total_elma'] ? b.totals['total_elma'].metaFat : 0;
                 return totalElmaB - totalElmaA;
             });
+
+            currentGoalsSvData = sortedSupervisors;
 
             // Grand Totals
             const grandTotals = {};
@@ -9024,6 +9417,8 @@
                 }
             });
 
+            document.getElementById('goals-sv-export-xlsx-btn').addEventListener('click', exportGoalsSvXLSX);
+
             document.addEventListener('click', (e) => {
                 if (!goalsGvSupervisorFilterBtn.contains(e.target) && !goalsGvSupervisorFilterDropdown.contains(e.target)) goalsGvSupervisorFilterDropdown.classList.add('hidden');
                 if (!goalsGvSellerFilterBtn.contains(e.target) && !goalsGvSellerFilterDropdown.contains(e.target)) goalsGvSellerFilterDropdown.classList.add('hidden');
@@ -9523,6 +9918,7 @@
                         <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"><\/script>
                         <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>
                         <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"><\/script>
+                        <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.min.js"><\/script>
                         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
                         <style>
                             /* Estilo base do tema escuro */
@@ -10413,8 +10809,8 @@
                             <!-- Tab Content: Meta SV -->
                             <div id="goals-sv-content" class="hidden">
                                 <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
-                                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
-                                        <div class="relative">
+                                    <div class="flex flex-col md:flex-row justify-between items-end gap-4">
+                                        <div class="relative w-full md:w-64">
                                             <label for="goals-sv-supervisor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label>
                                             <button id="goals-sv-supervisor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
                                                 <span id="goals-sv-supervisor-filter-text">Todos</span>
@@ -10422,6 +10818,10 @@
                                             </button>
                                             <div id="goals-sv-supervisor-filter-dropdown" class="hidden absolute z-50 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
                                         </div>
+                                        <button id="goals-sv-export-xlsx-btn" class="w-full md:w-auto bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 px-6 rounded-lg flex items-center justify-center gap-2 shadow-lg transition-colors">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                            Exportar Excel (com Fórmulas)
+                                        </button>
                                     </div>
                                 </div>
                                 
