@@ -1385,8 +1385,35 @@
         let globalGoalsMetrics = {};
         let globalGoalsTotalsCache = {};
         let globalClientGoals = new Map(); // Map<CodCli, Map<Key, {fat: 0, vol: 0}>>
+        let quarterMonths = [];
+
+        function identifyQuarterMonths() {
+            const months = new Set();
+            allHistoryData.forEach(s => {
+                const d = parseDate(s.DTPED);
+                if(d) {
+                    months.add(`${d.getUTCFullYear()}-${d.getUTCMonth()}`);
+                }
+            });
+            const sorted = Array.from(months).sort((a, b) => {
+                const [y1, m1] = a.split('-').map(Number);
+                const [y2, m2] = b.split('-').map(Number);
+                return (y1 * 12 + m1) - (y2 * 12 + m2);
+            });
+            // Take last 3
+            const last3 = sorted.slice(-3);
+
+            const monthNames = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
+
+            quarterMonths = last3.map(k => {
+                const [y, m] = k.split('-');
+                return { key: k, label: monthNames[parseInt(m)] };
+            });
+        }
 
         function calculateGoalsMetrics() {
+            if (quarterMonths.length === 0) identifyQuarterMonths();
+
             // Helper to init metrics structure
             const createMetric = () => ({ 
                 fat: 0, vol: 0, prevFat: 0, prevVol: 0, 
@@ -2099,6 +2126,9 @@
                 }
             }
 
+            if (quarterMonths.length === 0) identifyQuarterMonths();
+            const monthsCount = quarterMonths.length;
+
             const wb = XLSX.utils.book_new();
             const ws_data = [];
 
@@ -2146,13 +2176,13 @@
             let colIdx = 2;
 
             const svColumns = [
-                { id: 'total_elma', label: 'TOTAL ELMA', type: 'standard', isAgg: true }, 
+                { id: 'total_elma', label: 'TOTAL ELMA', type: 'standard', isAgg: true, components: ['707', '708', '752'] },
                 { id: '707', label: 'EXTRUSADOS', type: 'standard' },
                 { id: '708', label: 'NÃO EXTRUSADOS', type: 'standard' },
                 { id: '752', label: 'TORCIDA', type: 'standard' },
                 { id: 'tonelada_elma', label: 'TONELADA ELMA', type: 'tonnage', isAgg: true },
                 { id: 'mix_salty', label: 'MIX SALTY', type: 'mix', isAgg: true },
-                { id: 'total_foods', label: 'TOTAL FOODS', type: 'standard', isAgg: true },
+                { id: 'total_foods', label: 'TOTAL FOODS', type: 'standard', isAgg: true, components: ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'] },
                 { id: '1119_TODDYNHO', label: 'TODDYNHO', type: 'standard' },
                 { id: '1119_TODDY', label: 'TODDY', type: 'standard' },
                 { id: '1119_QUAKER_KEROCOCO', label: 'QUAKER / KEROCOCO', type: 'standard' },
@@ -2171,7 +2201,7 @@
                 
                 row1.push(createCell(col.label, style));
                 let span = 0;
-                if (col.type === 'standard') span = 4;
+                if (col.type === 'standard') span = monthsCount + 1 + 4; // Months + Avg + MetaFat + AdjFat + MetaPos + AdjPos
                 else if (col.type === 'tonnage' || col.type === 'mix') span = 3;
                 else if (col.type === 'geral') span = 4;
                 else if (col.type === 'pedev') span = 1;
@@ -2187,9 +2217,20 @@
             svColumns.forEach(col => {
                 const style = { ...subHeaderStyle, font: { bold: true, color: { rgb: "FFFFFF" } } }; 
                 if (col.type === 'standard') {
-                    row2.push(createCell("FATURAMENTO", style), createCell("", style), createCell("POSITIVAÇÃO", style), createCell("", style));
-                    merges.push({ s: { r: 1, c: colMap[col.id] }, e: { r: 1, c: colMap[col.id] + 1 } });
-                    merges.push({ s: { r: 1, c: colMap[col.id] + 2 }, e: { r: 1, c: colMap[col.id] + 3 } });
+                    // HISTÓRICO FAT.
+                    row2.push(createCell("HISTÓRICO FAT.", style));
+                    for(let k=0; k < monthsCount; k++) row2.push(createCell("", style)); // Filler for colspan
+                    merges.push({ s: { r: 1, c: colMap[col.id] }, e: { r: 1, c: colMap[col.id] + monthsCount } });
+
+                    // FATURAMENTO
+                    row2.push(createCell("FATURAMENTO", style), createCell("", style));
+                    const startFat = colMap[col.id] + monthsCount + 1;
+                    merges.push({ s: { r: 1, c: startFat }, e: { r: 1, c: startFat + 1 } });
+
+                    // POSITIVAÇÃO
+                    row2.push(createCell("POSITIVAÇÃO", style), createCell("", style));
+                    const startPos = startFat + 2;
+                    merges.push({ s: { r: 1, c: startPos }, e: { r: 1, c: startPos + 1 } });
                 } else if (col.type === 'tonnage') {
                     row2.push(createCell("MÉDIA TRIM.", style), createCell("META TON", style), createCell("", style));
                     merges.push({ s: { r: 1, c: colMap[col.id] + 1 }, e: { r: 1, c: colMap[col.id] + 2 } });
@@ -2209,6 +2250,8 @@
             const row3 = [createCell("", subHeaderStyle), createCell("", subHeaderStyle)];
             svColumns.forEach(col => {
                 if (col.type === 'standard') {
+                    quarterMonths.forEach(m => row3.push(createCell(m.label, subHeaderStyle)));
+                    row3.push(createCell("Média", subHeaderStyle));
                     row3.push(createCell("Meta", subHeaderStyle), createCell("Ajuste", subHeaderStyle), createCell("Meta", subHeaderStyle), createCell("Ajuste", subHeaderStyle));
                 } else if (col.type === 'tonnage') {
                     row3.push(createCell("Volume", subHeaderStyle), createCell("Volume", subHeaderStyle), createCell("Ajuste", subHeaderStyle));
@@ -2225,12 +2268,12 @@
             // --- 2. Data Rows ---
             let currentRow = 3; 
             const colCellsForGrandTotal = {}; 
-            svColumns.forEach(c => colCellsForGrandTotal[c.id] = { fat: [], pos: [], vol: [], mix: [], avg: [] });
+            svColumns.forEach(c => colCellsForGrandTotal[c.id] = { fat: [], pos: [], vol: [], mix: [], avg: [], monthly: quarterMonths.map(() => []) });
 
             currentGoalsSvData.forEach(sup => {
                 const sellers = sup.sellers; 
                 const colCellsForSupTotal = {}; 
-                svColumns.forEach(c => colCellsForSupTotal[c.id] = { fat: [], pos: [], vol: [], mix: [], avg: [] });
+                svColumns.forEach(c => colCellsForSupTotal[c.id] = { fat: [], pos: [], vol: [], mix: [], avg: [], monthly: quarterMonths.map(() => []) });
 
                 sellers.forEach(seller => {
                     const rowData = [createCell(seller.code), createCell(seller.name)];
@@ -2247,13 +2290,32 @@
                         const aggCellStyle = readOnlyStyle; // Aggregated columns (Light Grey)
 
                         if (col.type === 'standard') {
-                            rowData.push(createCell(d.metaFat, readOnlyStyle, fmtMoney));
+                            // Inject Monthly Values
+                            quarterMonths.forEach((m, mIdx) => {
+                                const val = d.monthlyValues && d.monthlyValues[m.key] ? d.monthlyValues[m.key] : 0;
+
+                                // Formula for Aggregate Logic (Total Elma/Foods)
+                                if (col.isAgg && col.components) {
+                                     const ids = col.components;
+                                     const compCols = ids.map(id => colMap[id] + mIdx);
+                                     const formula = compCols.map(c => `${getColLet(c)}${excelRow}`).join("+");
+                                     rowData.push({ t: 'n', v: val, f: formula, s: { ...aggCellStyle, numFmt: fmtMoney }, z: fmtMoney });
+                                } else {
+                                     rowData.push(createCell(val, readOnlyStyle, fmtMoney));
+                                }
+
+                                // Track for Supervisor Total
+                                colCellsForSupTotal[col.id].monthly[mIdx].push(`${getColLet(cIdx + mIdx)}${excelRow}`);
+                            });
+
+                            rowData.push(createCell(d.avgFat, readOnlyStyle, fmtMoney));
                             
                             // Formula for Aggregate Logic
                             if (col.id === 'total_elma' || col.id === 'total_foods') {
                                 const ids = col.id === 'total_elma' ? ['707', '708', '752'] : ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
-                                const compCols = ids.map(id => colMap[id] + 1); 
-                                const compColsPos = ids.map(id => colMap[id] + 3);
+                                // Offset logic: Start of block + monthsCount + specific offset
+                                const compCols = ids.map(id => colMap[id] + monthsCount + 1);
+                                const compColsPos = ids.map(id => colMap[id] + monthsCount + 3);
                                 const formulaFat = compCols.map(c => `${getColLet(c)}${excelRow}`).join("+");
                                 const formulaPos = compColsPos.map(c => `${getColLet(c)}${excelRow}`).join("+");
                                 
@@ -2267,8 +2329,8 @@
                                 rowData.push(createCell(d.metaPos, cellStyle, fmtInt));
                             }
 
-                            colCellsForSupTotal[col.id].fat.push(`${getColLet(cIdx + 1)}${excelRow}`);
-                            colCellsForSupTotal[col.id].pos.push(`${getColLet(cIdx + 3)}${excelRow}`);
+                            colCellsForSupTotal[col.id].fat.push(`${getColLet(cIdx + monthsCount + 1)}${excelRow}`);
+                            colCellsForSupTotal[col.id].pos.push(`${getColLet(cIdx + monthsCount + 3)}${excelRow}`);
 
                         } else if (col.type === 'tonnage') {
                             rowData.push(createCell(d.avgVol, readOnlyStyle, fmtVol));
@@ -2324,6 +2386,39 @@
                     const getColLet = (idx) => XLSX.utils.encode_col(idx);
                     
                     if (col.type === 'standard') {
+                        // Monthly Totals
+                        quarterMonths.forEach((m, mIdx) => {
+                            const rangeMonth = colCellsForSupTotal[col.id].monthly[mIdx];
+                            const fMonthRange = rangeMonth.length > 0 ? `SUM(${rangeMonth[0]}:${rangeMonth[rangeMonth.length-1]})` : "0";
+                            supRowData.push({ t: 'n', v: 0, f: fMonthRange, s: { ...totalRowStyle, numFmt: fmtMoney }, z: fmtMoney });
+
+                            colCellsForGrandTotal[col.id].monthly[mIdx].push(`${getColLet(cIdx + mIdx)}${excelSupRow}`);
+                        });
+
+                        // Avg/Meta/Pos
+                        // For Average Fat, we might want to SUM the Averages or Recalculate from monthly totals?
+                        // Typically Sum of Averages is consistent for simple aggregation.
+                        // But here we don't track 'avg' range in colCellsForSupTotal explicitly except via index?
+                        // Wait, colCellsForSupTotal has 'fat' which tracks the metaFat column.
+                        // We missed tracking 'avg' column in standard block?
+                        // Standard block data loop:
+                        // rowData.push(createCell(d.avgFat, ...)); -> This is cIdx + monthsCount
+
+                        // Reconstruct ranges for summary:
+                        // Avg is at `cIdx + monthsCount`
+                        // Meta Fat is at `cIdx + monthsCount + 1` (tracked in .fat)
+                        // Meta Pos is at `cIdx + monthsCount + 3` (tracked in .pos)
+
+                        // Let's calculate SUM range for Average
+                        // Start Row = currentRow - sellers.length + 1 (first seller)
+                        // End Row = currentRow (last seller)
+                        const firstSellerRow = currentRow - sellers.length + 1;
+                        const lastSellerRow = currentRow;
+                        const avgColLet = getColLet(cIdx + monthsCount);
+                        const fAvgRange = `SUM(${avgColLet}${firstSellerRow}:${avgColLet}${lastSellerRow})`;
+
+                        supRowData.push({ t: 'n', v: 0, f: fAvgRange, s: { ...totalRowStyle, numFmt: fmtMoney }, z: fmtMoney });
+
                         const rangeFat = colCellsForSupTotal[col.id].fat;
                         const fFatRange = rangeFat.length > 0 ? `SUM(${rangeFat[0]}:${rangeFat[rangeFat.length-1]})` : "0";
                         supRowData.push({ t: 'n', v: 0, f: fFatRange, s: { ...totalRowStyle, numFmt: fmtMoney }, z: fmtMoney });
@@ -2334,8 +2429,9 @@
                         supRowData.push({ t: 'n', v: 0, f: fPosRange, s: { ...totalRowStyle, numFmt: fmtInt }, z: fmtInt });
                         supRowData.push({ t: 'n', v: 0, f: fPosRange, s: { ...totalRowStyle, numFmt: fmtInt }, z: fmtInt });
 
-                        colCellsForGrandTotal[col.id].fat.push(`${getColLet(cIdx+1)}${excelSupRow}`);
-                        colCellsForGrandTotal[col.id].pos.push(`${getColLet(cIdx+3)}${excelSupRow}`);
+                        colCellsForGrandTotal[col.id].avg.push(`${getColLet(cIdx + monthsCount)}${excelSupRow}`);
+                        colCellsForGrandTotal[col.id].fat.push(`${getColLet(cIdx + monthsCount + 1)}${excelSupRow}`);
+                        colCellsForGrandTotal[col.id].pos.push(`${getColLet(cIdx + monthsCount + 3)}${excelSupRow}`);
 
                     } else if (col.type === 'tonnage') {
                         const rangeAvg = colCellsForSupTotal[col.id].avg;
@@ -2401,6 +2497,18 @@
             const grandRowData = [createCell("GV", grandTotalStyle), createCell("GERAL PRIME", grandTotalStyle)];
             svColumns.forEach(col => {
                 if (col.type === 'standard') {
+                    // Monthly
+                    quarterMonths.forEach((m, mIdx) => {
+                         const rangeMonth = colCellsForGrandTotal[col.id].monthly[mIdx];
+                         const fMonth = rangeMonth.length > 0 ? rangeMonth.join("+") : "0";
+                         grandRowData.push({ t: 'n', v: 0, f: fMonth, s: { ...grandTotalStyle, numFmt: fmtMoney }, z: fmtMoney });
+                    });
+
+                    // Avg
+                    const rangeAvg = colCellsForGrandTotal[col.id].avg;
+                    const fAvg = rangeAvg.length > 0 ? rangeAvg.join("+") : "0";
+                    grandRowData.push({ t: 'n', v: 0, f: fAvg, s: { ...grandTotalStyle, numFmt: fmtMoney }, z: fmtMoney });
+
                     const rangeFat = colCellsForGrandTotal[col.id].fat;
                     const fFat = rangeFat.length > 0 ? rangeFat.join("+") : "0";
                     grandRowData.push({ t: 'n', v: 0, f: fFat, s: { ...grandTotalStyle, numFmt: fmtMoney }, z: fmtMoney });
@@ -2834,6 +2942,8 @@
         function calculateDistributedGoals(filteredClients, currentGoalsSupplier, currentGoalsBrand, goalFat, goalVol) {
             const cacheKey = currentGoalsSupplier + (currentGoalsBrand ? `_${currentGoalsBrand}` : '');
             
+            if (quarterMonths.length === 0) identifyQuarterMonths();
+
             // Determine dates for Previous Month calc
             const currentDate = lastSaleDate;
             const prevMonthDate = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth() - 1, 1));
@@ -2915,6 +3025,10 @@
                 let prevVol = 0;
                 const monthlyActivity = new Map(); // MonthKey -> Fat
                 
+                // Initialize monthly values for breakdown
+                const monthlyValues = {};
+                quarterMonths.forEach(m => monthlyValues[m.key] = 0);
+
                 if (clientHistoryIds) {
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
@@ -2934,6 +3048,10 @@
                                     // Activity per Month Calc
                                     const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
                                     monthlyActivity.set(monthKey, (monthlyActivity.get(monthKey) || 0) + sale.VLVENDA);
+
+                                    if (monthlyValues.hasOwnProperty(monthKey)) {
+                                        monthlyValues[monthKey] += sale.VLVENDA;
+                                    }
                                 }
                             }
                         }
@@ -2998,7 +3116,8 @@
                     shareVol: globalTotalAvgVol > 0 ? (avgVol / globalTotalAvgVol) : 0,
                     metaFat, // Use stored value
                     metaVol,  // Use stored value
-                    metaPos
+                    metaPos,
+                    monthlyValues
                 });
             });
             
@@ -3169,6 +3288,38 @@
                 return;
             }
 
+            if (quarterMonths.length === 0) identifyQuarterMonths();
+
+            // Update Header (Dynamic)
+            const thead = document.querySelector('#goals-table-container table thead');
+            if (thead) {
+                const monthHeaders = quarterMonths.map(m => `<th class="px-2 py-2 text-right w-20 bg-blue-900/10 text-blue-300 border-r border-b border-slate-700/50 text-[10px]">${m.label}</th>`).join('');
+                const monthsCount = quarterMonths.length;
+
+                thead.innerHTML = `
+                    <tr>
+                        <th rowspan="2" class="px-2 py-2 text-center w-16 border-r border-b border-slate-700">CÓD</th>
+                        <th rowspan="2" class="px-3 py-2 text-left w-48 border-r border-b border-slate-700">CLIENTE</th>
+                        <th rowspan="2" class="px-3 py-2 text-left w-24 border-r border-b border-slate-700">VENDEDOR</th>
+                        <th colspan="${3 + monthsCount}" class="px-2 py-1 text-center bg-blue-900/30 text-blue-400 border-r border-slate-700 border-b-0">FATURAMENTO (R$)</th>
+                        <th colspan="3" class="px-2 py-1 text-center bg-orange-900/30 text-orange-400 border-r border-slate-700 border-b-0">VOLUME (TON)</th>
+                        <th rowspan="2" class="px-2 py-2 text-center w-16 bg-purple-900/20 text-purple-300 font-bold border-b border-slate-700">META POS.</th>
+                    </tr>
+                    <tr>
+                        <!-- Monthly Headers -->
+                        ${monthHeaders}
+                        <!-- Fat Headers -->
+                        <th class="px-2 py-2 text-right w-24 bg-blue-900/20 text-blue-300 border-r border-b border-slate-700/50 text-[10px]">MÉDIA</th>
+                        <th class="px-2 py-2 text-center w-16 bg-blue-900/20 text-blue-300 border-r border-b border-slate-700/50 text-[10px]">% SHARE</th>
+                        <th class="px-2 py-2 text-right w-24 bg-blue-900/20 text-blue-100 font-bold border-r border-b border-slate-700 text-[10px]">META AUTO</th>
+                        <!-- Vol Headers -->
+                        <th class="px-2 py-2 text-right w-24 bg-orange-900/20 text-orange-300 border-r border-b border-slate-700/50 text-[10px]">MÉDIA KG</th>
+                        <th class="px-2 py-2 text-center w-16 bg-orange-900/20 text-orange-300 border-r border-b border-slate-700/50 text-[10px]">% SHARE</th>
+                        <th class="px-2 py-2 text-right w-24 bg-orange-900/20 text-orange-100 font-bold border-r border-b border-slate-700 text-[10px]">META KG</th>
+                    </tr>
+                `;
+            }
+
             const filteredClients = getGoalsFilteredData();
             
             // Determine Current Key
@@ -3281,14 +3432,21 @@
             const nextBtn = document.getElementById('goals-next-page-btn');
 
             if (clientMetrics.length === 0) {
-                goalsGvTableBody.innerHTML = '<tr><td colspan="12" class="text-center p-4 text-slate-500">Nenhum cliente encontrado nos filtros para este fornecedor.</td></tr>';
+                goalsGvTableBody.innerHTML = `<tr><td colspan="${12 + quarterMonths.length}" class="text-center p-4 text-slate-500">Nenhum cliente encontrado nos filtros para este fornecedor.</td></tr>`;
                 if (paginationControls) paginationControls.classList.add('hidden');
             } else {
-                const rows = pageData.map(item => `
+                const rows = pageData.map(item => {
+                    const monthCells = quarterMonths.map(m => {
+                        const val = item.monthlyValues[m.key] || 0;
+                        return `<td class="px-2 py-2 text-right text-slate-400 border-r border-slate-800/50 text-[10px] bg-blue-900/5">${val.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
+                    }).join('');
+
+                    return `
                     <tr class="hover:bg-slate-800 group transition-colors border-b border-slate-800">
                         <td class="px-2 py-2 text-center border-r border-slate-800 bg-[#151c36] text-xs text-slate-300">${item.cod}</td>
                         <td class="px-2 py-2 text-left border-r border-slate-800 bg-[#151c36] text-xs font-bold text-white truncate max-w-[200px]" title="${item.name}">${item.name.substring(0, 30)}</td>
                         <td class="px-2 py-2 text-left border-r border-slate-800 bg-[#151c36] text-[10px] text-slate-400 uppercase">${getFirstName(item.seller)}</td>
+                        ${monthCells}
                         <td class="px-2 py-2 text-right text-slate-300 font-medium bg-blue-900/10 border-r border-slate-800/50 text-xs">${item.avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                         <td class="px-2 py-2 text-center text-blue-400 text-xs bg-blue-900/10 border-r border-slate-800/50">${(item.shareFat * 100).toFixed(2)}%</td>
                         <td class="px-2 py-2 text-right font-bold text-blue-200 bg-blue-900/20 border-r border-slate-800 text-xs">${item.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
@@ -3297,7 +3455,7 @@
                         <td class="px-2 py-2 text-right font-bold text-orange-200 bg-orange-900/20 border-r border-slate-800 text-xs">${item.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>
                         <td class="px-2 py-2 text-center font-bold text-purple-300 bg-purple-900/10 text-xs">${item.metaPos}</td>
                     </tr>
-                `).join('');
+                `}).join('');
                 goalsGvTableBody.innerHTML = rows;
 
                 if (paginationControls) {
@@ -3456,6 +3614,7 @@
         }
 
         function updateGoalsSvView() {
+            if (quarterMonths.length === 0) identifyQuarterMonths();
             const filteredClients = getGoalsSvFilteredData();
             
             // Define Column Blocks (Metrics Config)
@@ -3482,7 +3641,6 @@
             
             baseCategories.forEach(cat => {
                 const target = goalsTargets[cat.id] || { fat: 0, vol: 0 };
-                // Using 0 as goal to retrieve stored metas inside the function
                 metricsByCat[cat.id] = calculateDistributedGoals(filteredClients, cat.supplier, cat.brand, target.fat, target.vol);
             });
 
@@ -3524,7 +3682,16 @@
                     sellerObj.data[catId].metaVol += client.metaVol;
                     sellerObj.data[catId].metaPos += client.metaPos;
                     sellerObj.data[catId].avgVol += client.avgVol; 
-                    sellerObj.data[catId].avgFat += client.avgFat; // Added avgFat for Geral calculation
+                    sellerObj.data[catId].avgFat += client.avgFat;
+
+                    // Aggregate Monthly Values for Breakdown
+                    if (!sellerObj.data[catId].monthlyValues) {
+                        sellerObj.data[catId].monthlyValues = {};
+                        quarterMonths.forEach(m => sellerObj.data[catId].monthlyValues[m.key] = 0);
+                    }
+                    quarterMonths.forEach(m => {
+                        sellerObj.data[catId].monthlyValues[m.key] += (client.monthlyValues[m.key] || 0);
+                    });
                 });
             });
 
@@ -3586,6 +3753,9 @@
                 // 1. Component Aggregates
                 svColumns.filter(c => c.isAgg && c.type !== 'mix' && c.type !== 'geral').forEach(aggCol => {
                     let sumFat = 0, sumVol = 0, sumPos = 0, sumAvgVol = 0, sumAvgFat = 0;
+                    const monthlySum = {};
+                    quarterMonths.forEach(m => monthlySum[m.key] = 0);
+
                     aggCol.components.forEach(compId => {
                         if (sellerObj.data[compId]) {
                             sumFat += sellerObj.data[compId].metaFat;
@@ -3593,9 +3763,16 @@
                             sumPos += sellerObj.data[compId].metaPos;
                             sumAvgVol += sellerObj.data[compId].avgVol;
                             sumAvgFat += sellerObj.data[compId].avgFat || 0;
+
+                            if (sellerObj.data[compId].monthlyValues) {
+                                quarterMonths.forEach(m => monthlySum[m.key] += sellerObj.data[compId].monthlyValues[m.key]);
+                            }
                         }
                     });
-                    sellerObj.data[aggCol.id] = { metaFat: sumFat, metaVol: sumVol, metaPos: sumPos, avgVol: sumAvgVol, avgFat: sumAvgFat };
+                    sellerObj.data[aggCol.id] = {
+                        metaFat: sumFat, metaVol: sumVol, metaPos: sumPos, avgVol: sumAvgVol, avgFat: sumAvgFat,
+                        monthlyValues: monthlySum
+                    };
                 });
 
                 // 2. Mix Metrics
@@ -3679,7 +3856,9 @@
                 
                 // Aggregate Supervisor Totals
                 svColumns.forEach(col => {
-                    if (!group.totals[col.id]) group.totals[col.id] = { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0, avgFat: 0 };
+                    if (!group.totals[col.id]) group.totals[col.id] = { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0, avgFat: 0, monthlyValues: {} };
+                    quarterMonths.forEach(m => group.totals[col.id].monthlyValues[m.key] = 0);
+
                     if (seller.data[col.id]) {
                         group.totals[col.id].metaFat += seller.data[col.id].metaFat || 0;
                         group.totals[col.id].metaVol += seller.data[col.id].metaVol || 0;
@@ -3688,6 +3867,10 @@
                         group.totals[col.id].avgMix += seller.data[col.id].avgMix || 0;
                         group.totals[col.id].metaMix += seller.data[col.id].metaMix || 0;
                         group.totals[col.id].avgFat += seller.data[col.id].avgFat || 0;
+
+                        if (seller.data[col.id].monthlyValues) {
+                            quarterMonths.forEach(m => group.totals[col.id].monthlyValues[m.key] += seller.data[col.id].monthlyValues[m.key]);
+                        }
                     }
                 });
             });
@@ -3702,7 +3885,11 @@
 
             // Grand Totals
             const grandTotals = {};
-            svColumns.forEach(col => grandTotals[col.id] = { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0, avgFat: 0 });
+            svColumns.forEach(col => {
+                grandTotals[col.id] = { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0, avgFat: 0, monthlyValues: {} };
+                quarterMonths.forEach(m => grandTotals[col.id].monthlyValues[m.key] = 0);
+            });
+
             sortedSupervisors.forEach((sup, index) => {
                 // Generate Safe ID using Index for strict uniqueness
                 sup.id = `sup-${index}`;
@@ -3715,12 +3902,18 @@
                     grandTotals[col.id].avgMix += sup.totals[col.id].avgMix;
                     grandTotals[col.id].metaMix += sup.totals[col.id].metaMix;
                     grandTotals[col.id].avgFat += sup.totals[col.id].avgFat;
+
+                    if (sup.totals[col.id].monthlyValues) {
+                        quarterMonths.forEach(m => grandTotals[col.id].monthlyValues[m.key] += sup.totals[col.id].monthlyValues[m.key]);
+                    }
                 });
             });
 
             // 3. Render HTML
             const mainTable = document.getElementById('goals-sv-main-table');
             if (!mainTable) return;
+
+            const monthsCount = quarterMonths.length;
 
             // Generate Header
             let headerHTML = `
@@ -3733,7 +3926,7 @@
             // Row 1: Groups
             svColumns.forEach(col => {
                 let colspan = 2;
-                if (col.type === 'standard') colspan = 4; // MetaFat, AdjFat, MetaPos, AdjPos
+                if (col.type === 'standard') colspan = monthsCount + 1 + 4; // Months + Avg + MetaFat/Adj + MetaPos/Adj
                 if (col.type === 'tonnage') colspan = 3; // Avg, Meta, Adj
                 if (col.type === 'mix') colspan = 3; // Avg, Meta, Adj
                 if (col.type === 'geral') colspan = 4; // AvgFat, MetaFat, MetaTon, MetaPos
@@ -3746,6 +3939,7 @@
             svColumns.forEach(col => {
                 if (col.type === 'standard') {
                     headerHTML += `
+                        <th colspan="${monthsCount + 1}" class="px-1 py-1 text-center border-r border-slate-700/50 bg-slate-800/50">HISTÓRICO FAT.</th>
                         <th colspan="2" class="px-1 py-1 text-center border-r border-slate-700/50 bg-slate-800/50">FATURAMENTO</th>
                         <th colspan="2" class="px-1 py-1 text-center border-r border-slate-700 bg-slate-800/50">POSITIVAÇÃO</th>
                     `;
@@ -3778,6 +3972,12 @@
 
             svColumns.forEach(col => {
                 if (col.type === 'standard') {
+                    // Inject Month Headers
+                    quarterMonths.forEach(m => {
+                        headerHTML += `<th class="px-1 py-1 text-right border-r border-b border-slate-700 text-slate-500 font-normal w-12">${m.label}</th>`;
+                    });
+                    headerHTML += `<th class="px-1 py-1 text-right border-r border-b border-slate-700 text-slate-500 font-normal">Média</th>`;
+
                     headerHTML += `
                         <th class="px-1 py-1 text-right border-r border-b border-slate-700 text-slate-500 font-normal">Meta</th>
                         <th class="px-1 py-1 text-center border-r border-b border-slate-700 text-slate-500 font-normal">${gearIcon}</th>
@@ -3815,7 +4015,7 @@
             let bodyHTML = `<tbody class="divide-y divide-slate-800 bg-[#151c36]">`;
 
             if (sortedSupervisors.length === 0) {
-                bodyHTML += `<tr><td colspan="${2 + (svColumns.length * 4)}" class="text-center p-4 text-slate-500">Nenhum dado encontrado.</td></tr>`;
+                bodyHTML += `<tr><td colspan="${2 + (svColumns.length * 4) + (svColumns.filter(c => c.type === 'standard').length * (monthsCount + 1))}" class="text-center p-4 text-slate-500">Nenhum dado encontrado.</td></tr>`;
             } else {
                 sortedSupervisors.forEach(sup => {
                     // Sort sellers
@@ -3831,7 +4031,7 @@
                         bodyHTML += `<td class="px-2 py-1 text-left text-white font-medium truncate max-w-[200px]" title="${seller.name}">${getFirstName(seller.name)}</td>`;
                         
                         svColumns.forEach(col => {
-                            const d = seller.data[col.id] || { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0, avgFat: 0 };
+                            const d = seller.data[col.id] || { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0, avgFat: 0, monthlyValues: {} };
                             
                             if (col.type === 'standard') {
                                 // Read-only logic for Aggregates (Total Elma / Total Foods)
@@ -3840,8 +4040,16 @@
                                 const readonlyAttr = isReadOnly ? 'readonly' : '';
                                 const cellBg = isReadOnly ? 'bg-[#151c36]' : 'bg-[#1e293b]';
 
+                                // Inject Monthly Values
+                                quarterMonths.forEach(m => {
+                                    const mVal = d.monthlyValues && d.monthlyValues[m.key] ? d.monthlyValues[m.key] : 0;
+                                    bodyHTML += `<td class="px-1 py-1 text-right text-slate-400 border-r border-slate-800/50 text-[10px] bg-blue-900/5">${mVal.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
+                                });
+                                // Inject Average Value
+                                bodyHTML += `<td class="px-1 py-1 text-right text-slate-300 border-r border-slate-800/50 bg-blue-900/10 font-medium">${d.avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
+
                                 bodyHTML += `
-                                    <td class="px-1 py-1 text-right text-slate-300 border-r border-slate-800/50">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                    <td class="px-1 py-1 text-right ${col.colorClass} border-r border-slate-800/50 text-xs font-mono">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                                     <td class="px-1 py-1 ${cellBg} border-r border-slate-800/50"><input type="text" value="${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}" class="goals-sv-input bg-transparent text-right w-full outline-none ${inputClass} text-xs font-mono" data-sup-id="${sup.id}" data-col-id="${col.id}" data-seller-id="${seller.id}" data-field="fat" oninput="recalculateGoalsSvTotals(this)" ${readonlyAttr}></td>
                                     <td class="px-1 py-1 text-center text-slate-300 border-r border-slate-800/50">${d.metaPos}</td>
                                     <td class="px-1 py-1 ${cellBg} border-r border-slate-800/50"><input type="text" value="${d.metaPos}" class="goals-sv-input bg-transparent text-center w-full outline-none ${inputClass} text-xs font-mono" data-sup-id="${sup.id}" data-col-id="${col.id}" data-seller-id="${seller.id}" data-field="pos" oninput="recalculateGoalsSvTotals(this)" ${readonlyAttr}></td>
@@ -3885,6 +4093,14 @@
                         const color = col.id.includes('total') || col.type === 'tonnage' || col.type === 'mix' ? 'text-white' : 'text-slate-300';
                         
                         if (col.type === 'standard') {
+                            // Inject Monthly Values
+                            quarterMonths.forEach(m => {
+                                const mVal = d.monthlyValues && d.monthlyValues[m.key] ? d.monthlyValues[m.key] : 0;
+                                bodyHTML += `<td class="px-1 py-1 text-right text-slate-400 border-r border-slate-700 text-[10px] bg-blue-900/5">${mVal.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
+                            });
+                            // Inject Average Value
+                            bodyHTML += `<td class="px-1 py-1 text-right text-slate-300 border-r border-slate-700 bg-blue-900/10 font-medium">${d.avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
+
                             bodyHTML += `
                                 <td class="px-1 py-1 text-right ${color} border-r border-slate-700">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                                 <td class="px-1 py-1 text-right text-yellow-500/70 border-r border-slate-700" id="total-sup-${sup.id}-${col.id}-fat">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
@@ -3911,14 +4127,8 @@
                                 <td class="px-1 py-1 text-center text-white border-r border-slate-700" id="total-sup-${sup.id}-geral-pos">${d.metaPos}</td>
                             `;
                         } else if (col.type === 'pedev') {
-                            // Pre-calculate Total PEDEV for Supervisor (90% of Supervisor Total Elma Pos)
                             const totalElmaPos = sup.totals['total_elma'] ? sup.totals['total_elma'].metaPos : 0;
                             const pedevPos = Math.round(totalElmaPos * 0.9);
-                            
-                            // Update the totals object so Grand Total accumulation works correctly later?
-                            // No, Grand Total accumulation happened BEFORE this loop.
-                            // We need to update Grand Total separately or let it be sum of sellers (which is close enough).
-                            // But for Supervisor row display, we want the exact calculation.
                             
                             bodyHTML += `
                                 <td class="px-1 py-1 text-center text-pink-400 border-r border-slate-700" id="total-sup-${sup.id}-pedev-pos">${pedevPos}</td>
@@ -3936,6 +4146,14 @@
                 svColumns.forEach(col => {
                     const d = grandTotals[col.id];
                     if (col.type === 'standard') {
+                        // Inject Monthly Values
+                        quarterMonths.forEach(m => {
+                            const mVal = d.monthlyValues && d.monthlyValues[m.key] ? d.monthlyValues[m.key] : 0;
+                            bodyHTML += `<td class="px-1 py-2 text-right text-slate-400 border-r border-slate-700 text-[10px] bg-blue-900/5">${mVal.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
+                        });
+                        // Inject Average Value
+                        bodyHTML += `<td class="px-1 py-2 text-right text-teal-400 border-r border-slate-700 bg-blue-900/10">${d.avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
+
                         bodyHTML += `
                             <td class="px-1 py-2 text-right text-teal-400 border-r border-slate-700">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                             <td class="px-1 py-2 text-right text-teal-600/70 border-r border-slate-700" id="total-grand-${col.id}-fat">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
@@ -3967,16 +4185,6 @@
                         `;
                     }
                 });
-                
-                // Correction for Grand Total PEDEV (Calculation based on Grand Total Elma)
-                // This is a post-render fix script effectively, but better done inline if possible.
-                // We just rendered the row using `grandTotals['pedev']`.
-                // `grandTotals['pedev']` is sum of sellers' rounded values.
-                // If we want exactly 90% of Grand Total Elma, we should have updated `grandTotals['pedev']` before the loop.
-                // Let's add a small script block to update the specific element by ID after rendering.
-                // Or better, update `grandTotals` object before the loop if I could access the code block before.
-                // Since I am only replacing this block, I will inject a script update or just leave it as sum of sellers.
-                // Sum of Sellers is generally acceptable for Grand Totals.
                 
                 bodyHTML += `</tr>`;
             }
