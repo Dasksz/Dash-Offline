@@ -430,7 +430,7 @@
                 if (parsedDtPed && parsedDtSaida && (parsedDtPed.getUTCFullYear() < parsedDtSaida.getUTCFullYear() || (parsedDtPed.getUTCFullYear() === parsedDtSaida.getUTCFullYear() && parsedDtPed.getUTCMonth() < parsedDtSaida.getUTCMonth()))) {
                     parsedDtPed = parsedDtSaida;
                 }
-                
+
                 // Convert to Timestamp (Number) for lighter JSON and faster parsing in main thread
                 const tsDtPed = parsedDtPed ? parsedDtPed.getTime() : null;
                 const tsDtSaida = parsedDtSaida ? parsedDtSaida.getTime() : null;
@@ -510,7 +510,7 @@
             const columns = Object.keys(data[0]);
             const values = {};
             columns.forEach(col => values[col] = new Array(data.length));
-            
+
             for (let i = 0; i < data.length; i++) {
                 for (let j = 0; j < columns.length; j++) {
                     values[columns[j]][i] = data[i][columns[j]];
@@ -837,7 +837,7 @@
 
             get(index) {
                 if (index < 0 || index >= this.length) return undefined;
-                
+
                 const overrides = this._overrides;
                 const values = this.values;
                 const columns = this.columns;
@@ -847,22 +847,22 @@
                 return new Proxy({}, {
                     get(target, prop) {
                         if (prop === 'toJSON') return () => "ColumnarRowProxy"; // Debug help
-                        
+
                         // 1. Check overrides first (mutations)
                         const ov = overrides.get(index);
                         if (ov && prop in ov) {
                             return ov[prop];
                         }
-                        
+
                         // 2. Check columnar data (lazy read)
                         // Note: values[prop] is the array for that column
                         if (values && values[prop]) {
                             return values[prop][index];
                         }
-                        
+
                         return target[prop]; // Fallback (e.g. prototype methods)
                     },
-                    
+
                     set(target, prop, value) {
                         let ov = overrides.get(index);
                         if (!ov) {
@@ -872,7 +872,7 @@
                         ov[prop] = value;
                         return true;
                     },
-                    
+
                     ownKeys(target) {
                         // Return all original columns plus any new keys added via mutation
                         const ov = overrides.get(index);
@@ -884,7 +884,7 @@
                         }
                         return columns;
                     },
-                    
+
                     getOwnPropertyDescriptor(target, prop) {
                         // Check overrides or values to confirm existence
                         const ov = overrides.get(index);
@@ -924,7 +924,7 @@
                 }
                 return result;
             }
-            
+
             reduce(callback, initialValue) {
                 let accumulator = initialValue;
                 for (let i = 0; i < this.length; i++) {
@@ -954,7 +954,7 @@
                 }
                 return undefined;
             }
-            
+
             [Symbol.iterator]() {
                 let index = 0;
                 return {
@@ -975,21 +975,21 @@
                 this._indices = new Map();
                 this._source = dataSource;
             }
-            
+
             set(key, index) {
                 this._indices.set(key, index);
             }
-            
+
             get(key) {
                 const index = this._indices.get(key);
                 if (index === undefined) return undefined;
                 return this._source.get(index);
             }
-            
+
             has(key) {
                 return this._indices.has(key);
             }
-            
+
             values() {
                 // Warning: Heavy operation
                 const objects = [];
@@ -998,7 +998,7 @@
                 }
                 return objects;
             }
-            
+
             forEach(callback) {
                 this._indices.forEach((index, key) => {
                     callback(this._source.get(index), key);
@@ -1060,7 +1060,7 @@
         function runAsyncChunked(items, processItemFn, onComplete, isCancelled) {
             let index = 0;
             const total = items.length;
-            
+
             // Check if items is a ColumnarDataset and access by index directly to avoid overhead
             const isColumnar = items instanceof ColumnarDataset;
 
@@ -1073,19 +1073,19 @@
                     processItemFn(item, index);
                     index++;
                 }
-                
+
                 if (index < total) {
                     setTimeout(nextChunk, 0); // Yield to main thread
                 } else {
                     if(onComplete) onComplete();
                 }
             }
-            
+
             nextChunk();
         }
         
         let allSalesData, allHistoryData, allClientsData;
-        
+
         if (embeddedData.isColumnar) {
             allSalesData = new ColumnarDataset(embeddedData.detailed);
             allHistoryData = new ColumnarDataset(embeddedData.history);
@@ -1198,26 +1198,26 @@
             for (let i = 0; i < allClientsData.length; i++) {
                 const client = getClient(i); // Hydrate object for processing
                 const codCli = String(client['Código']);
-                
+
                 // Note: Modifying 'client' object here DOES NOT persist to Columnar Array automatically.
-                // We are using the hydrated object for Maps. 
+                // We are using the hydrated object for Maps.
                 // Since 'allClientsData' is read-only from source essentially, we rely on local Maps for modified state
                 // OR we accept that we can't modify in place easily.
                 // However, the existing code modifies `client['Código']` string conversion.
                 // ColumnarDataset.get() returns a NEW object every time.
                 // So modification here is useless if we access allClientsData.get(i) later.
-                
-                // FIX: For Clients, it's safer to keep them as hydrated objects in 'clientMapForKPIs' 
+
+                // FIX: For Clients, it's safer to keep them as hydrated objects in 'clientMapForKPIs'
                 // and use that map for lookups where modifications matter.
                 // But filter functions iterate 'allClientsData'.
                 // If we need persistent modifications (like Americanas RCA override), we need a side-store.
                 // The Americanas logic modifies `client.rca1`.
-                
-                // Workaround: We'll use a `clientOverrides` map or similar, 
+
+                // Workaround: We'll use a `clientOverrides` map or similar,
                 // OR since Clients dataset is small (thousands), we can fully hydrate it into an Array
                 // and avoid Columnar complexity for Clients if it causes mutability issues.
                 // Let's assume for now we just use the calculated values in the Maps.
-                
+
                 client.cidade = client.cidade || 'N/A';
 
                 if ((client.razaoSocial || '').toUpperCase().includes('AMERICANAS')) {
@@ -1253,7 +1253,7 @@
             
             const processDatasetForIndices = (data, indexSet, dataMap, isHistory) => {
                 const { bySupervisor, byRca, byPasta, bySupplier, byClient, byPosition, byRede, byTipoVenda, byProduct, byCity, byFilial } = indexSet;
-                
+
                 const isColumnar = data instanceof ColumnarDataset;
 
                 for (let i = 0; i < data.length; i++) {
@@ -1262,7 +1262,7 @@
                     // Convert Timestamp Number to Date Object if not already
                     if (sale.DTPED && !(sale.DTPED instanceof Date)) sale.DTPED = new Date(sale.DTPED);
                     if (sale.DTSAIDA && !(sale.DTSAIDA instanceof Date)) sale.DTSAIDA = new Date(sale.DTSAIDA);
-                    
+
                     if (sale.CODCLI !== americanasCodCli) {
                         const currentSellerCode = clientToCurrentSellerMap.get(sale.CODCLI);
                         if (currentSellerCode) {
@@ -1279,7 +1279,7 @@
                     sale.NOME = sale.NOME || 'N/A';
                     
                     const id = `${isHistory ? 'h' : 'c'}_${i}`;
-                    
+
                     // --- KEY CHANGE: Store Index if using IndexMap, otherwise Object ---
                     if (dataMap instanceof IndexMap) {
                         dataMap.set(id, i);
@@ -2215,7 +2215,7 @@
                     vendedor: vendorName,
                     hasSalty: hasSalty,
                     hasFoods: hasFoods,
-                    brands: positivatedCats, 
+                    brands: positivatedCats,
                     missingText: missingText,
                     score: missing.length
                 };
@@ -2223,7 +2223,7 @@
             }, () => {
                 // --- ON COMPLETE (Render) ---
                 if (currentRenderId !== mixRenderId) return;
-                
+
                 let baseClientCount;
                 const kpiTitleEl = document.getElementById('mix-kpi-title');
 
@@ -2250,12 +2250,12 @@
 
                 // Charts
                 const distributionData = [
-                    positivadosBoth, 
-                    positivadosSalty - positivadosBoth, 
-                    positivadosFoods - positivadosBoth, 
+                    positivadosBoth,
+                    positivadosSalty - positivadosBoth,
+                    positivadosFoods - positivadosBoth,
                     baseClientCount - (positivadosSalty + positivadosFoods - positivadosBoth)
                 ];
-                
+
                 createChart('mixDistributionChart', 'doughnut', ['Mix Ideal (Ambos)', 'Só Salty', 'Só Foods', 'Nenhum'], distributionData, {
                     backgroundColor: ['#a855f7', '#14b8a6', '#f59e0b', '#475569'],
                     plugins: { legend: { position: 'right' } }
@@ -2276,12 +2276,12 @@
                     .sort(([,a], [,b]) => b.both - a.both)
                     .slice(0, 10);
 
-                createChart('mixSellerChart', 'bar', sortedSellers.map(([name]) => getFirstName(name)), 
+                createChart('mixSellerChart', 'bar', sortedSellers.map(([name]) => getFirstName(name)),
                     [
                         { label: 'Mix Ideal', data: sortedSellers.map(([,s]) => s.both), backgroundColor: '#a855f7' },
                         { label: 'Salty Total', data: sortedSellers.map(([,s]) => s.salty), backgroundColor: '#14b8a6', hidden: true },
                         { label: 'Foods Total', data: sortedSellers.map(([,s]) => s.foods), backgroundColor: '#f59e0b', hidden: true }
-                    ], 
+                    ],
                     { scales: { x: { stacked: false }, y: { stacked: false } } }
                 );
 
@@ -2296,7 +2296,7 @@
                 });
 
                 mixTableDataForExport = tableData;
-                
+
                 mixTableState.filteredData = tableData;
                 mixTableState.totalPages = Math.ceil(tableData.length / mixTableState.itemsPerPage);
                 if (mixTableState.currentPage > mixTableState.totalPages && mixTableState.totalPages > 0) {
@@ -2317,7 +2317,7 @@
                 let tableHTML = pageData.map(row => {
                     let saltyCols = MIX_SALTY_CATEGORIES.map(b => `<td class="px-1 py-2 text-center border-l border-slate-500">${row.brands.has(b) ? checkIcon : xIcon}</td>`).join('');
                     let foodsCols = MIX_FOODS_CATEGORIES.map(b => `<td class="px-1 py-2 text-center border-l border-slate-500">${row.brands.has(b) ? checkIcon : xIcon}</td>`).join('');
-                    
+
                     return `
                     <tr class="hover:bg-slate-700/50 border-b border-slate-500 last:border-0">
                         <td class="px-2 py-2 font-medium text-slate-300 text-xs">${row.codcli}</td>
@@ -2339,7 +2339,7 @@
                 `;
 
                 document.getElementById('mix-table-body').innerHTML = tableHTML;
-                
+
                 const controls = document.getElementById('mix-pagination-controls');
                 const infoText = document.getElementById('mix-page-info-text');
                 const prevBtn = document.getElementById('mix-prev-page-btn');
@@ -3576,7 +3576,7 @@
             // Let's rely on it for now but wrap it in async chunked loop if possible?
             // Actually 'calculateDistributedGoals' is the heavy function.
             // We should use 'runAsyncChunked' to process 'filteredClients'.
-            
+
             // Pre-calculate Global Totals if missing (Sync because it loops all active clients once, can be heavy but needed for share)
             // Ideally this should also be cached or async. For now, assuming it's fast enough or cached.
             if (!globalGoalsTotalsCache[cacheKey]) {
@@ -3584,25 +3584,25 @@
                  // We need to run the global calc logic.
                  // Let's just run calculateDistributedGoals for the first chunk to prime the cache?
                  // Or just let it run synchronously once.
-                 calculateDistributedGoals([], currentGoalsSupplier, currentGoalsBrand, 0, 0); 
+                 calculateDistributedGoals([], currentGoalsSupplier, currentGoalsBrand, 0, 0);
             }
-            
+
             const currentDate = lastSaleDate;
             const prevMonthDate = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth() - 1, 1));
             const prevMonthIndex = prevMonthDate.getUTCMonth();
             const prevMonthYear = prevMonthDate.getUTCFullYear();
-            
+
             // Helper for inclusion check
             const shouldIncludeSale = (sale, supplier, brand) => {
                 const codFor = String(sale.CODFOR);
-                if (supplier === 'ELMA_ALL') { if (!['707', '708', '752'].includes(codFor)) return false; } 
-                else if (supplier === 'FOODS_ALL') { if (codFor !== '1119') return false; } 
+                if (supplier === 'ELMA_ALL') { if (!['707', '708', '752'].includes(codFor)) return false; }
+                else if (supplier === 'FOODS_ALL') { if (codFor !== '1119') return false; }
                 else {
                     if (codFor !== supplier) return false;
                     if (brand) {
                         const desc = normalize(sale.DESCRICAO || '');
-                        if (brand === 'TODDYNHO') { if (!desc.includes('TODDYNHO')) return false; } 
-                        else if (brand === 'TODDY') { if (!desc.includes('TODDY') || desc.includes('TODDYNHO')) return false; } 
+                        if (brand === 'TODDYNHO') { if (!desc.includes('TODDYNHO')) return false; }
+                        else if (brand === 'TODDY') { if (!desc.includes('TODDY') || desc.includes('TODDYNHO')) return false; }
                         else if (brand === 'QUAKER_KEROCOCO') { if (!desc.includes('QUAKER') && !desc.includes('KEROCOCO')) return false; }
                     }
                 }
@@ -3611,7 +3611,7 @@
 
             const globalTotalAvgFat = globalGoalsTotalsCache[cacheKey].fat;
             const globalTotalAvgVol = globalGoalsTotalsCache[cacheKey].vol;
-            
+
             const clientMetrics = [];
             let sumFat = 0; let sumVol = 0;
             let totalAvgFat = 0; let totalPrevFat = 0; let totalAvgVol = 0; let totalPrevVol = 0; let sumActiveMonths = 0; let totalPrevClients = 0;
@@ -3619,7 +3619,7 @@
             runAsyncChunked(filteredClients, (client) => {
                 const codCli = client['Código'];
                 const clientHistoryIds = optimizedData.indices.history.byClient.get(codCli);
-                
+
                 let cSumFat = 0; let cSumVol = 0; let cPrevFat = 0; let cPrevVol = 0;
                 const monthlyActivity = new Map();
                 const monthlyValues = {};
@@ -3695,7 +3695,7 @@
 
                 // Finalize Render
                 const totalAvgClients = sumActiveMonths / QUARTERLY_DIVISOR;
-                
+
                 const fatInput = document.getElementById('goal-global-fat');
                 const volInput = document.getElementById('goal-global-vol');
                 const btnDistributeFat = document.getElementById('btn-distribute-fat');
@@ -3972,14 +3972,14 @@
             runAsyncChunked(filteredClients, (client) => {
                 const codCli = client['Código'];
                 const clientHistoryIds = optimizedData.indices.history.byClient.get(codCli);
-                
+
                 let sellerName = 'N/A';
                 const rcaCode = client.rcas[0];
                 if (rcaCode) sellerName = optimizedData.rcaNameByCode.get(rcaCode) || rcaCode;
                 const sellerObj = initSeller(sellerName);
 
                 // Initialize client totals for each category
-                const clientCatTotals = {}; 
+                const clientCatTotals = {};
                 baseCategories.forEach(c => clientCatTotals[c.id] = { fat: 0, vol: 0, pos: 0, prevFat: 0, monthly: {} });
 
                 // Single Pass over History for this Client
@@ -4054,7 +4054,7 @@
                 if (currentRenderId !== goalsSvRenderId) return;
 
                 // --- FINALIZE AGGREGATION & RENDER ---
-                
+
                 // 1. Calculate Aggregates (Mix, Geral, etc.)
                 sellerMap.forEach(sellerObj => {
                     // Component Aggregates
@@ -4075,17 +4075,17 @@
                     // Mix Metrics
                     const historyIds = optimizedData.indices.history.byRca.get(sellerObj.name) || [];
                     let activeClientsCount = 0;
-                    
+
                     // Logic for Active Clients (Positivados Geral > 1)
                     // We need to check if ANY sale > 1 for this client in history
                     // Optimized: Reuse indices
-                    // We iterate filteredClients to find active ones for this seller? 
+                    // We iterate filteredClients to find active ones for this seller?
                     // No, "Meta Pos Total" is defined as unique active clients for the seller in the filtered list.
                     // We can re-iterate filteredClients? No, slow.
                     // We can aggregate during the main loop.
                     // Let's do it simply:
                     const sellerClients = filteredClients.filter(c => {
-                        const code = c.rcas[0]; 
+                        const code = c.rcas[0];
                         const name = optimizedData.rcaNameByCode.get(code) || code;
                         return name === sellerObj.name;
                     });
@@ -4096,9 +4096,9 @@
                         if(hIds) { for (const id of hIds) totalFat += optimizedData.historyById.get(id).VLVENDA; }
                         if (totalFat > 1) activeClientsCount++;
                     });
-                    
+
                     // Mix Calc (re-implement or optimize?)
-                    // Mix calculation requires detailed product analysis per client. 
+                    // Mix calculation requires detailed product analysis per client.
                     // For speed, let's assume we can do it sync here for 1 seller's history (smaller dataset).
                     const monthlyData = new Map();
                     historyIds.forEach(id => {
@@ -4128,7 +4128,7 @@
                         });
                         sumSalty += mSalty; sumFoods += mFoods;
                     });
-                    
+
                     let mixSaltyMeta = Math.round(activeClientsCount * 0.60);
                     let mixFoodsMeta = Math.round(activeClientsCount * 0.30);
                     if (sellerObj.code === '1001') { mixSaltyMeta = 0; mixFoodsMeta = 0; }
@@ -4653,7 +4653,7 @@
             }, () => {
                 // --- ON COMPLETE CALLBACK (Render UI) ---
                 if (currentRenderId !== coverageRenderId) return;
-                
+
                 coverageTopCoverageValueKpi.textContent = `${topCoverageItem.coverage.toFixed(2)}%`;
                 coverageTopCoverageProductKpi.textContent = topCoverageItem.name;
                 coverageTopCoverageProductKpi.title = topCoverageItem.name;
@@ -4667,7 +4667,7 @@
                 const selectionCoveragePercentPrevious = activeClientsCount > 0 ? (selectionCoveredCountPrevious / activeClientsCount) * 100 : 0;
                 coverageSelectionCoverageValueKpiPrevious.textContent = `${selectionCoveragePercentPrevious.toFixed(2)}%`;
                 coverageSelectionCoverageCountKpiPrevious.textContent = `${selectionCoveredCountPrevious.toLocaleString('pt-BR')} de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
-                
+
                 tableData.sort((a, b) => {
                     return b.stockQty - a.stockQty;
                 });
@@ -4711,7 +4711,7 @@
                     } else {
                         pdvVariationContent = `<span>-</span>`;
                     }
-                    
+
                     return `
                         <tr class="hover:bg-slate-700/50">
                             <td class="px-2 py-1.5 text-xs">${item.descricao}</td>
@@ -4733,7 +4733,7 @@
                 sales.forEach(s => {
                     const city = s.CIDADE || 'N/A';
                     salesByCity[city] = (salesByCity[city] || 0) + s.QTVENDA_EMBALAGEM_MASTER;
-                    
+
                     const seller = s.NOME || 'N/A';
                     salesBySeller[seller] = (salesBySeller[seller] || 0) + s.QTVENDA_EMBALAGEM_MASTER;
                 });
@@ -5662,7 +5662,7 @@
 
                 if (totalFaturamentoMes > 0) {
                     activeClientsList.push(client);
-                    
+
                     // Detailed Data check
                     const details = detailedDataByClient.get(codcli);
                     if (details && details.total > 0) {
@@ -5695,7 +5695,7 @@
 
                 const sortedActiveClients = Object.values(salesByActiveClient).sort((a, b) => b.total - a.total);
                 activeClientsForExport = sortedActiveClients;
-                
+
                 cityActiveDetailTableBody.innerHTML = sortedActiveClients.slice(0, 500).map(data => {
                     const novoLabel = data.isNew ? `<span class="ml-2 text-xs font-semibold text-purple-400 bg-purple-900/50 px-2 py-0.5 rounded-full">NOVO</span>` : '';
                     let tooltipParts = [];
@@ -5713,7 +5713,7 @@
                     if (!a.isNewForInactiveLabel && b.isNewForInactiveLabel) return 1;
                     return (parseDate(b.ultimaCompra) || 0) - (parseDate(a.ultimaCompra) || 0);
                 });
-                
+
                 cityInactiveDetailTableBody.innerHTML = inactiveClientsList.slice(0, 500).map(client => {
                     const novoLabel = client.isNewForInactiveLabel ? `<span class="ml-2 text-xs font-semibold text-purple-400 bg-purple-900/50 px-2 py-0.5 rounded-full">NOVO</span>` : '';
                     const devolucaoLabel = client.isReturn ? `<span class="ml-2 text-xs font-semibold text-red-400 bg-red-900/50 px-2 py-0.5 rounded-full">DEVOLUÇÃO</span>` : '';
@@ -5724,7 +5724,7 @@
                 const cityChartOptions = { indexAxis: 'y', scales: { x: { grace: '15%' } }, plugins: { datalabels: { align: 'end', anchor: 'end', color: '#cbd5e1', font: { size: 14, weight: 'bold' }, formatter: (value) => (value / 1000).toFixed(1) + 'k', offset: 8 } } };
                 const totalFaturamentoCidade = salesForAnalysis.reduce((sum, item) => sum + item.VLVENDA, 0);
                 totalFaturamentoCidadeEl.textContent = totalFaturamentoCidade.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                
+
                 if (totalClientesCidadeEl) {
                     totalClientesCidadeEl.textContent = clientsForAnalysis.length.toLocaleString('pt-BR');
                 }
@@ -6943,7 +6943,7 @@
             const monthWeeksCache = new Map();
 
             // --- Async Pipeline ---
-            
+
             // 1. Process Current Sales
             runAsyncChunked(currentSales, (s) => {
                 const isValidType = (s.TIPOVENDA === '1' || s.TIPOVENDA === '9');
@@ -7161,16 +7161,16 @@
                     }
 
                     // Daily Chart (Simplified re-calc for now, or could optimize further)
-                    const salesByWeekAndDay = {}; 
+                    const salesByWeekAndDay = {};
                     currentMonthWeeks.forEach((w, i) => { salesByWeekAndDay[i + 1] = new Array(7).fill(0); });
                     currentSales.forEach(s => { const d = parseDate(s.DTPED); if(d) { const wIdx = currentMonthWeeks.findIndex(w => d >= w.start && d <= w.end); if(wIdx !== -1) salesByWeekAndDay[wIdx+1][d.getUTCDay()] += s.VLVENDA; } });
                     if (m.overlapSales && m.overlapSales.length > 0) { m.overlapSales.forEach(s => { const d = parseDate(s.DTPED); if (d) salesByWeekAndDay[1][d.getUTCDay()] += s.VLVENDA; }); }
-                    
+
                     const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
                     const professionalPalette = ['#a855f7', '#6366f1', '#ec4899', '#f97316', '#8b5cf6', '#06b6d4', '#f59e0b'];
                     const dailyBreakdownDatasets = dayNames.map((dayName, dayIndex) => ({ label: dayName, data: currentMonthWeeks.map((week, weekIndex) => salesByWeekAndDay[weekIndex + 1][dayIndex]), backgroundColor: professionalPalette[dayIndex % professionalPalette.length] }));
                     const weekLabelsForDailyChart = currentMonthWeeks.map((week, index) => { const startDateStr = week.start.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }); const endDateStr = week.end.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }); return `S${index + 1} (${startDateStr} à ${endDateStr})`; });
-                    
+
                     if (dailyBreakdownDatasets.some(ds => ds.data.some(d => d > 0))) {
                         createChart('dailyWeeklyComparisonChart', 'bar', weekLabelsForDailyChart, dailyBreakdownDatasets, { plugins: { legend: { display: true, position: 'top' }, tooltip: { mode: 'point', intersect: true }, datalabels: { display: false } }, scales: { x: { stacked: false }, y: { stacked: false, ticks: { callback: (v) => (v / 1000).toFixed(0) + 'k' } } } });
                     } else {
@@ -7190,7 +7190,7 @@
             const currentRenderId = stockRenderId;
 
             const { sales: filteredSales, history: filteredHistory } = getStockFilteredData();
-            
+
             const filial = stockFilialFilter.value;
             const activeStockMap = getActiveStockMap(filial);
 
@@ -7206,18 +7206,18 @@
             // Map<ProductCode, Array<Sale>>
             const salesByProduct = new Map();
             const historyByProduct = new Map();
-            const historySalesListByProduct = new Map(); 
-            const totalQtyByProduct = new Map(); 
-            const currentMonthQtyByProduct = new Map(); 
-            const uniqueMonthsByProduct = new Map(); 
+            const historySalesListByProduct = new Map();
+            const totalQtyByProduct = new Map();
+            const currentMonthQtyByProduct = new Map();
+            const uniqueMonthsByProduct = new Map();
 
             // Sync Pre-aggregation (O(N) is fast)
             const processSaleForAggregation = (s, isHistory) => {
                 const p = s.PRODUTO;
                 // Don't add to productsWithFilteredActivity yet, do it in the filtering loop below to respect stock filters
-                
+
                 if (!salesByProduct.has(p)) salesByProduct.set(p, []);
-                salesByProduct.get(p).push(s); 
+                salesByProduct.get(p).push(s);
 
                 if (!uniqueMonthsByProduct.has(p)) uniqueMonthsByProduct.set(p, new Set());
                 const d = parseDate(s.DTPED);
@@ -7230,8 +7230,8 @@
                     if (!historySalesListByProduct.has(p)) historySalesListByProduct.set(p, []);
                     historySalesListByProduct.get(p).push(s);
 
-                    if (!historyByProduct.has(p)) historyByProduct.set(p, 0); 
-                    historyByProduct.set(p, historyByProduct.get(p) + 1); 
+                    if (!historyByProduct.has(p)) historyByProduct.set(p, 0);
+                    historyByProduct.set(p, historyByProduct.get(p) + 1);
                 } else {
                     currentMonthQtyByProduct.set(p, (currentMonthQtyByProduct.get(p) || 0) + qty);
                 }
@@ -7239,7 +7239,7 @@
 
             filteredSales.forEach(s => processSaleForAggregation(s, false));
             filteredHistory.forEach(s => processSaleForAggregation(s, true));
-            
+
             // Build the list of products to analyze based on STOCK or SALES activity + Filters
             activeStockMap.forEach((qty, productCode) => {
                 if (qty > 0) {
@@ -7262,10 +7262,10 @@
             // Iterate salesByProduct keys (which implies sales existed)
             for (const productCode of totalQtyByProduct.keys()) {
                  if (productsWithFilteredActivity.has(productCode)) continue; // Already added
-                 
+
                  const details = productDetailsMap.get(productCode);
                  if (!details) continue; // Should be in details map if processed correctly
-                 
+
                  if (selectedSuppliersSet.size > 0 && !selectedSuppliersSet.has(String(details.codfor))) continue;
                  if (selectedProductsSet.size > 0 && !selectedProductsSet.has(String(productCode))) continue;
                  if (currentPasta) {
@@ -7280,7 +7280,7 @@
 
             // Convert to array for chunking
             const productsArray = Array.from(productsWithFilteredActivity);
-            
+
             // Pre-calculate global dates for trend
             const endDate = parseDate(sortedWorkingDays[sortedWorkingDays.length - 1]);
 
@@ -7425,13 +7425,13 @@
                             const productWithVariation = { ...p, variation };
 
                         if (p.currentMonthSalesQty >= p.monthlyAvgSale) {
-                            growth.push(productWithVariation); 
-                        } else if (p.currentMonthSalesQty < p.monthlyAvgSale && p.monthlyAvgSale > 0) { 
-                            decline.push(productWithVariation); 
+                            growth.push(productWithVariation);
+                        } else if (p.currentMonthSalesQty < p.monthlyAvgSale && p.monthlyAvgSale > 0) {
+                            decline.push(productWithVariation);
                         }
-                     } else if (p.soldThisMonth && !p.hasHistory) { 
+                     } else if (p.soldThisMonth && !p.hasHistory) {
                         newProducts.push(p);
-                     } else if (!p.soldThisMonth && p.hasHistory) { 
+                     } else if (!p.soldThisMonth && p.hasHistory) {
                         lostProducts.push(p);
                      }
                 });
