@@ -3523,7 +3523,34 @@
             });
         }
 
-        function getFilterDescription() {
+
+        function calculateGoalMixVariation(input) {
+            const val = parseFloat(input.value.replace(/\./g, '').replace(',', '.')) || 0;
+            const original = parseFloat(input.dataset.originalValue) || 0;
+            const variationEl = document.getElementById('goal-mix-variation');
+
+            if (!variationEl) return;
+
+            if (original === 0) {
+                variationEl.textContent = '';
+                return;
+            }
+
+            const diff = val - original;
+            const pct = (diff / original) * 100;
+
+            if (diff > 0) {
+                variationEl.textContent = `+${pct.toFixed(1)}%`;
+                variationEl.className = 'text-xs font-bold text-right h-4 text-green-400';
+            } else if (diff < 0) {
+                variationEl.textContent = `${pct.toFixed(1)}%`;
+                variationEl.className = 'text-xs font-bold text-right h-4 text-red-400';
+            } else {
+                variationEl.textContent = '';
+            }
+        }
+
+function getFilterDescription() {
             if (selectedGoalsGvSupervisors.length > 0) {
                 return selectedGoalsGvSupervisors.length === 1 ? `Supervisor "${selectedGoalsGvSupervisors[0]}"` : "Supervisores selecionados";
             }
@@ -3727,8 +3754,13 @@
                 const totalMetaPos = clientMetrics.reduce((sum, item) => sum + item.metaPos, 0);
                 if (goalMixInput) {
                     goalMixInput.value = totalMetaPos.toLocaleString('pt-BR');
-                    if (isAggregatedTab) goalMixInput.classList.add('opacity-50', 'cursor-not-allowed');
-                    else goalMixInput.classList.remove('opacity-50', 'cursor-not-allowed');
+                    goalMixInput.dataset.originalValue = totalMetaPos;
+
+                    goalMixInput.readOnly = false;
+                    goalMixInput.classList.remove('opacity-50', 'cursor-not-allowed');
+
+                    const variationEl = document.getElementById('goal-mix-variation');
+                    if(variationEl) variationEl.textContent = '';
                 }
 
                 goalsTableState.filteredData = clientMetrics;
@@ -11011,10 +11043,11 @@
                                     <div class="bg-[#3b0764] border border-purple-900/50 rounded-lg p-3 relative overflow-hidden group">
                                         <div class="absolute top-0 left-0 w-1 h-full bg-purple-500"></div>
                                         <label class="text-[10px] font-bold text-purple-300 uppercase tracking-wider mb-1 block">META POSITIVAÇÃO</label>
-                                        <div class="flex gap-2">
-                                            <input type="text" id="goal-global-mix" class="w-full bg-[#0f172a] border border-purple-900/50 text-white font-bold text-lg p-2 rounded focus:outline-none focus:border-purple-500" value="0" readonly>
+                                        <div class="flex flex-col gap-1">
+                                            <input type="text" id="goal-global-mix" class="w-full bg-[#0f172a] border border-purple-900/50 text-white font-bold text-lg p-2 rounded focus:outline-none focus:border-purple-500" value="0" oninput="calculateGoalMixVariation(this)">
+                                            <div id="goal-mix-variation" class="text-xs font-bold text-right h-4"></div>
                                         </div>
-                                        <div class="flex justify-between text-[10px] text-slate-400 mt-1">
+                                        <div class="flex justify-between text-[10px] text-slate-400 mt-1 border-t border-purple-900/30 pt-1">
                                             <span>Média Trim: <span id="ref-avg-clients" class="text-white font-bold">0</span></span>
                                             <span>Mês Ant: <span id="ref-prev-clients" class="text-white font-bold">0</span></span>
                                         </div>
