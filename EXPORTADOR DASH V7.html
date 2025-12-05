@@ -2625,11 +2625,11 @@
                                 const compCols = ids.map(id => colMap[id] + 1); 
                                 const compColsPos = ids.map(id => colMap[id] + 3);
                                 const formulaFat = compCols.map(c => `${getColLet(c)}${excelRow}`).join("+");
-                                const formulaPos = compColsPos.map(c => `${getColLet(c)}${excelRow}`).join("+");
                                 
                                 rowData.push({ t: 'n', v: d.metaFat, f: formulaFat, s: { ...aggCellStyle, numFmt: fmtMoney }, z: fmtMoney }); 
                                 rowData.push(createCell(d.metaPos, readOnlyStyle, fmtInt));
-                                rowData.push({ t: 'n', v: d.metaPos, f: formulaPos, s: { ...aggCellStyle, numFmt: fmtInt }, z: fmtInt });
+                                // Static value for Positivation (Unique Clients), no formula
+                                rowData.push(createCell(d.metaPos, aggCellStyle, fmtInt));
                             } else {
                                 // Editable Cells
                                 rowData.push(createCell(d.metaFat, cellStyle, fmtMoney)); 
@@ -3955,7 +3955,7 @@
                             if (rcas.includes(sellerCode)) { supervisorName = sup; break; }
                         }
                     }
-                    sellerMap.set(sellerName, { name: sellerName, code: sellerCode, supervisor: supervisorName, data: {}, metaPosTotal: 0 });
+                    sellerMap.set(sellerName, { name: sellerName, code: sellerCode, supervisor: supervisorName, data: {}, metaPosTotal: 0, elmaPos: 0, foodsPos: 0 });
                 }
                 return sellerMap.get(sellerName);
             };
@@ -4050,6 +4050,13 @@
                     });
                 });
 
+                // Calculate Aggregate Positivation for Client (Unique Client Count)
+                let clientElmaFat = (clientCatTotals['707']?.fat || 0) + (clientCatTotals['708']?.fat || 0) + (clientCatTotals['752']?.fat || 0);
+                if (clientElmaFat > 1) sellerObj.elmaPos++;
+
+                let clientFoodsFat = (clientCatTotals['1119_TODDYNHO']?.fat || 0) + (clientCatTotals['1119_TODDY']?.fat || 0) + (clientCatTotals['1119_QUAKER_KEROCOCO']?.fat || 0);
+                if (clientFoodsFat > 1) sellerObj.foodsPos++;
+
             }, () => {
                 if (currentRenderId !== goalsSvRenderId) return;
 
@@ -4069,6 +4076,11 @@
                                 quarterMonths.forEach(m => monthlySum[m.key] += (sellerObj.data[compId].monthlyValues[m.key] || 0));
                             }
                         });
+                        
+                        // Use calculated unique client count for Total Elma/Foods
+                        if (aggCol.id === 'total_elma') sumPos = sellerObj.elmaPos || 0;
+                        else if (aggCol.id === 'total_foods') sumPos = sellerObj.foodsPos || 0;
+
                         sellerObj.data[aggCol.id] = { metaFat: sumFat, metaVol: sumVol, metaPos: sumPos, avgVol: sumAvgVol, avgFat: sumAvgFat, monthlyValues: monthlySum };
                     });
 
