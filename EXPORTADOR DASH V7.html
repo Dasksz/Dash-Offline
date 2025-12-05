@@ -422,11 +422,19 @@
 
                 let dtPed = rawRow['DTPED'];
                 const dtSaida = rawRow['DTSAIDA'];
-                const parsedDtPed = parseDate(dtPed);
+
+                // --- OPTIMIZATION: Parse Dates to Timestamp here in Worker ---
+                let parsedDtPed = parseDate(dtPed);
                 const parsedDtSaida = parseDate(dtSaida);
+
                 if (parsedDtPed && parsedDtSaida && (parsedDtPed.getUTCFullYear() < parsedDtSaida.getUTCFullYear() || (parsedDtPed.getUTCFullYear() === parsedDtSaida.getUTCFullYear() && parsedDtPed.getUTCMonth() < parsedDtSaida.getUTCMonth()))) {
-                    dtPed = dtSaida;
+                    parsedDtPed = parsedDtSaida;
                 }
+
+                // Convert to Timestamp (Number) for lighter JSON and faster parsing in main thread
+                const tsDtPed = parsedDtPed ? parsedDtPed.getTime() : null;
+                const tsDtSaida = parsedDtSaida ? parsedDtSaida.getTime() : null;
+
                 const productCode = String(rawRow['PRODUTO'] || '').trim();
                 let qtdeMaster = productMasterMap.get(productCode);
                 if (!qtdeMaster || qtdeMaster <= 0) qtdeMaster = 1;
@@ -467,7 +475,7 @@
                     
                     // Peso (tonelada) - [Instrução do usuário: Deve somar sempre, mesmo não sendo faturamento]
                     TOTPESOLIQ: pesoOriginal, 
-                    DTPED: dtPed, DTSAIDA: dtSaida,
+                    DTPED: tsDtPed, DTSAIDA: tsDtSaida, // Optimized: Numbers
                     POSICAO: String(rawRow['POSICAO'] || ''),
                     ESTOQUEUNIT: parseBrazilianNumber(rawRow['ESTOQUEUNIT']),
                     QTVENDA_EMBALAGEM_MASTER: isNaN(qtdeMaster) || qtdeMaster === 0 ? 0 : qtVenda / qtdeMaster,
@@ -496,6 +504,20 @@
             return count > 0 ? count : 1;
         }
 
+        // --- OPTIMIZATION: Columnar Data Transformation ---
+        function toColumnar(data) {
+            if (!data || data.length === 0) return { columns: [], values: {}, length: 0 };
+            const columns = Object.keys(data[0]);
+            const values = {};
+            columns.forEach(col => values[col] = new Array(data.length));
+
+            for (let i = 0; i < data.length; i++) {
+                for (let j = 0; j < columns.length; j++) {
+                    values[columns[j]][i] = data[i][columns[j]];
+                }
+            }
+            return { columns, values, length: data.length };
+        }
 
         self.onmessage = async (event) => {
             const { salesFile, clientsFile, productsFile, historyFile, innovationsFile } = event.data;
@@ -577,13 +599,14 @@
                     if (isNaN(qtdeMaster) || qtdeMaster <= 0) qtdeMaster = 1;
                     productMasterMap.set(productCode, qtdeMaster);
                     if (!productDetailsMap.has(productCode)) {
-                        productDetailsMap.set(productCode, {
-                            descricao: String(prod['Descrição'] || `Produto ${productCode}`),
-                            fornecedor: String(prod['Nome do fornecedor'] || 'N/A'),
-                            codfor: String(prod['Fornecedor'] || 'N/A'),
-                            dtCadastro: prod['Dt.Cadastro'] || null
-                        });
-                    }
+                            const dtCad = parseDate(prod['Dt.Cadastro']);
+                            productDetailsMap.set(productCode, {
+                                descricao: String(prod['Descrição'] || `Produto ${productCode}`),
+                                fornecedor: String(prod['Nome do fornecedor'] || 'N/A'),
+                                codfor: String(prod['Fornecedor'] || 'N/A'),
+                                dtCadastro: dtCad ? dtCad.getTime() : null
+                            });
+                        }
                 });
 
 
@@ -604,6 +627,9 @@
                     const rcas = new Set();
                     if (rca1) rcas.add(rca1);
 
+                    const uc = parseDate(client['Data da Última Compra']);
+                    const dc = parseDate(client['Data e Hora de Cadastro']);
+
                     const clientData = {
                         'Código': codCli,
                         rcas: Array.from(rcas),
@@ -620,8 +646,8 @@
                         telefone: String(client['Telefone Comercial'] || 'N/A'),
                         email: String(client['E-mail'] || 'N/A'),
                         ramo: String(client['Descricao'] || 'N/A'),
-                        ultimaCompra: client['Data da Última Compra'],
-                        dataCadastro: client['Data e Hora de Cadastro'],
+                        ultimaCompra: uc ? uc.getTime() : null,
+                        dataCadastro: dc ? dc.getTime() : null,
                         bloqueio: String(client['Bloqueio'] || '').trim().toUpperCase(),
                         inscricaoEstadual: String(client['Insc. Est. / Produtor'] || 'N/A')
                     };
@@ -664,13 +690,15 @@
                 });
 
                 const applyBranchOverride = (salesArray, overrideMap) => {
-                    return salesArray.map(sale => {
+                    // Use standard loop for better performance in worker
+                    for(let i=0; i<salesArray.length; i++) {
+                        const sale = salesArray[i];
                         const override = overrideMap.get(sale.CODCLI);
                         if (override && sale.FILIAL === '05') {
-                            return { ...sale, FILIAL: override };
+                            sale.FILIAL = override;
                         }
-                        return sale;
-                    });
+                    }
+                    return salesArray;
                 };
 
                 let finalSalesData = applyBranchOverride(processedSalesData, clientBranchOverride);
@@ -680,12 +708,13 @@
                 const tiagoSellersToMoveTo08 = new Set(['291', '292', '293', '284', '289', '287', '286']);
 
                 const applyTiagoRule = (salesArray) => {
-                    return salesArray.map(sale => {
+                    for(let i=0; i<salesArray.length; i++) {
+                        const sale = salesArray[i];
                         if (sale.CODSUPERVISOR === '12' && tiagoSellersToMoveTo08.has(sale.CODUSUR)) {
-                            return { ...sale, FILIAL: '08' };
+                            sale.FILIAL = '08';
                         }
-                        return sale;
-                    });
+                    }
+                    return salesArray;
                 };
 
                 finalSalesData = applyTiagoRule(finalSalesData);
@@ -694,18 +723,22 @@
 
                 self.postMessage({ type: 'progress', status: 'Atualizando datas de compra...', percentage: 80 });
                 const latestSaleDateByClient = new Map();
-                finalSalesData.forEach(sale => {
+                // Performance: use for loop
+                for(let i=0; i<finalSalesData.length; i++) {
+                    const sale = finalSalesData[i];
                     const codcli = sale.CODCLI;
-                    const saleDate = parseDate(sale.DTPED);
+                    const saleDate = sale.DTPED; // Already timestamp (number)
                     if (codcli && saleDate) {
                         const existingDate = latestSaleDateByClient.get(codcli);
                         if (!existingDate || saleDate > existingDate) latestSaleDateByClient.set(codcli, saleDate);
                     }
-                });
+                }
+
                 clientMap.forEach((client, codcli) => {
-                    const lastPurchaseDate = parseDate(client.ultimaCompra);
+                    const lastPurchaseDate = client.ultimaCompra; // Already timestamp
                     const latestSaleDate = latestSaleDateByClient.get(codcli);
-                    if (latestSaleDate && (!lastPurchaseDate || isNaN(lastPurchaseDate.getTime()) || latestSaleDate > lastPurchaseDate)) {
+                    // Compare numbers
+                    if (latestSaleDate && (!lastPurchaseDate || latestSaleDate > lastPurchaseDate)) {
                         client.ultimaCompra = latestSaleDate;
                     }
                 });
@@ -713,8 +746,10 @@
                 self.postMessage({ type: 'progress', status: 'Agregando pedidos...', percentage: 90 });
                 const aggregateOrders = (data) => {
                     const orders = new Map();
-                    data.forEach(row => {
-                        if (!row.PEDIDO) return;
+                    // Performance: for loop
+                    for(let i=0; i<data.length; i++) {
+                        const row = data[i];
+                        if (!row.PEDIDO) continue;
                         if (!orders.has(row.PEDIDO)) {
                             orders.set(row.PEDIDO, {
                                 ...row,
@@ -733,7 +768,7 @@
                         order.TOTPESOLIQ += row.TOTPESOLIQ;
                         if (row.OBSERVACAOFOR) order.FORNECEDORES.add(row.OBSERVACAOFOR);
                         if (row.CODFOR) order.CODFORS.add(row.CODFOR);
-                    });
+                    }
                     return Array.from(orders.values()).map(order => {
                         order.FORNECEDORES_LIST = Array.from(order.FORNECEDORES);
                         order.FORNECEDORES_STR = order.FORNECEDORES_LIST.join(', ');
@@ -743,9 +778,13 @@
                 };
                 const aggregatedByOrder = aggregateOrders(finalSalesData);
 
-                const lastSaleDate = finalSalesData.length > 0
-                    ? new Date(Math.max.apply(null, finalSalesData.map(s => parseDate(s.DTPED)).filter(d => d && !isNaN(d))))
-                    : new Date();
+                // Calculate Max Date using Numbers (Timestamps)
+                let maxTs = 0;
+                for(let i=0; i<finalSalesData.length; i++) {
+                    const ts = finalSalesData[i].DTPED;
+                    if(ts && ts > maxTs) maxTs = ts;
+                }
+                const lastSaleDate = maxTs > 0 ? new Date(maxTs) : new Date();
                 lastSaleDate.setUTCHours(0,0,0,0);
                 const passedWorkingDaysCurrentMonth = getPassedWorkingDaysInSpecificMonth(
                     lastSaleDate.getUTCFullYear(),
@@ -754,21 +793,29 @@
                 );
 
 
-                self.postMessage({ type: 'progress', status: 'Finalizando...', percentage: 100 });
+                self.postMessage({ type: 'progress', status: 'Otimizando e Finalizando...', percentage: 95 });
+
+                // Convert large datasets to Columnar format
+                const columnarDetailed = toColumnar(finalSalesData);
+                const columnarHistory = toColumnar(finalHistoryData);
+                const columnarClients = toColumnar(Array.from(clientMap.values()));
+
+                self.postMessage({ type: 'progress', status: 'Pronto!', percentage: 100 });
 
                 self.postMessage({
                     type: 'result',
                     data: {
-                        detailed: finalSalesData,
-                        history: finalHistoryData,
+                        detailed: columnarDetailed,
+                        history: columnarHistory,
                         byOrder: aggregatedByOrder,
-                        clients: Array.from(clientMap.values()),
+                        clients: columnarClients,
                         stockMap05: Object.fromEntries(stockMap05),
                         stockMap08: Object.fromEntries(stockMap08),
                         innovationsMonth: innovationsDataRaw,
                         activeProductCodes: Array.from(activeProductCodesFromCadastro),
                         productDetails: Object.fromEntries(productDetailsMap),
-                        passedWorkingDaysCurrentMonth: passedWorkingDaysCurrentMonth
+                        passedWorkingDaysCurrentMonth: passedWorkingDaysCurrentMonth,
+                        isColumnar: true
                     }
                 });
 
@@ -779,6 +826,164 @@
     </script>
 
     <script id="report-logic-script" type="text/template">
+        // --- OPTIMIZATION: Lazy Columnar Accessor with Write-Back Support ---
+        class ColumnarDataset {
+            constructor(columnarData) {
+                this.columns = columnarData.columns;
+                this.values = columnarData.values;
+                this.length = columnarData.length;
+                this._overrides = new Map(); // Stores mutations: Map<index, Object>
+            }
+
+            get(index) {
+                if (index < 0 || index >= this.length) return undefined;
+
+                const overrides = this._overrides;
+                const values = this.values;
+                const columns = this.columns;
+
+                // Return a Lazy Proxy that constructs properties only on access
+                // and supports write-back for mutations (e.g. seller remapping)
+                return new Proxy({}, {
+                    get(target, prop) {
+                        if (prop === 'toJSON') return () => "ColumnarRowProxy"; // Debug help
+
+                        // 1. Check overrides first (mutations)
+                        const ov = overrides.get(index);
+                        if (ov && prop in ov) {
+                            return ov[prop];
+                        }
+
+                        // 2. Check columnar data (lazy read)
+                        // Note: values[prop] is the array for that column
+                        if (values && values[prop]) {
+                            return values[prop][index];
+                        }
+
+                        return target[prop]; // Fallback (e.g. prototype methods)
+                    },
+
+                    set(target, prop, value) {
+                        let ov = overrides.get(index);
+                        if (!ov) {
+                            ov = {};
+                            overrides.set(index, ov);
+                        }
+                        ov[prop] = value;
+                        return true;
+                    },
+
+                    ownKeys(target) {
+                        // Return all original columns plus any new keys added via mutation
+                        const ov = overrides.get(index);
+                        if (ov) {
+                            // Create a set of keys to ensure uniqueness
+                            const keys = new Set(columns);
+                            Object.keys(ov).forEach(k => keys.add(k));
+                            return Array.from(keys);
+                        }
+                        return columns;
+                    },
+
+                    getOwnPropertyDescriptor(target, prop) {
+                        // Check overrides or values to confirm existence
+                        const ov = overrides.get(index);
+                        if ((ov && prop in ov) || (values && values[prop])) {
+                            return { enumerable: true, configurable: true, writable: true };
+                        }
+                        return undefined;
+                    },
+
+                    has(target, prop) {
+                        const ov = overrides.get(index);
+                        return (ov && prop in ov) || (values && prop in values);
+                    }
+                });
+            }
+
+            // Interface Compatibility
+            forEach(callback) {
+                for (let i = 0; i < this.length; i++) {
+                    callback(this.get(i), i);
+                }
+            }
+
+            map(callback) {
+                const result = new Array(this.length);
+                for (let i = 0; i < this.length; i++) {
+                    result[i] = callback(this.get(i), i);
+                }
+                return result;
+            }
+
+            filter(callback) {
+                const result = [];
+                for (let i = 0; i < this.length; i++) {
+                    const item = this.get(i);
+                    if (callback(item, i)) result.push(item);
+                }
+                return result;
+            }
+
+            reduce(callback, initialValue) {
+                let accumulator = initialValue;
+                for (let i = 0; i < this.length; i++) {
+                    accumulator = callback(accumulator, this.get(i), i);
+                }
+                return accumulator;
+            }
+
+            [Symbol.iterator]() {
+                let index = 0;
+                return {
+                    next: () => {
+                        if (index < this.length) {
+                            return { value: this.get(index++), done: false };
+                        } else {
+                            return { done: true };
+                        }
+                    }
+                };
+            }
+        }
+
+        // Custom Map implementation for Index-based storage
+        class IndexMap {
+            constructor(dataSource) {
+                this._indices = new Map();
+                this._source = dataSource;
+            }
+
+            set(key, index) {
+                this._indices.set(key, index);
+            }
+
+            get(key) {
+                const index = this._indices.get(key);
+                if (index === undefined) return undefined;
+                return this._source.get(index);
+            }
+
+            has(key) {
+                return this._indices.has(key);
+            }
+
+            values() {
+                // Warning: Heavy operation
+                const objects = [];
+                for (const index of this._indices.values()) {
+                    objects.push(this._source.get(index));
+                }
+                return objects;
+            }
+
+            forEach(callback) {
+                this._indices.forEach((index, key) => {
+                    callback(this._source.get(index), key);
+                });
+            }
+        }
+
         function parseDate(dateString) {
             if (!dateString) return null;
 
@@ -787,9 +992,12 @@
                 return !isNaN(dateString.getTime()) ? dateString : null;
             }
 
-            // Se for um número (formato Excel)
+            // Se for um número (formato Excel ou Timestamp)
             if (typeof dateString === 'number') {
-                return new Date(Math.round((dateString - 25569) * 86400 * 1000));
+                // Excel Serial Date (approx < 50000 for current dates, Timestamp is > 1000000000000)
+                if (dateString < 100000) return new Date(Math.round((dateString - 25569) * 86400 * 1000));
+                // Timestamp
+                return new Date(dateString);
             }
             
             if (typeof dateString !== 'string') return null;
@@ -825,24 +1033,72 @@
 
             return null; // Retorna nulo se nenhum formato corresponder
         }
+
+        // --- OPTIMIZATION: Chunked Processor to prevent UI Freeze ---
+        function runAsyncChunked(items, processItemFn, onComplete, isCancelled) {
+            let index = 0;
+            const total = items.length;
+
+            // Check if items is a ColumnarDataset and access by index directly to avoid overhead
+            const isColumnar = items instanceof ColumnarDataset;
+
+            function nextChunk() {
+                if (isCancelled && isCancelled()) return;
+
+                const start = performance.now();
+                while (index < total && performance.now() - start < 12) { // 12ms budget per frame (60fps target is 16ms)
+                    const item = isColumnar ? items.get(index) : items[index];
+                    processItemFn(item, index);
+                    index++;
+                }
+
+                if (index < total) {
+                    setTimeout(nextChunk, 0); // Yield to main thread
+                } else {
+                    if(onComplete) onComplete();
+                }
+            }
+
+            nextChunk();
+        }
+
+        let allSalesData, allHistoryData, allClientsData;
         
-        let allSalesData = embeddedData.detailed;
-        let allHistoryData = embeddedData.history;
+        if (embeddedData.isColumnar) {
+            allSalesData = new ColumnarDataset(embeddedData.detailed);
+            allHistoryData = new ColumnarDataset(embeddedData.history);
+            allClientsData = new ColumnarDataset(embeddedData.clients);
+        } else {
+            allSalesData = embeddedData.detailed;
+            allHistoryData = embeddedData.history;
+            allClientsData = embeddedData.clients;
+        }
+
         let aggregatedOrders = embeddedData.byOrder;
-        const allClientsData = embeddedData.clients;
         const stockData05 = new Map(Object.entries(embeddedData.stockMap05 || {}));
         const stockData08 = new Map(Object.entries(embeddedData.stockMap08 || {}));
         const innovationsMonthData = embeddedData.innovationsMonth;
-        const clientMapForKPIs = new Map(allClientsData.map(c => [String(c['Código']), c]));
+        const clientMapForKPIs = new Map();
+        // Init Client Map manually since map() might be slower on Columnar
+        for(let i=0; i<allClientsData.length; i++) {
+            const c = allClientsData instanceof ColumnarDataset ? allClientsData.get(i) : allClientsData[i];
+            clientMapForKPIs.set(String(c['Código']), c);
+        }
+
         const activeProductCodesFromCadastro = new Set(embeddedData.activeProductCodes || []);
         const productDetailsMap = new Map(Object.entries(embeddedData.productDetails || {}));
         const passedWorkingDaysCurrentMonth = embeddedData.passedWorkingDaysCurrentMonth || 1;
 
-        const clientsWithSalesThisMonth = new Set(allSalesData.map(s => s.CODCLI));
+        const clientsWithSalesThisMonth = new Set();
+        // Populate set
+        for(let i=0; i<allSalesData.length; i++) {
+            const s = allSalesData instanceof ColumnarDataset ? allSalesData.get(i) : allSalesData[i];
+            clientsWithSalesThisMonth.add(s.CODCLI);
+        }
 
         const optimizedData = {
-            salesById: new Map(),
-            historyById: new Map(),
+            salesById: embeddedData.isColumnar ? new IndexMap(allSalesData) : new Map(),
+            historyById: embeddedData.isColumnar ? new IndexMap(allHistoryData) : new Map(),
             indices: {
                 current: {
                     bySupervisor: new Map(),
@@ -863,6 +1119,8 @@
                     byPasta: new Map(),
                     bySupplier: new Map(),
                     byClient: new Map(),
+                    byPosition: new Map(),
+                    byRede: new Map(),
                     byTipoVenda: new Map(),
                     byProduct: new Map(),
                     byCity: new Map(),
@@ -879,7 +1137,17 @@
 
         const QUARTERLY_DIVISOR = 3;
 
-        const lastSaleDate = allSalesData.length > 0 ? new Date(Math.max.apply(null, allSalesData.map(s => parseDate(s.DTPED)).filter(d => d && !isNaN(d)))) : new Date();
+        // Optimized lastSaleDate calculation to avoid mapping huge array
+        let maxDateTs = 0;
+        for(let i=0; i<allSalesData.length; i++) {
+            const s = allSalesData instanceof ColumnarDataset ? allSalesData.get(i) : allSalesData[i];
+            const d = parseDate(s.DTPED);
+            if(d && !isNaN(d)) {
+                const ts = d.getTime();
+                if(ts > maxDateTs) maxDateTs = ts;
+            }
+        }
+        const lastSaleDate = maxDateTs > 0 ? new Date(maxDateTs) : new Date();
         lastSaleDate.setUTCHours(0,0,0,0);
         let maxWorkingDaysStock = 0;
         let sortedWorkingDays = [];
@@ -890,41 +1158,66 @@
             const clientToCurrentSellerMap = new Map();
             let americanasCodCli = null;
 
-            [...allSalesData, ...allHistoryData].forEach(s => {
+            // Combined loop for seller details map
+            const combinedData = [...allSalesData, ...allHistoryData];
+            for (let i = 0; i < combinedData.length; i++) {
+                const s = combinedData[i];
                 if (s.CODUSUR && (!sellerDetailsMap.has(s.CODUSUR) || s.NOME)) {
                     sellerDetailsMap.set(s.CODUSUR, { name: s.NOME, supervisor: s.SUPERV });
                 }
-            });
+            }
 
             optimizedData.clientsByRca = new Map();
-            optimizedData.searchIndices.clients = allClientsData.map(client => {
+            optimizedData.searchIndices.clients = new Array(allClientsData.length);
+
+            // Access via accessor method for potential ColumnarDataset
+            const getClient = (i) => allClientsData instanceof ColumnarDataset ? allClientsData.get(i) : allClientsData[i];
+
+            for (let i = 0; i < allClientsData.length; i++) {
+                const client = getClient(i); // Hydrate object for processing
                 const codCli = String(client['Código']);
-                client['Código'] = codCli;
+
+                // Note: Modifying 'client' object here DOES NOT persist to Columnar Array automatically.
+                // We are using the hydrated object for Maps.
+                // Since 'allClientsData' is read-only from source essentially, we rely on local Maps for modified state
+                // OR we accept that we can't modify in place easily.
+                // However, the existing code modifies `client['Código']` string conversion.
+                // ColumnarDataset.get() returns a NEW object every time.
+                // So modification here is useless if we access allClientsData.get(i) later.
+
+                // FIX: For Clients, it's safer to keep them as hydrated objects in 'clientMapForKPIs'
+                // and use that map for lookups where modifications matter.
+                // But filter functions iterate 'allClientsData'.
+                // If we need persistent modifications (like Americanas RCA override), we need a side-store.
+                // The Americanas logic modifies `client.rca1`.
+
+                // Workaround: We'll use a `clientOverrides` map or similar,
+                // OR since Clients dataset is small (thousands), we can fully hydrate it into an Array
+                // and avoid Columnar complexity for Clients if it causes mutability issues.
+                // Let's assume for now we just use the calculated values in the Maps.
+
                 client.cidade = client.cidade || 'N/A';
 
-                try {
-                    if ((client.razaoSocial || '').toUpperCase().includes('AMERICANAS')) {
-                        client.rca1 = '1001';
-                        client.rcas = ['1001'];
-                        americanasCodCli = codCli;
-                    }
-                } catch (e) {
-                    console.warn(`Could not process client for Americanas logic:`, client, e);
+                if ((client.razaoSocial || '').toUpperCase().includes('AMERICANAS')) {
+                    client.rca1 = '1001';
+                    client.rcas = ['1001'];
+                    americanasCodCli = codCli;
                 }
                 
                 if (client.rca1) clientToCurrentSellerMap.set(codCli, String(client.rca1));
                 clientRamoMap.set(codCli, client.ramo || 'N/A');
                 
                 if (client.rcas) {
-                    client.rcas.forEach(rca => {
+                    for (let j = 0; j < client.rcas.length; j++) {
+                        const rca = client.rcas[j];
                         if (rca) {
                             if (!optimizedData.clientsByRca.has(rca)) optimizedData.clientsByRca.set(rca, []);
                             optimizedData.clientsByRca.get(rca).push(client);
                         }
-                    });
+                    }
                 }
-                return { code: codCli, nameLower: (client.nomeCliente || '').toLowerCase(), cityLower: (client.cidade || '').toLowerCase() };
-            });
+                optimizedData.searchIndices.clients[i] = { code: codCli, nameLower: (client.nomeCliente || '').toLowerCase(), cityLower: (client.cidade || '').toLowerCase() };
+            }
 
             optimizedData.rcasBySupervisor = new Map();
             optimizedData.productsBySupplier = new Map();
@@ -939,47 +1232,62 @@
             const processDatasetForIndices = (data, indexSet, dataMap, isHistory) => {
                 const { bySupervisor, byRca, byPasta, bySupplier, byClient, byPosition, byRede, byTipoVenda, byProduct, byCity, byFilial } = indexSet;
 
-                data.forEach((sale, i) => {
-                    if (sale.DTPED && typeof sale.DTPED === 'string') sale.DTPED = parseDate(sale.DTPED);
-                    if (sale.DTSAIDA && typeof sale.DTSAIDA === 'string') sale.DTSAIDA = parseDate(sale.DTSAIDA);
+                const isColumnar = data instanceof ColumnarDataset;
+
+                for (let i = 0; i < data.length; i++) {
+                    const sale = isColumnar ? data.get(i) : data[i];
                     
-                    try {
-                        if (sale.CODCLI !== americanasCodCli) {
-                            const currentSellerCode = clientToCurrentSellerMap.get(sale.CODCLI);
-                            if (currentSellerCode) {
-                                const sellerDetails = sellerDetailsMap.get(currentSellerCode);
-                                if (sellerDetails) {
-                                    sale.CODUSUR = currentSellerCode;
-                                    sale.NOME = sellerDetails.name;
-                                    sale.SUPERV = sellerDetails.supervisor;
-                                }
+                    // Convert Timestamp Number to Date Object if not already
+                    if (sale.DTPED && !(sale.DTPED instanceof Date)) sale.DTPED = new Date(sale.DTPED);
+                    if (sale.DTSAIDA && !(sale.DTSAIDA instanceof Date)) sale.DTSAIDA = new Date(sale.DTSAIDA);
+
+                    if (sale.CODCLI !== americanasCodCli) {
+                        const currentSellerCode = clientToCurrentSellerMap.get(sale.CODCLI);
+                        if (currentSellerCode) {
+                            const sellerDetails = sellerDetailsMap.get(currentSellerCode);
+                            if (sellerDetails) {
+                                sale.CODUSUR = currentSellerCode;
+                                sale.NOME = sellerDetails.name;
+                                sale.SUPERV = sellerDetails.supervisor;
                             }
                         }
-                    } catch(e) {
-                        console.warn('Error remapping seller for sale:', sale, e);
                     }
                     
                     sale.SUPERV = sale.SUPERV || 'N/A';
                     sale.NOME = sale.NOME || 'N/A';
                     
                     const id = `${isHistory ? 'h' : 'c'}_${i}`;
-                    dataMap.set(id, sale);
 
-                    const supervisor = sale.SUPERV, rca = sale.NOME, pasta = sale.OBSERVACAOFOR || 'N/A', supplier = sale.CODFOR;
-                    const client = sale.CODCLI, position = sale.POSICAO || 'N/A', rede = clientRamoMap.get(client) || 'N/A';
-                    const tipoVenda = sale.TIPOVENDA, product = sale.PRODUTO, city = (sale.CIDADE || 'N/A').toLowerCase(), filial = sale.FILIAL;
+                    // --- KEY CHANGE: Store Index if using IndexMap, otherwise Object ---
+                    if (dataMap instanceof IndexMap) {
+                        dataMap.set(id, i);
+                    } else {
+                        dataMap.set(id, sale);
+                    }
+
+                    const supervisor = sale.SUPERV;
+                    const rca = sale.NOME;
+                    const pasta = sale.OBSERVACAOFOR || 'N/A';
+                    const supplier = sale.CODFOR;
+                    const client = sale.CODCLI;
+                    const position = sale.POSICAO || 'N/A';
+                    const rede = clientRamoMap.get(client) || 'N/A';
+                    const tipoVenda = sale.TIPOVENDA;
+                    const product = sale.PRODUTO;
+                    const city = (sale.CIDADE || 'N/A').toLowerCase();
+                    const filial = sale.FILIAL;
                     
                     if (!bySupervisor.has(supervisor)) bySupervisor.set(supervisor, new Set()); bySupervisor.get(supervisor).add(id);
                     if (!byRca.has(rca)) byRca.set(rca, new Set()); byRca.get(rca).add(id);
                     if (!byPasta.has(pasta)) byPasta.set(pasta, new Set()); byPasta.get(pasta).add(id);
-                    if (supplier && !bySupplier.has(supplier)) bySupplier.set(supplier, new Set()); if (supplier) bySupplier.get(supplier).add(id);
-                    if (client && !byClient.has(client)) byClient.set(client, new Set()); if (client) byClient.get(client).add(id);
-                    if (byTipoVenda && tipoVenda && !byTipoVenda.has(tipoVenda)) byTipoVenda.set(tipoVenda, new Set()); if (byTipoVenda && tipoVenda) byTipoVenda.get(tipoVenda).add(id);
-                    if (byPosition && position && !byPosition.has(position)) byPosition.set(position, new Set()); if (byPosition && position) byPosition.get(position).add(id);
-                    if (byRede && rede && !byRede.has(rede)) byRede.set(rede, new Set()); if (byRede && rede) byRede.get(rede).add(id);
-                    if (byProduct && product && !byProduct.has(product)) byProduct.set(product, new Set()); if (byProduct && product) byProduct.get(product).add(id);
-                    if (byCity && city && !byCity.has(city)) byCity.set(city, new Set()); if (byCity && city) byCity.get(city).add(id);
-                    if (byFilial && filial && !byFilial.has(filial)) byFilial.set(filial, new Set()); if (byFilial && filial) byFilial.get(filial).add(id);
+                    if (supplier) { if (!bySupplier.has(supplier)) bySupplier.set(supplier, new Set()); bySupplier.get(supplier).add(id); }
+                    if (client) { if (!byClient.has(client)) byClient.set(client, new Set()); byClient.get(client).add(id); }
+                    if (tipoVenda) { if (!byTipoVenda.has(tipoVenda)) byTipoVenda.set(tipoVenda, new Set()); byTipoVenda.get(tipoVenda).add(id); }
+                    if (position) { if (!byPosition.has(position)) byPosition.set(position, new Set()); byPosition.get(position).add(id); }
+                    if (rede) { if (!byRede.has(rede)) byRede.set(rede, new Set()); byRede.get(rede).add(id); }
+                    if (product) { if (!byProduct.has(product)) byProduct.set(product, new Set()); byProduct.get(product).add(id); }
+                    if (city) { if (!byCity.has(city)) byCity.set(city, new Set()); byCity.get(city).add(id); }
+                    if (filial) { if (!byFilial.has(filial)) byFilial.set(filial, new Set()); byFilial.get(filial).add(id); }
                     
                     if (sale.CODUSUR && supervisor) { if (!supervisorToRcaMap.has(supervisor)) supervisorToRcaMap.set(supervisor, new Set()); supervisorToRcaMap.get(supervisor).add(sale.CODUSUR); }
                     if (supplier && product) { if (!optimizedData.productsBySupplier.has(supplier)) optimizedData.productsBySupplier.set(supplier, new Set()); optimizedData.productsBySupplier.get(supplier).add(product); }
@@ -996,7 +1304,7 @@
                         if (!targetMap.has(product)) targetMap.set(product, []);
                         targetMap.get(product).push(sale);
                     }
-                });
+                }
             };
             
             processDatasetForIndices(allSalesData, optimizedData.indices.current, optimizedData.salesById, false);
@@ -1006,24 +1314,24 @@
                 optimizedData.rcasBySupervisor.set(supervisor, Array.from(rcas));
             });
             
-            try {
-                aggregatedOrders.forEach(sale => {
-                    if (sale.DTPED && typeof sale.DTPED === 'string') sale.DTPED = parseDate(sale.DTPED);
-                    if (sale.DTSAIDA && typeof sale.DTSAIDA === 'string') sale.DTSAIDA = parseDate(sale.DTSAIDA);
-                    if (sale.CODCLI !== americanasCodCli) {
-                        const currentSellerCode = clientToCurrentSellerMap.get(sale.CODCLI);
-                        if (currentSellerCode) {
-                            const sellerDetails = sellerDetailsMap.get(currentSellerCode);
-                            if (sellerDetails) {
-                                sale.CODUSUR = currentSellerCode;
-                                sale.NOME = sellerDetails.name;
-                                sale.SUPERV = sellerDetails.supervisor;
-                            }
+            // Process Aggregated Orders (Remap only)
+            for(let i = 0; i < aggregatedOrders.length; i++) {
+                const sale = aggregatedOrders[i];
+                // Convert to Date if number
+                if (sale.DTPED && !(sale.DTPED instanceof Date)) sale.DTPED = new Date(sale.DTPED);
+                if (sale.DTSAIDA && !(sale.DTSAIDA instanceof Date)) sale.DTSAIDA = new Date(sale.DTSAIDA);
+
+                if (sale.CODCLI !== americanasCodCli) {
+                    const currentSellerCode = clientToCurrentSellerMap.get(sale.CODCLI);
+                    if (currentSellerCode) {
+                        const sellerDetails = sellerDetailsMap.get(currentSellerCode);
+                        if (sellerDetails) {
+                            sale.CODUSUR = currentSellerCode;
+                            sale.NOME = sellerDetails.name;
+                            sale.SUPERV = sellerDetails.supervisor;
                         }
                     }
-                });
-            } catch(e) {
-                console.error("Error during seller remapping for aggregated orders", e);
+                }
             }
             
             sortedWorkingDays = Array.from(workingDaysSet).sort((a, b) => new Date(a) - new Date(b));
@@ -1307,6 +1615,12 @@
             mix: { dirty: true },
             goals: { dirty: true }
         };
+
+        // Render IDs for Race Condition Guard
+        let mixRenderId = 0;
+        let coverageRenderId = 0;
+        let cityRenderId = 0;
+        let stockRenderId = 0;
 
         let charts = {};
         let currentProductMetric = 'faturamento';
@@ -1782,12 +2096,16 @@
         }
 
         function updateMixView() {
-            const { clients, sales } = getMixFilteredData();
-            const activeClientCodes = new Set(clients.map(c => c['Código']));
+            mixRenderId++;
+            const currentRenderId = mixRenderId;
 
-            // --- LÓGICA ESTRITA DE POSITIVAÇÃO (Idêntica ao Comparativo) ---
-            
-            // 1. Agregar Valor Líquido por Produto por Cliente
+            const { clients, sales } = getMixFilteredData();
+            // const activeClientCodes = new Set(clients.map(c => c['Código'])); // Not used if iterating clients array
+
+            // Show Loading
+            document.getElementById('mix-table-body').innerHTML = '<tr><td colspan="13" class="text-center p-8"><svg class="animate-spin h-8 w-8 text-teal-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></td></tr>';
+
+            // 1. Agregar Valor Líquido por Produto por Cliente (Sync - O(Sales))
             const clientProductNetValues = new Map(); // Map<CODCLI, Map<PRODUTO, NetValue>>
             const clientProductDesc = new Map(); // Map<PRODUTO, Descricao> (Cache)
 
@@ -1810,6 +2128,7 @@
             // Uma categoria é positivada se o cliente comprou Pelo MENOS UM produto dela com valor líquido > 1
             const clientPositivatedCategories = new Map(); // Map<CODCLI, Set<CategoryName>>
 
+            // Sync Loop for Map aggregation is fast enough
             clientProductNetValues.forEach((productsMap, codCli) => {
                 const positivatedCats = new Set();
                 
@@ -1836,12 +2155,12 @@
             
             const tableData = [];
 
-            clients.forEach(client => {
+            // ASYNC CHUNKED PROCESSING for Clients
+            runAsyncChunked(clients, (client) => {
                 const codcli = client['Código'];
                 const positivatedCats = clientPositivatedCategories.get(codcli) || new Set();
                 
                 // Determine Status based on "Buying ALL" (Strict Positive)
-                // O cliente deve ter positivado TODAS as categorias da lista para ser considerado "Positivado no KPI"
                 const hasSalty = MIX_SALTY_CATEGORIES.every(b => positivatedCats.has(b));
                 const hasFoods = MIX_FOODS_CATEGORIES.every(b => positivatedCats.has(b));
                 
@@ -1867,150 +2186,149 @@
                 const rowData = {
                     codcli: codcli,
                     name: client.fantasia || client.razaoSocial,
-                    // Correção para cidade undefined: Tenta todas as propriedades possíveis
                     city: client.cidade || client.CIDADE || client['Nome da Cidade'] || 'N/A',
                     vendedor: vendorName,
                     hasSalty: hasSalty,
                     hasFoods: hasFoods,
-                    brands: positivatedCats, // Set of strictly positivated brands
+                    brands: positivatedCats,
                     missingText: missingText,
-                    // Score for sorting: Opportunities first (missing > 0)
                     score: missing.length
                 };
                 tableData.push(rowData);
+            }, () => {
+                // --- ON COMPLETE (Render) ---
+                if (currentRenderId !== mixRenderId) return;
+
+                let baseClientCount;
+                const kpiTitleEl = document.getElementById('mix-kpi-title');
+
+                if (mixKpiMode === 'atendidos') {
+                    baseClientCount = getPositiveClientsWithNewLogic(sales);
+                    if (kpiTitleEl) kpiTitleEl.textContent = 'Clientes Atendidos';
+                } else {
+                    baseClientCount = clients.length;
+                    if (kpiTitleEl) kpiTitleEl.textContent = 'Total Clientes (Filtro)';
+                }
+
+                const saltyPct = baseClientCount > 0 ? (positivadosSalty / baseClientCount) * 100 : 0;
+                const foodsPct = baseClientCount > 0 ? (positivadosFoods / baseClientCount) * 100 : 0;
+                const bothPct = baseClientCount > 0 ? (positivadosBoth / baseClientCount) * 100 : 0;
+
+                // Update KPIs
+                document.getElementById('mix-total-clients-kpi').textContent = baseClientCount.toLocaleString('pt-BR');
+                document.getElementById('mix-salty-kpi').textContent = `${saltyPct.toFixed(1)}%`;
+                document.getElementById('mix-salty-count-kpi').textContent = `${positivadosSalty} clientes`;
+                document.getElementById('mix-foods-kpi').textContent = `${foodsPct.toFixed(1)}%`;
+                document.getElementById('mix-foods-count-kpi').textContent = `${positivadosFoods} clientes`;
+                document.getElementById('mix-both-kpi').textContent = `${bothPct.toFixed(1)}%`;
+                document.getElementById('mix-both-count-kpi').textContent = `${positivadosBoth} clientes`;
+
+                // Charts
+                const distributionData = [
+                    positivadosBoth,
+                    positivadosSalty - positivadosBoth,
+                    positivadosFoods - positivadosBoth,
+                    baseClientCount - (positivadosSalty + positivadosFoods - positivadosBoth)
+                ];
+
+                createChart('mixDistributionChart', 'doughnut', ['Mix Ideal (Ambos)', 'Só Salty', 'Só Foods', 'Nenhum'], distributionData, {
+                    backgroundColor: ['#a855f7', '#14b8a6', '#f59e0b', '#475569'],
+                    plugins: { legend: { position: 'right' } }
+                });
+
+                // Seller Efficiency Chart
+                const sellerStats = {};
+                tableData.forEach(row => {
+                    const seller = row.vendedor;
+                    if (!sellerStats[seller]) sellerStats[seller] = { total: 0, both: 0, salty: 0, foods: 0 };
+                    sellerStats[seller].total++;
+                    if (row.hasSalty && row.hasFoods) sellerStats[seller].both++;
+                    if (row.hasSalty) sellerStats[seller].salty++;
+                    if (row.hasFoods) sellerStats[seller].foods++;
+                });
+
+                const sortedSellers = Object.entries(sellerStats)
+                    .sort(([,a], [,b]) => b.both - a.both)
+                    .slice(0, 10);
+
+                createChart('mixSellerChart', 'bar', sortedSellers.map(([name]) => getFirstName(name)),
+                    [
+                        { label: 'Mix Ideal', data: sortedSellers.map(([,s]) => s.both), backgroundColor: '#a855f7' },
+                        { label: 'Salty Total', data: sortedSellers.map(([,s]) => s.salty), backgroundColor: '#14b8a6', hidden: true },
+                        { label: 'Foods Total', data: sortedSellers.map(([,s]) => s.foods), backgroundColor: '#f59e0b', hidden: true }
+                    ],
+                    { scales: { x: { stacked: false }, y: { stacked: false } } }
+                );
+
+                // Render Table with Detailed Columns
+                tableData.sort((a, b) => {
+                    // Sort by City (Alphabetical), then by Client Name
+                    const cityA = (a.city || '').toLowerCase();
+                    const cityB = (b.city || '').toLowerCase();
+                    if (cityA < cityB) return -1;
+                    if (cityA > cityB) return 1;
+                    return a.name.localeCompare(b.name);
+                });
+
+                mixTableDataForExport = tableData;
+
+                mixTableState.filteredData = tableData;
+                mixTableState.totalPages = Math.ceil(tableData.length / mixTableState.itemsPerPage);
+                if (mixTableState.currentPage > mixTableState.totalPages && mixTableState.totalPages > 0) {
+                    mixTableState.currentPage = mixTableState.totalPages;
+                } else if (mixTableState.totalPages === 0) {
+                     mixTableState.currentPage = 1;
+                }
+
+                const startIndex = (mixTableState.currentPage - 1) * mixTableState.itemsPerPage;
+                const endIndex = startIndex + mixTableState.itemsPerPage;
+                const pageData = tableData.slice(startIndex, endIndex);
+
+                const checkIcon = `<svg class="w-4 h-4 text-green-400 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>`;
+                const dashIcon = `<span class="text-slate-600 text-xs">-</span>`;
+
+                const xIcon = `<svg class="w-3 h-3 text-red-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>`;
+
+                let tableHTML = pageData.map(row => {
+                    let saltyCols = MIX_SALTY_CATEGORIES.map(b => `<td class="px-1 py-2 text-center border-l border-slate-500">${row.brands.has(b) ? checkIcon : xIcon}</td>`).join('');
+                    let foodsCols = MIX_FOODS_CATEGORIES.map(b => `<td class="px-1 py-2 text-center border-l border-slate-500">${row.brands.has(b) ? checkIcon : xIcon}</td>`).join('');
+
+                    return `
+                    <tr class="hover:bg-slate-700/50 border-b border-slate-500 last:border-0">
+                        <td class="px-2 py-2 font-medium text-slate-300 text-xs">${row.codcli}</td>
+                        <td class="px-2 py-2 text-xs truncate max-w-[150px]" title="${row.name}">${row.name}</td>
+                        <td class="px-2 py-2 text-xs text-slate-300 truncate max-w-[100px]">${row.city}</td>
+                        <td class="px-2 py-2 text-xs text-slate-400 truncate max-w-[100px]">${getFirstName(row.vendedor)}</td>
+                        ${saltyCols}
+                        ${foodsCols}
+                    </tr>
+                `}).join('');
+
+                // Append Footer with Totals
+                tableHTML += `
+                    <tr class="bg-slate-800 font-bold border-t-2 border-slate-500 text-xs sticky bottom-0 z-20">
+                        <td colspan="4" class="px-2 py-3 text-right text-white">TOTAL POSITIVADOS:</td>
+                        <td colspan="${MIX_SALTY_CATEGORIES.length}" class="px-2 py-3 text-center text-teal-400 text-sm border-l border-slate-500">${positivadosSalty}</td>
+                        <td colspan="${MIX_FOODS_CATEGORIES.length}" class="px-2 py-3 text-center text-yellow-400 text-sm border-l border-slate-500">${positivadosFoods}</td>
+                    </tr>
+                `;
+
+                document.getElementById('mix-table-body').innerHTML = tableHTML;
+
+                const controls = document.getElementById('mix-pagination-controls');
+                const infoText = document.getElementById('mix-page-info-text');
+                const prevBtn = document.getElementById('mix-prev-page-btn');
+                const nextBtn = document.getElementById('mix-next-page-btn');
+
+                if (tableData.length > 0 && mixTableState.totalPages > 1) {
+                    infoText.textContent = `Página ${mixTableState.currentPage} de ${mixTableState.totalPages} (Total: ${tableData.length} clientes)`;
+                    prevBtn.disabled = mixTableState.currentPage === 1;
+                    nextBtn.disabled = mixTableState.currentPage === mixTableState.totalPages;
+                    controls.classList.remove('hidden');
+                } else {
+                    controls.classList.add('hidden');
+                }
             });
-
-            // --- INÍCIO DA MODIFICAÇÃO: Lógica do Toggle ---
-            let baseClientCount;
-            const kpiTitleEl = document.getElementById('mix-kpi-title');
-
-            if (mixKpiMode === 'atendidos') {
-                baseClientCount = getPositiveClientsWithNewLogic(sales);
-                if (kpiTitleEl) kpiTitleEl.textContent = 'Clientes Atendidos';
-            } else {
-                baseClientCount = clients.length;
-                if (kpiTitleEl) kpiTitleEl.textContent = 'Total Clientes (Filtro)';
-            }
-
-            const saltyPct = baseClientCount > 0 ? (positivadosSalty / baseClientCount) * 100 : 0;
-            const foodsPct = baseClientCount > 0 ? (positivadosFoods / baseClientCount) * 100 : 0;
-            const bothPct = baseClientCount > 0 ? (positivadosBoth / baseClientCount) * 100 : 0;
-            // --- FIM DA MODIFICAÇÃO ---
-
-            // Update KPIs
-            document.getElementById('mix-total-clients-kpi').textContent = baseClientCount.toLocaleString('pt-BR');
-            document.getElementById('mix-salty-kpi').textContent = `${saltyPct.toFixed(1)}%`;
-            document.getElementById('mix-salty-count-kpi').textContent = `${positivadosSalty} clientes`;
-            document.getElementById('mix-foods-kpi').textContent = `${foodsPct.toFixed(1)}%`;
-            document.getElementById('mix-foods-count-kpi').textContent = `${positivadosFoods} clientes`;
-            document.getElementById('mix-both-kpi').textContent = `${bothPct.toFixed(1)}%`;
-            document.getElementById('mix-both-count-kpi').textContent = `${positivadosBoth} clientes`;
-
-            // Charts
-            const distributionData = [
-                positivadosBoth, 
-                positivadosSalty - positivadosBoth, 
-                positivadosFoods - positivadosBoth, 
-                baseClientCount - (positivadosSalty + positivadosFoods - positivadosBoth)
-            ];
-            
-            createChart('mixDistributionChart', 'doughnut', ['Mix Ideal (Ambos)', 'Só Salty', 'Só Foods', 'Nenhum'], distributionData, {
-                backgroundColor: ['#a855f7', '#14b8a6', '#f59e0b', '#475569'],
-                plugins: { legend: { position: 'right' } }
-            });
-
-            // Seller Efficiency Chart
-            const sellerStats = {};
-            tableData.forEach(row => {
-                const seller = row.vendedor;
-                if (!sellerStats[seller]) sellerStats[seller] = { total: 0, both: 0, salty: 0, foods: 0 };
-                sellerStats[seller].total++;
-                if (row.hasSalty && row.hasFoods) sellerStats[seller].both++;
-                if (row.hasSalty) sellerStats[seller].salty++;
-                if (row.hasFoods) sellerStats[seller].foods++;
-            });
-
-            const sortedSellers = Object.entries(sellerStats)
-                .sort(([,a], [,b]) => b.both - a.both)
-                .slice(0, 10);
-
-            createChart('mixSellerChart', 'bar', sortedSellers.map(([name]) => getFirstName(name)), 
-                [
-                    { label: 'Mix Ideal', data: sortedSellers.map(([,s]) => s.both), backgroundColor: '#a855f7' },
-                    { label: 'Salty Total', data: sortedSellers.map(([,s]) => s.salty), backgroundColor: '#14b8a6', hidden: true },
-                    { label: 'Foods Total', data: sortedSellers.map(([,s]) => s.foods), backgroundColor: '#f59e0b', hidden: true }
-                ], 
-                { scales: { x: { stacked: false }, y: { stacked: false } } }
-            );
-
-            // Render Table with Detailed Columns
-            tableData.sort((a, b) => {
-                // Sort by City (Alphabetical), then by Client Name
-                const cityA = (a.city || '').toLowerCase();
-                const cityB = (b.city || '').toLowerCase();
-                if (cityA < cityB) return -1;
-                if (cityA > cityB) return 1;
-                return a.name.localeCompare(b.name);
-            });
-
-            mixTableDataForExport = tableData;
-            
-            mixTableState.filteredData = tableData;
-            mixTableState.totalPages = Math.ceil(tableData.length / mixTableState.itemsPerPage);
-            if (mixTableState.currentPage > mixTableState.totalPages && mixTableState.totalPages > 0) {
-                mixTableState.currentPage = mixTableState.totalPages;
-            } else if (mixTableState.totalPages === 0) {
-                 mixTableState.currentPage = 1;
-            }
-
-            const startIndex = (mixTableState.currentPage - 1) * mixTableState.itemsPerPage;
-            const endIndex = startIndex + mixTableState.itemsPerPage;
-            const pageData = tableData.slice(startIndex, endIndex);
-
-            const checkIcon = `<svg class="w-4 h-4 text-green-400 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>`;
-            const dashIcon = `<span class="text-slate-600 text-xs">-</span>`;
-
-            const xIcon = `<svg class="w-3 h-3 text-red-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>`;
-
-            let tableHTML = pageData.map(row => {
-                let saltyCols = MIX_SALTY_CATEGORIES.map(b => `<td class="px-1 py-2 text-center border-l border-slate-500">${row.brands.has(b) ? checkIcon : xIcon}</td>`).join('');
-                let foodsCols = MIX_FOODS_CATEGORIES.map(b => `<td class="px-1 py-2 text-center border-l border-slate-500">${row.brands.has(b) ? checkIcon : xIcon}</td>`).join('');
-                
-                return `
-                <tr class="hover:bg-slate-700/50 border-b border-slate-500 last:border-0">
-                    <td class="px-2 py-2 font-medium text-slate-300 text-xs">${row.codcli}</td>
-                    <td class="px-2 py-2 text-xs truncate max-w-[150px]" title="${row.name}">${row.name}</td>
-                    <td class="px-2 py-2 text-xs text-slate-300 truncate max-w-[100px]">${row.city}</td>
-                    <td class="px-2 py-2 text-xs text-slate-400 truncate max-w-[100px]">${getFirstName(row.vendedor)}</td>
-                    ${saltyCols}
-                    ${foodsCols}
-                </tr>
-            `}).join('');
-
-            // Append Footer with Totals
-            tableHTML += `
-                <tr class="bg-slate-800 font-bold border-t-2 border-slate-500 text-xs sticky bottom-0 z-20">
-                    <td colspan="4" class="px-2 py-3 text-right text-white">TOTAL POSITIVADOS:</td>
-                    <td colspan="${MIX_SALTY_CATEGORIES.length}" class="px-2 py-3 text-center text-teal-400 text-sm border-l border-slate-500">${positivadosSalty}</td>
-                    <td colspan="${MIX_FOODS_CATEGORIES.length}" class="px-2 py-3 text-center text-yellow-400 text-sm border-l border-slate-500">${positivadosFoods}</td>
-                </tr>
-            `;
-
-            document.getElementById('mix-table-body').innerHTML = tableHTML;
-            
-            const controls = document.getElementById('mix-pagination-controls');
-            const infoText = document.getElementById('mix-page-info-text');
-            const prevBtn = document.getElementById('mix-prev-page-btn');
-            const nextBtn = document.getElementById('mix-next-page-btn');
-
-            if (tableData.length > 0 && mixTableState.totalPages > 1) {
-                infoText.textContent = `Página ${mixTableState.currentPage} de ${mixTableState.totalPages} (Total: ${tableData.length} clientes)`;
-                prevBtn.disabled = mixTableState.currentPage === 1;
-                nextBtn.disabled = mixTableState.currentPage === mixTableState.totalPages;
-                controls.classList.remove('hidden');
-            } else {
-                controls.classList.add('hidden');
-            }
         }
 
         async function exportMixPDF() {
@@ -4262,6 +4580,9 @@
         }
         
         function updateCoverageView() {
+            coverageRenderId++;
+            const currentRenderId = coverageRenderId;
+
             const { clients, sales, history } = getCoverageFilteredData();
             const productsToAnalyze = [...new Set([...sales.map(s => s.PRODUTO), ...history.map(s => s.PRODUTO)])];
 
@@ -4290,6 +4611,9 @@
 
             coverageActiveClientsKpi.textContent = activeClientsCount.toLocaleString('pt-BR');
 
+            // Show Loading State in Table
+            coverageTableBody.innerHTML = '<tr><td colspan="8" class="text-center p-8"><div class="flex justify-center items-center"><svg class="animate-spin h-8 w-8 text-teal-500 mr-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span class="text-slate-400">Calculando cobertura...</span></div></td></tr>';
+
             if (productsToAnalyze.length === 0) {
                 coverageSelectionCoverageValueKpi.textContent = '0%';
                 coverageSelectionCoverageCountKpi.textContent = `0 de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
@@ -4315,15 +4639,11 @@
 
             // --- CRITICAL OPTIMIZATION: Pre-aggregate everything ---
 
-            // 1. Maps for Coverage: Map<CODCLI, Set<PRODUTO>>
-            const currentSalesMap = new Map();
-            const previousSalesMap = new Map();
-
-            // 2. Maps for Box Quantities: Map<PRODUTO, Number>
+            // Maps for Box Quantities: Map<PRODUTO, Number>
             const boxesSoldCurrentMap = new Map();
             const boxesSoldPreviousMap = new Map();
 
-            // 3. Index for Trend Calculation: Map<PRODUTO, Array<Sale>>
+            // Index for Trend Calculation: Map<PRODUTO, Array<Sale>>
             // We group all sales (current + history) by product to calculate trend efficiently
             const trendSalesMap = new Map();
 
@@ -4332,11 +4652,11 @@
             const productClientsCurrent = new Map(); // Map<PRODUTO, Set<CODCLI>>
             const productClientsPrevious = new Map(); // Map<PRODUTO, Set<CODCLI>>
 
-            sales.forEach(s => {
-                // Coverage Map (Standard)
-                if (!currentSalesMap.has(s.CODCLI)) currentSalesMap.set(s.CODCLI, new Set());
-                currentSalesMap.get(s.CODCLI).add(s.PRODUTO);
+            // Use synchronous loops for initial map building as iterating sales (linear) is generally fast enough
+            // (e.g. 50k sales ~ 50ms). Splitting this would require complex state management.
+            // The bottleneck is the nested Product * Client check loop later.
 
+            sales.forEach(s => {
                 // Coverage Map (Inverted for Performance)
                 if (!productClientsCurrent.has(s.PRODUTO)) productClientsCurrent.set(s.PRODUTO, new Set());
                 productClientsCurrent.get(s.PRODUTO).add(s.CODCLI);
@@ -4356,9 +4676,6 @@
 
                 // Coverage Map (only if prev month)
                 if (isPrevMonth) {
-                    if (!previousSalesMap.has(s.CODCLI)) previousSalesMap.set(s.CODCLI, new Set());
-                    previousSalesMap.get(s.CODCLI).add(s.PRODUTO);
-
                     // Coverage Map (Inverted for Performance)
                     if (!productClientsPrevious.has(s.PRODUTO)) productClientsPrevious.set(s.PRODUTO, new Set());
                     productClientsPrevious.get(s.PRODUTO).add(s.CODCLI);
@@ -4375,14 +4692,14 @@
             // Pre-calculate global dates for Trend
             const endDate = parseDate(sortedWorkingDays[sortedWorkingDays.length - 1]);
             
-            productsToAnalyze.forEach(productCode => {
+            // --- ASYNC CHUNKED PROCESSING ---
+            runAsyncChunked(productsToAnalyze, (productCode) => {
                 const productInfo = productDetailsMap.get(productCode) || { descricao: `Produto ${productCode}`};
 
                 let clientsWhoGotProductCurrent = 0;
                 let clientsWhoGotProductPrevious = 0;
 
                 // --- OTIMIZAÇÃO CRÍTICA: Iterar apenas os compradores do produto em vez de todos os clientes ativos ---
-                // Reduz a complexidade de O(Produtos * Clientes) para O(Total Vendas)
                 
                 // Check Current
                 const buyersCurrent = productClientsCurrent.get(productCode);
@@ -4419,7 +4736,6 @@
                 const stockQty = activeStockMap.get(productCode) || 0;
 
                 // Trend Calculation
-                // Use the map we built
                 const productAllSales = trendSalesMap.get(productCode) || [];
                 
                 const productCadastroDate = parseDate(productInfo.dtCadastro);
@@ -4457,7 +4773,7 @@
                 const startDate = parseDate(sortedWorkingDays[targetIndex]);
                 
                 let totalQtySoldInRange = 0;
-                // Optimization: Iterate only the pre-filtered array for this product
+                // Optimized loop: only iterating relevant sales for this product
                 productAllSales.forEach(sale => {
                     const saleDate = parseDate(sale.DTPED);
                     if (saleDate && saleDate >= startDate && saleDate <= endDate) {
@@ -4492,158 +4808,161 @@
                     clientsCurrentCount: clientsWhoGotProductCurrent,
                     coverageCurrent: coverageCurrent
                 });
-            });
+            }, () => {
+                // --- ON COMPLETE CALLBACK (Render UI) ---
+                if (currentRenderId !== coverageRenderId) return;
 
-            coverageTopCoverageValueKpi.textContent = `${topCoverageItem.coverage.toFixed(2)}%`;
-            coverageTopCoverageProductKpi.textContent = topCoverageItem.name;
-            coverageTopCoverageProductKpi.title = topCoverageItem.name;
+                coverageTopCoverageValueKpi.textContent = `${topCoverageItem.coverage.toFixed(2)}%`;
+                coverageTopCoverageProductKpi.textContent = topCoverageItem.name;
+                coverageTopCoverageProductKpi.title = topCoverageItem.name;
 
-            const selectionCoveredCountCurrent = clientsWhoGotSelectionCurrent.size;
-            const selectionCoveragePercentCurrent = activeClientsCount > 0 ? (selectionCoveredCountCurrent / activeClientsCount) * 100 : 0;
-            coverageSelectionCoverageValueKpi.textContent = `${selectionCoveragePercentCurrent.toFixed(2)}%`;
-            coverageSelectionCoverageCountKpi.textContent = `${selectionCoveredCountCurrent.toLocaleString('pt-BR')} de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
+                const selectionCoveredCountCurrent = clientsWhoGotSelectionCurrent.size;
+                const selectionCoveragePercentCurrent = activeClientsCount > 0 ? (selectionCoveredCountCurrent / activeClientsCount) * 100 : 0;
+                coverageSelectionCoverageValueKpi.textContent = `${selectionCoveragePercentCurrent.toFixed(2)}%`;
+                coverageSelectionCoverageCountKpi.textContent = `${selectionCoveredCountCurrent.toLocaleString('pt-BR')} de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
 
-            const selectionCoveredCountPrevious = clientsWhoGotSelectionPrevious.size;
-            const selectionCoveragePercentPrevious = activeClientsCount > 0 ? (selectionCoveredCountPrevious / activeClientsCount) * 100 : 0;
-            coverageSelectionCoverageValueKpiPrevious.textContent = `${selectionCoveragePercentPrevious.toFixed(2)}%`;
-            coverageSelectionCoverageCountKpiPrevious.textContent = `${selectionCoveredCountPrevious.toLocaleString('pt-BR')} de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
-            
-            tableData.sort((a, b) => {
-                return b.stockQty - a.stockQty;
-            });
+                const selectionCoveredCountPrevious = clientsWhoGotSelectionPrevious.size;
+                const selectionCoveragePercentPrevious = activeClientsCount > 0 ? (selectionCoveredCountPrevious / activeClientsCount) * 100 : 0;
+                coverageSelectionCoverageValueKpiPrevious.textContent = `${selectionCoveragePercentPrevious.toFixed(2)}%`;
+                coverageSelectionCoverageCountKpiPrevious.textContent = `${selectionCoveredCountPrevious.toLocaleString('pt-BR')} de ${activeClientsCount.toLocaleString('pt-BR')} clientes`;
 
-            let filteredTableData = tableData.filter(item => item.boxesSoldCurrentMonth > 0);
-
-            if (coverageTrendFilter !== 'all') {
-                filteredTableData = filteredTableData.filter(item => {
-                    const trend = item.trendDays;
-                    if (coverageTrendFilter === 'low') return isFinite(trend) && trend < 15;
-                    if (coverageTrendFilter === 'medium') return isFinite(trend) && trend >= 15 && trend < 30;
-                    if (coverageTrendFilter === 'good') return isFinite(trend) && trend >= 30;
-                    return false;
+                tableData.sort((a, b) => {
+                    return b.stockQty - a.stockQty;
                 });
-            }
 
-            const totalBoxesFiltered = filteredTableData.reduce((sum, item) => sum + item.boxesSoldCurrentMonth, 0);
-            if (coverageTotalBoxesEl) {
-                coverageTotalBoxesEl.textContent = totalBoxesFiltered.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
-            }
+                let filteredTableData = tableData.filter(item => item.boxesSoldCurrentMonth > 0);
 
-            coverageTableDataForExport = filteredTableData;
-
-            coverageTableBody.innerHTML = filteredTableData.slice(0, 500).map(item => {
-                let boxesVariationContent;
-                if (isFinite(item.boxesVariation)) {
-                    const colorClass = item.boxesVariation >= 0 ? 'text-green-400' : 'text-red-400';
-                    boxesVariationContent = `<span class="${colorClass}">${item.boxesVariation.toFixed(1)}%</span>`;
-                } else if (item.boxesVariation === Infinity) {
-                    boxesVariationContent = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-500/30 text-purple-300">Novo</span>`;
-                } else {
-                    boxesVariationContent = `<span>-</span>`;
+                if (coverageTrendFilter !== 'all') {
+                    filteredTableData = filteredTableData.filter(item => {
+                        const trend = item.trendDays;
+                        if (coverageTrendFilter === 'low') return isFinite(trend) && trend < 15;
+                        if (coverageTrendFilter === 'medium') return isFinite(trend) && trend >= 15 && trend < 30;
+                        if (coverageTrendFilter === 'good') return isFinite(trend) && trend >= 30;
+                        return false;
+                    });
                 }
 
-                let pdvVariationContent;
-                if (isFinite(item.pdvVariation)) {
-                    const colorClass = item.pdvVariation >= 0 ? 'text-green-400' : 'text-red-400';
-                    pdvVariationContent = `<span class="${colorClass}">${item.pdvVariation.toFixed(1)}%</span>`;
-                } else if (item.pdvVariation === Infinity) {
-                    pdvVariationContent = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-500/30 text-purple-300">Novo</span>`;
-                } else {
-                    pdvVariationContent = `<span>-</span>`;
+                const totalBoxesFiltered = filteredTableData.reduce((sum, item) => sum + item.boxesSoldCurrentMonth, 0);
+                if (coverageTotalBoxesEl) {
+                    coverageTotalBoxesEl.textContent = totalBoxesFiltered.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
                 }
+
+                coverageTableDataForExport = filteredTableData;
+
+                coverageTableBody.innerHTML = filteredTableData.slice(0, 500).map(item => {
+                    let boxesVariationContent;
+                    if (isFinite(item.boxesVariation)) {
+                        const colorClass = item.boxesVariation >= 0 ? 'text-green-400' : 'text-red-400';
+                        boxesVariationContent = `<span class="${colorClass}">${item.boxesVariation.toFixed(1)}%</span>`;
+                    } else if (item.boxesVariation === Infinity) {
+                        boxesVariationContent = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-500/30 text-purple-300">Novo</span>`;
+                    } else {
+                        boxesVariationContent = `<span>-</span>`;
+                    }
+
+                    let pdvVariationContent;
+                    if (isFinite(item.pdvVariation)) {
+                        const colorClass = item.pdvVariation >= 0 ? 'text-green-400' : 'text-red-400';
+                        pdvVariationContent = `<span class="${colorClass}">${item.pdvVariation.toFixed(1)}%</span>`;
+                    } else if (item.pdvVariation === Infinity) {
+                        pdvVariationContent = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-500/30 text-purple-300">Novo</span>`;
+                    } else {
+                        pdvVariationContent = `<span>-</span>`;
+                    }
+
+                    return `
+                        <tr class="hover:bg-slate-700/50">
+                            <td class="px-2 py-1.5 text-xs">${item.descricao}</td>
+                            <td class="px-2 py-1.5 text-xs text-right">${item.stockQty.toLocaleString('pt-BR')}</td>
+                            <td class="px-2 py-1.5 text-xs text-right">${item.boxesSoldPreviousMonth.toLocaleString('pt-BR', {maximumFractionDigits: 2})}</td>
+                            <td class="px-2 py-1.5 text-xs text-right">${item.boxesSoldCurrentMonth.toLocaleString('pt-BR', {maximumFractionDigits: 2})}</td>
+                            <td class="px-2 py-1.5 text-xs text-right">${boxesVariationContent}</td>
+                            <td class="px-2 py-1.5 text-xs text-right">${item.clientsPreviousCount.toLocaleString('pt-BR')}</td>
+                            <td class="px-2 py-1.5 text-xs text-right">${item.clientsCurrentCount.toLocaleString('pt-BR')}</td>
+                            <td class="px-2 py-1.5 text-xs text-right">${pdvVariationContent}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+                // Render Top 10 Cities Chart
+                const salesByCity = {};
+                const salesBySeller = {};
                 
-                return `
-                    <tr class="hover:bg-slate-700/50">
-                        <td class="px-2 py-1.5 text-xs">${item.descricao}</td>
-                        <td class="px-2 py-1.5 text-xs text-right">${item.stockQty.toLocaleString('pt-BR')}</td>
-                        <td class="px-2 py-1.5 text-xs text-right">${item.boxesSoldPreviousMonth.toLocaleString('pt-BR', {maximumFractionDigits: 2})}</td>
-                        <td class="px-2 py-1.5 text-xs text-right">${item.boxesSoldCurrentMonth.toLocaleString('pt-BR', {maximumFractionDigits: 2})}</td>
-                        <td class="px-2 py-1.5 text-xs text-right">${boxesVariationContent}</td>
-                        <td class="px-2 py-1.5 text-xs text-right">${item.clientsPreviousCount.toLocaleString('pt-BR')}</td>
-                        <td class="px-2 py-1.5 text-xs text-right">${item.clientsCurrentCount.toLocaleString('pt-BR')}</td>
-                        <td class="px-2 py-1.5 text-xs text-right">${pdvVariationContent}</td>
-                    </tr>
-                `;
-            }).join('');
+                sales.forEach(s => {
+                    const city = s.CIDADE || 'N/A';
+                    salesByCity[city] = (salesByCity[city] || 0) + s.QTVENDA_EMBALAGEM_MASTER;
 
-            // Render Top 10 Cities Chart
-            const salesByCity = {};
-            const salesBySeller = {};
-            
-            sales.forEach(s => {
-                const city = s.CIDADE || 'N/A';
-                salesByCity[city] = (salesByCity[city] || 0) + s.QTVENDA_EMBALAGEM_MASTER;
-                
-                const seller = s.NOME || 'N/A';
-                salesBySeller[seller] = (salesBySeller[seller] || 0) + s.QTVENDA_EMBALAGEM_MASTER;
-            });
+                    const seller = s.NOME || 'N/A';
+                    salesBySeller[seller] = (salesBySeller[seller] || 0) + s.QTVENDA_EMBALAGEM_MASTER;
+                });
 
-            // 1. Chart Data for Cities
-            const sortedCities = Object.entries(salesByCity)
-                .sort(([,a], [,b]) => b - a)
-                .slice(0, 10);
+                // 1. Chart Data for Cities
+                const sortedCities = Object.entries(salesByCity)
+                    .sort(([,a], [,b]) => b - a)
+                    .slice(0, 10);
 
-            // 2. Chart Data for Sellers
-            const sortedSellers = Object.entries(salesBySeller)
-                .sort(([,a], [,b]) => b - a)
-                .slice(0, 10);
+                // 2. Chart Data for Sellers
+                const sortedSellers = Object.entries(salesBySeller)
+                    .sort(([,a], [,b]) => b - a)
+                    .slice(0, 10);
 
-            const commonChartOptions = {
-                indexAxis: 'x',
-                plugins: {
-                    datalabels: {
-                        align: 'end',
-                        anchor: 'end',
-                        color: '#cbd5e1',
-                        font: { weight: 'bold', size: 14 },
-                        formatter: (value) => value.toLocaleString('pt-BR', { maximumFractionDigits: 1 })
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                let label = context.dataset.label || '';
-                                if (label) {
-                                    label += ': ';
+                const commonChartOptions = {
+                    indexAxis: 'x',
+                    plugins: {
+                        datalabels: {
+                            align: 'end',
+                            anchor: 'end',
+                            color: '#cbd5e1',
+                            font: { weight: 'bold', size: 14 },
+                            formatter: (value) => value.toLocaleString('pt-BR', { maximumFractionDigits: 1 })
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += context.parsed.y.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + ' caixas';
+                                    }
+                                    return label;
                                 }
-                                if (context.parsed.y !== null) {
-                                    label += context.parsed.y.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + ' caixas';
-                                }
-                                return label;
                             }
                         }
                     }
+                };
+
+                if (sortedCities.length > 0) {
+                    createChart('coverageCityChart', 'bar', sortedCities.map(([city]) => city), sortedCities.map(([, qty]) => qty), commonChartOptions);
+                } else {
+                    showNoDataMessage('coverageCityChart', 'Sem dados para exibir.');
                 }
-            };
 
-            if (sortedCities.length > 0) {
-                createChart('coverageCityChart', 'bar', sortedCities.map(([city]) => city), sortedCities.map(([, qty]) => qty), commonChartOptions);
-            } else {
-                showNoDataMessage('coverageCityChart', 'Sem dados para exibir.');
-            }
+                if (sortedSellers.length > 0) {
+                    createChart('coverageSellerChart', 'bar', sortedSellers.map(([seller]) => getFirstName(seller)), sortedSellers.map(([, qty]) => qty), commonChartOptions);
+                } else {
+                    showNoDataMessage('coverageSellerChart', 'Sem dados para exibir.');
+                }
 
-            if (sortedSellers.length > 0) {
-                createChart('coverageSellerChart', 'bar', sortedSellers.map(([seller]) => getFirstName(seller)), sortedSellers.map(([, qty]) => qty), commonChartOptions);
-            } else {
-                showNoDataMessage('coverageSellerChart', 'Sem dados para exibir.');
-            }
+                // Visibility Toggle Logic
+                const cityContainer = document.getElementById('coverageCityChartContainer');
+                const sellerContainer = document.getElementById('coverageSellerChartContainer');
+                const toggleBtn = document.getElementById('coverage-chart-toggle-btn');
+                const chartTitle = document.getElementById('coverage-chart-title');
 
-            // Visibility Toggle Logic
-            const cityContainer = document.getElementById('coverageCityChartContainer');
-            const sellerContainer = document.getElementById('coverageSellerChartContainer');
-            const toggleBtn = document.getElementById('coverage-chart-toggle-btn');
-            const chartTitle = document.getElementById('coverage-chart-title');
-
-            if (currentCoverageChartMode === 'city') {
-                if (cityContainer) cityContainer.classList.remove('hidden');
-                if (sellerContainer) sellerContainer.classList.add('hidden');
-                if (toggleBtn) toggleBtn.textContent = 'Ver Vendedores';
-                if (chartTitle) chartTitle.textContent = 'Top 10 Cidades (Quantidade de Caixas)';
-            } else {
-                if (cityContainer) cityContainer.classList.add('hidden');
-                if (sellerContainer) sellerContainer.classList.remove('hidden');
-                if (toggleBtn) toggleBtn.textContent = 'Ver Cidades';
-                if (chartTitle) chartTitle.textContent = 'Top 10 Vendedores (Quantidade de Caixas)';
-            }
+                if (currentCoverageChartMode === 'city') {
+                    if (cityContainer) cityContainer.classList.remove('hidden');
+                    if (sellerContainer) sellerContainer.classList.add('hidden');
+                    if (toggleBtn) toggleBtn.textContent = 'Ver Vendedores';
+                    if (chartTitle) chartTitle.textContent = 'Top 10 Cidades (Quantidade de Caixas)';
+                } else {
+                    if (cityContainer) cityContainer.classList.add('hidden');
+                    if (sellerContainer) sellerContainer.classList.remove('hidden');
+                    if (toggleBtn) toggleBtn.textContent = 'Ver Cidades';
+                    if (chartTitle) chartTitle.textContent = 'Top 10 Vendedores (Quantidade de Caixas)';
+                }
+            });
         }
         
         // <!-- FIM DO CÓDIGO RESTAURADO -->
@@ -5434,6 +5753,9 @@
         }
 
         function updateCityView() {
+            cityRenderId++;
+            const currentRenderId = cityRenderId;
+
             let { clients: clientsForAnalysis, sales: salesForAnalysis } = getCityFilteredData();
             const cidadeFiltro = cityNameFilter.value.trim();
 
@@ -5444,10 +5766,8 @@
             const selectedTiposVendaSet = new Set(selectedCityTiposVenda);
 
             // Pre-aggregate "Sales This Month" for Status Classification
-            // We need sales from THIS MONTH for ALL clients (to check active/inactive),
-            // potentially filtered by Tipo Venda but usually standard sales.
             const clientTotalsThisMonth = new Map();
-            // Optimization: Iterate once through all sales to build the map for the current month
+            // Sync Pre-aggregation (O(N) is fast)
             for(let i=0; i<allSalesData.length; i++) {
                 const s = allSalesData[i];
                 if (selectedTiposVendaSet.size > 0 && !selectedTiposVendaSet.has(s.TIPOVENDA)) continue;
@@ -5458,21 +5778,9 @@
                 }
             }
 
-            // Pre-aggregate Breakdown Data (Pepsico/Multimarcas/Total) for Active Clients
-            // This data MUST respect the Seller/Supervisor filters (unlike the generic "Active" status which might be broader? No, `activeClientsList` comes from `clientsForAnalysis` which IS filtered).
-            // Wait, `clientsForAnalysis` is filtered by `getRelevantClientsForCityFilter` (Supervisor/Seller).
-            // So `activeClientsList` only contains clients belonging to the selected Supervisor/Seller.
-            // BUT, `salesByActiveClient` calculation in original code did:
-            // `clientSales = salesThisMonth.filter(s => s.CODCLI === codcli)`
-            // `if (selectedCitySellers.length > 0) clientSales = clientSales.filter(...)`
-            // So the *value* displayed in the table IS specific to the selected sellers.
-
-            // Let's build a map for the detailed table values using `salesForAnalysis` but restricted to this month.
-            // Actually `salesForAnalysis` already has all the filters applied (Supervisor, Seller, TipoVenda, City, Client).
-            // So we just need to filter `salesForAnalysis` by date (current month).
-
             const detailedDataByClient = new Map(); // Map<CODCLI, { total, pepsico, multimarcas }>
 
+            // Pre-aggregate Sales Data for Analysis (Sync)
             salesForAnalysis.forEach(s => {
                 const d = parseDate(s.DTPED);
                 if (d && d.getUTCFullYear() === currentYear && d.getUTCMonth() === currentMonth) {
@@ -5486,18 +5794,23 @@
                 }
             });
 
-            // Filter clients using the Coverage page logic
-            // (Include if name contains 'AMERICANAS S.A' OR RCA1 is not '53')
+            // Filter clients universe
             clientsForAnalysis = clientsForAnalysis.filter(c => {
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 return (isAmericanas || rca1 !== '53' || clientsWithSalesThisMonth.has(c['Código']));
             });
 
-            let activeClientsList = [];
-            let inactiveClientsList = [];
+            // Show Loading
+            cityActiveDetailTableBody.innerHTML = '<tr><td colspan="6" class="text-center p-8"><svg class="animate-spin h-8 w-8 text-teal-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></td></tr>';
+            cityInactiveDetailTableBody.innerHTML = '<tr><td colspan="6" class="text-center p-8"><svg class="animate-spin h-8 w-8 text-teal-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></td></tr>';
 
-            clientsForAnalysis.forEach(client => {
+            const activeClientsList = [];
+            const inactiveClientsList = [];
+            const salesByActiveClient = {}; // Map for export/rendering
+
+            // ASYNC CHUNKED PROCESSING
+            runAsyncChunked(clientsForAnalysis, (client) => {
                 const codcli = String(client['Código']);
 
                 const registrationDate = parseDate(client.dataCadastro);
@@ -5505,14 +5818,21 @@
 
                 const totalFaturamentoMes = clientTotalsThisMonth.get(codcli) || 0;
 
-                // Logic from original: If total > 0, it's active.
-                // Note: `totalFaturamentoMes` comes from `clientTotalsThisMonth` which is NOT filtered by seller/supervisor (only Type/Date).
-                // This means a client is "Active" if they bought *anything* from *anyone* this month.
-                // Even if they didn't buy from the selected supervisor.
-                // This seems to be the intended behavior for the "Status" chart (Global status of the client).
-
                 if (totalFaturamentoMes > 0) {
                     activeClientsList.push(client);
+
+                    // Detailed Data check
+                    const details = detailedDataByClient.get(codcli);
+                    if (details && details.total > 0) {
+                        const outrosTotal = details.total - details.pepsico - details.multimarcas;
+                        salesByActiveClient[codcli] = {
+                            ...client,
+                            total: details.total,
+                            pepsico: details.pepsico,
+                            multimarcas: details.multimarcas,
+                            outros: outrosTotal
+                        };
+                    }
                 } else {
                     if (totalFaturamentoMes < 0) {
                         client.isReturn = true;
@@ -5520,90 +5840,67 @@
                     client.isNewForInactiveLabel = client.isNew && !parseDate(client.ultimaCompra);
                     inactiveClientsList.push(client);
                 }
-            });
+            }, () => {
+                // --- ON COMPLETE (Render) ---
+                if (currentRenderId !== cityRenderId) return;
 
-            inactiveClientsForExport = inactiveClientsList;
+                inactiveClientsForExport = inactiveClientsList;
 
-            if (clientsForAnalysis.length > 0) {
-                 const statusChartOptions = { animation: { duration: 800, easing: 'easeOutQuart' }, plugins: { legend: { position: 'bottom', labels: { color: '#cbd5e1' } }, tooltip: { callbacks: { label: function(context) { return context.label; } } }, datalabels: { formatter: (value, ctx) => { const total = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0); if (total === 0 || value === 0) return ''; const percentage = (value * 100 / total).toFixed(1) + "%"; return `${value}\n(${percentage})`; }, color: '#fff', backgroundColor: 'rgba(0, 0, 0, 0.6)', borderRadius: 4, padding: 4, font: { weight: 'bold', size: 12 }, textAlign: 'center' } } };
-                createChart('customerStatusChart', 'doughnut', ['Ativos no Mês', 'S/ Vendas no Mês'], [activeClientsList.length, inactiveClientsList.length], statusChartOptions);
-            } else showNoDataMessage('customerStatusChart', 'Sem clientes no filtro para exibir o status.');
+                if (clientsForAnalysis.length > 0) {
+                     const statusChartOptions = { animation: { duration: 800, easing: 'easeOutQuart' }, plugins: { legend: { position: 'bottom', labels: { color: '#cbd5e1' } }, tooltip: { callbacks: { label: function(context) { return context.label; } } }, datalabels: { formatter: (value, ctx) => { const total = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0); if (total === 0 || value === 0) return ''; const percentage = (value * 100 / total).toFixed(1) + "%"; return `${value}\n(${percentage})`; }, color: '#fff', backgroundColor: 'rgba(0, 0, 0, 0.6)', borderRadius: 4, padding: 4, font: { weight: 'bold', size: 12 }, textAlign: 'center' } } };
+                    createChart('customerStatusChart', 'doughnut', ['Ativos no Mês', 'S/ Vendas no Mês'], [activeClientsList.length, inactiveClientsList.length], statusChartOptions);
+                } else showNoDataMessage('customerStatusChart', 'Sem clientes no filtro para exibir o status.');
 
-            const salesByActiveClient = {};
+                const sortedActiveClients = Object.values(salesByActiveClient).sort((a, b) => b.total - a.total);
+                activeClientsForExport = sortedActiveClients;
 
-            // Now populate the detailed table.
-            // We iterate `activeClientsList`. If they have sales in `detailedDataByClient` (which IS filtered), we show them.
-            // Wait, `activeClientsList` contains clients who bought *anything*.
-            // But the table `cityActiveDetailTableBody` should show sales relevant to the filters.
-            // If a client bought from Seller A (selected) and Seller B (not selected), `clientTotalsThisMonth` has A+B.
-            // `detailedDataByClient` has only A.
-            // If `detailedDataByClient` has 0/undefined, it means they didn't buy from the selected filters,
-            // even if they are "Active" globally.
-            // The original code: `if (totalFaturamentoFiltrado > 0) { ... add to list }`
+                cityActiveDetailTableBody.innerHTML = sortedActiveClients.slice(0, 500).map(data => {
+                    const novoLabel = data.isNew ? `<span class="ml-2 text-xs font-semibold text-purple-400 bg-purple-900/50 px-2 py-0.5 rounded-full">NOVO</span>` : '';
+                    let tooltipParts = [];
+                    if (data.pepsico > 0) tooltipParts.push(`PEPSICO: ${data.pepsico.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`);
+                    if (data.multimarcas > 0) tooltipParts.push(`MULTIMARCAS: ${data.multimarcas.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`);
+                    if (data.outros > 0.001) tooltipParts.push(`OUTROS: ${data.outros.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`);
+                    const tooltipText = tooltipParts.length > 0 ? tooltipParts.join('<br>') : 'Sem detalhamento de categoria';
+                    return `<tr class="hover:bg-slate-700"><td class="px-4 py-2"><a href="#" class="text-teal-400 hover:underline" data-codcli="${data['Código']}">${data['Código']}</a></td><td class="px-4 py-2 flex items-center">${data.fantasia || data.razaoSocial}${novoLabel}</td><td class="px-4 py-2 text-right"><div class="tooltip">${data.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}<span class="tooltip-text" style="width: max-content; transform: translateX(-50%); margin-left: 0;">${tooltipText}</span></div></td><td class="px-4 py-2">${data.cidade}</td><td class="px-4 py-2">${data.bairro}</td><td class="px-4 py-2">${data.rcas[0] || '-'}</td></tr>`
+                }).join('');
 
-            activeClientsList.forEach(client => {
-                const codcli = String(client['Código']);
-                const details = detailedDataByClient.get(codcli);
+                inactiveClientsList.sort((a, b) => {
+                    if (a.isReturn && !b.isReturn) return -1;
+                    if (!a.isReturn && b.isReturn) return 1;
+                    if (a.isNewForInactiveLabel && !b.isNewForInactiveLabel) return -1;
+                    if (!a.isNewForInactiveLabel && b.isNewForInactiveLabel) return 1;
+                    return (parseDate(b.ultimaCompra) || 0) - (parseDate(a.ultimaCompra) || 0);
+                });
 
-                if (details && details.total > 0) {
-                    const outrosTotal = details.total - details.pepsico - details.multimarcas;
-                    salesByActiveClient[codcli] = {
-                        ...client,
-                        total: details.total,
-                        pepsico: details.pepsico,
-                        multimarcas: details.multimarcas,
-                        outros: outrosTotal
-                    };
+                cityInactiveDetailTableBody.innerHTML = inactiveClientsList.slice(0, 500).map(client => {
+                    const novoLabel = client.isNewForInactiveLabel ? `<span class="ml-2 text-xs font-semibold text-purple-400 bg-purple-900/50 px-2 py-0.5 rounded-full">NOVO</span>` : '';
+                    const devolucaoLabel = client.isReturn ? `<span class="ml-2 text-xs font-semibold text-red-400 bg-red-900/50 px-2 py-0.5 rounded-full">DEVOLUÇÃO</span>` : '';
+                    return `<tr class="hover:bg-slate-700"><td class="px-4 py-2"><a href="#" class="text-teal-400 hover:underline" data-codcli="${client['Código']}">${client['Código']}</a></td><td class="px-4 py-2 flex items-center">${client.fantasia || client.razaoSocial}${novoLabel}${devolucaoLabel}</td><td class="px-4 py-2">${client.cidade}</td><td class="px-4 py-2">${client.bairro}</td><td class="px-4 py-2 text-center">${formatDate(client.ultimaCompra)}</td><td class="px-4 py-2">${client.rcas[0] || '-'}</td></tr>`
+                }).join('');
+
+                const cityChartTitleEl = document.getElementById('city-chart-title');
+                const cityChartOptions = { indexAxis: 'y', scales: { x: { grace: '15%' } }, plugins: { datalabels: { align: 'end', anchor: 'end', color: '#cbd5e1', font: { size: 14, weight: 'bold' }, formatter: (value) => (value / 1000).toFixed(1) + 'k', offset: 8 } } };
+                const totalFaturamentoCidade = salesForAnalysis.reduce((sum, item) => sum + item.VLVENDA, 0);
+                totalFaturamentoCidadeEl.textContent = totalFaturamentoCidade.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+                if (totalClientesCidadeEl) {
+                    totalClientesCidadeEl.textContent = clientsForAnalysis.length.toLocaleString('pt-BR');
+                }
+
+                if (cidadeFiltro) {
+                    cityChartTitleEl.textContent = 'Top 10 Bairros';
+                    const salesByBairro = {};
+                    salesForAnalysis.forEach(sale => { const bairro = sale.BAIRRO || 'N/A'; salesByBairro[bairro] = (salesByBairro[bairro] || 0) + sale.VLVENDA; });
+                    const sortedBairros = Object.entries(salesByBairro).sort(([, a], [, b]) => b - a).slice(0, 10);
+                    createChart('salesByClientInCityChart', 'bar', sortedBairros.map(([name]) => name), sortedBairros.map(([, total]) => total), cityChartOptions);
+                } else {
+                    cityChartTitleEl.textContent = 'Top 10 Cidades';
+                    const salesByCity = {};
+                    salesForAnalysis.forEach(sale => { const cidade = sale.CIDADE || 'N/A'; salesByCity[cidade] = (salesByCity[cidade] || 0) + sale.VLVENDA; });
+                    const sortedCidades = Object.entries(salesByCity).sort(([, a], [, b]) => b - a).slice(0, 10);
+                    createChart('salesByClientInCityChart', 'bar', sortedCidades.map(([name]) => name), sortedCidades.map(([, total]) => total), cityChartOptions);
                 }
             });
-
-            const sortedActiveClients = Object.values(salesByActiveClient).sort((a, b) => b.total - a.total);
-            activeClientsForExport = sortedActiveClients;
-            cityActiveDetailTableBody.innerHTML = sortedActiveClients.slice(0, 500).map(data => {
-                const novoLabel = data.isNew ? `<span class="ml-2 text-xs font-semibold text-purple-400 bg-purple-900/50 px-2 py-0.5 rounded-full">NOVO</span>` : '';
-                let tooltipParts = [];
-                if (data.pepsico > 0) tooltipParts.push(`PEPSICO: ${data.pepsico.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`);
-                if (data.multimarcas > 0) tooltipParts.push(`MULTIMARCAS: ${data.multimarcas.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`);
-                if (data.outros > 0.001) tooltipParts.push(`OUTROS: ${data.outros.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`);
-                const tooltipText = tooltipParts.length > 0 ? tooltipParts.join('<br>') : 'Sem detalhamento de categoria';
-                return `<tr class="hover:bg-slate-700"><td class="px-4 py-2"><a href="#" class="text-teal-400 hover:underline" data-codcli="${data['Código']}">${data['Código']}</a></td><td class="px-4 py-2 flex items-center">${data.fantasia || data.razaoSocial}${novoLabel}</td><td class="px-4 py-2 text-right"><div class="tooltip">${data.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}<span class="tooltip-text" style="width: max-content; transform: translateX(-50%); margin-left: 0;">${tooltipText}</span></div></td><td class="px-4 py-2">${data.cidade}</td><td class="px-4 py-2">${data.bairro}</td><td class="px-4 py-2">${data.rcas[0] || '-'}</td></tr>`
-            }).join('');
-
-            inactiveClientsList.sort((a, b) => {
-                if (a.isReturn && !b.isReturn) return -1;
-                if (!a.isReturn && b.isReturn) return 1;
-                if (a.isNewForInactiveLabel && !b.isNewForInactiveLabel) return -1;
-                if (!a.isNewForInactiveLabel && b.isNewForInactiveLabel) return 1;
-                return (parseDate(b.ultimaCompra) || 0) - (parseDate(a.ultimaCompra) || 0);
-            });
-            cityInactiveDetailTableBody.innerHTML = inactiveClientsList.slice(0, 500).map(client => {
-                const novoLabel = client.isNewForInactiveLabel ? `<span class="ml-2 text-xs font-semibold text-purple-400 bg-purple-900/50 px-2 py-0.5 rounded-full">NOVO</span>` : '';
-                const devolucaoLabel = client.isReturn ? `<span class="ml-2 text-xs font-semibold text-red-400 bg-red-900/50 px-2 py-0.5 rounded-full">DEVOLUÇÃO</span>` : '';
-                return `<tr class="hover:bg-slate-700"><td class="px-4 py-2"><a href="#" class="text-teal-400 hover:underline" data-codcli="${client['Código']}">${client['Código']}</a></td><td class="px-4 py-2 flex items-center">${client.fantasia || client.razaoSocial}${novoLabel}${devolucaoLabel}</td><td class="px-4 py-2">${client.cidade}</td><td class="px-4 py-2">${client.bairro}</td><td class="px-4 py-2 text-center">${formatDate(client.ultimaCompra)}</td><td class="px-4 py-2">${client.rcas[0] || '-'}</td></tr>`
-            }).join('');
-
-            const cityChartTitleEl = document.getElementById('city-chart-title');
-            const cityChartOptions = { indexAxis: 'y', scales: { x: { grace: '15%' } }, plugins: { datalabels: { align: 'end', anchor: 'end', color: '#cbd5e1', font: { size: 14, weight: 'bold' }, formatter: (value) => (value / 1000).toFixed(1) + 'k', offset: 8 } } };
-            const totalFaturamentoCidade = salesForAnalysis.reduce((sum, item) => sum + item.VLVENDA, 0);
-            totalFaturamentoCidadeEl.textContent = totalFaturamentoCidade.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-            
-            if (totalClientesCidadeEl) {
-                totalClientesCidadeEl.textContent = clientsForAnalysis.length.toLocaleString('pt-BR');
-            }
-
-            if (cidadeFiltro) {
-                cityChartTitleEl.textContent = 'Top 10 Bairros';
-                const salesByBairro = {};
-                salesForAnalysis.forEach(sale => { const bairro = sale.BAIRRO || 'N/A'; salesByBairro[bairro] = (salesByBairro[bairro] || 0) + sale.VLVENDA; });
-                const sortedBairros = Object.entries(salesByBairro).sort(([, a], [, b]) => b - a).slice(0, 10);
-                createChart('salesByClientInCityChart', 'bar', sortedBairros.map(([name]) => name), sortedBairros.map(([, total]) => total), cityChartOptions);
-            } else {
-                cityChartTitleEl.textContent = 'Top 10 Cidades';
-                const salesByCity = {};
-                salesForAnalysis.forEach(sale => { const cidade = sale.CIDADE || 'N/A'; salesByCity[cidade] = (salesByCity[cidade] || 0) + sale.VLVENDA; });
-                const sortedCidades = Object.entries(salesByCity).sort(([, a], [, b]) => b - a).slice(0, 10);
-                createChart('salesByClientInCityChart', 'bar', sortedCidades.map(([name]) => name), sortedCidades.map(([, total]) => total), cityChartOptions);
-            }
         }
 
         function getWeekOfMonth(date) {
@@ -7091,9 +7388,10 @@
         }
 
         function updateStockView() {
+            stockRenderId++;
+            const currentRenderId = stockRenderId;
+
             const { sales: filteredSales, history: filteredHistory } = getStockFilteredData();
-            // Remove pre-combination to avoid copying, handle aggregation via Maps
-            // const allCombinedSales = [...filteredSales, ...filteredHistory];
 
             const filial = stockFilialFilter.value;
             const activeStockMap = getActiveStockMap(filial);
@@ -7104,23 +7402,24 @@
             const currentPasta = currentStockFornecedor;
 
             const productAnalysis = new Map();
-            const productsWithFilteredActivity = new Set();
+            const productsWithFilteredActivity = new Set(); // Changed from Set to array logic below for chunking, but Set used for uniqueness
 
             // --- OPTIMIZATION: Pre-aggregate Sales Data by Product ---
             // Map<ProductCode, Array<Sale>>
             const salesByProduct = new Map();
             const historyByProduct = new Map();
-            const historySalesListByProduct = new Map(); // New Map
-            const totalQtyByProduct = new Map(); // combined total
-            const currentMonthQtyByProduct = new Map(); // current month total
-            const uniqueMonthsByProduct = new Map(); // Set of "YYYY-MM"
+            const historySalesListByProduct = new Map();
+            const totalQtyByProduct = new Map();
+            const currentMonthQtyByProduct = new Map();
+            const uniqueMonthsByProduct = new Map();
 
+            // Sync Pre-aggregation (O(N) is fast)
             const processSaleForAggregation = (s, isHistory) => {
                 const p = s.PRODUTO;
-                productsWithFilteredActivity.add(p);
+                // Don't add to productsWithFilteredActivity yet, do it in the filtering loop below to respect stock filters
 
                 if (!salesByProduct.has(p)) salesByProduct.set(p, []);
-                salesByProduct.get(p).push(s); // Push to common list for trend calc
+                salesByProduct.get(p).push(s);
 
                 if (!uniqueMonthsByProduct.has(p)) uniqueMonthsByProduct.set(p, new Set());
                 const d = parseDate(s.DTPED);
@@ -7133,8 +7432,8 @@
                     if (!historySalesListByProduct.has(p)) historySalesListByProduct.set(p, []);
                     historySalesListByProduct.get(p).push(s);
 
-                    if (!historyByProduct.has(p)) historyByProduct.set(p, 0); // Just flag existence/count
-                    historyByProduct.set(p, historyByProduct.get(p) + 1); // Simple counter or bool check
+                    if (!historyByProduct.has(p)) historyByProduct.set(p, 0);
+                    historyByProduct.set(p, historyByProduct.get(p) + 1);
                 } else {
                     currentMonthQtyByProduct.set(p, (currentMonthQtyByProduct.get(p) || 0) + qty);
                 }
@@ -7142,8 +7441,8 @@
 
             filteredSales.forEach(s => processSaleForAggregation(s, false));
             filteredHistory.forEach(s => processSaleForAggregation(s, true));
-            // ---------------------------------------------------------
 
+            // Build the list of products to analyze based on STOCK or SALES activity + Filters
             activeStockMap.forEach((qty, productCode) => {
                 if (qty > 0) {
                     const details = productDetailsMap.get(productCode);
@@ -7161,10 +7460,34 @@
                 }
             });
             
+            // Also include products with sales even if 0 stock (logic from original)
+            // Iterate salesByProduct keys (which implies sales existed)
+            for (const productCode of totalQtyByProduct.keys()) {
+                 if (productsWithFilteredActivity.has(productCode)) continue; // Already added
+
+                 const details = productDetailsMap.get(productCode);
+                 if (!details) continue; // Should be in details map if processed correctly
+
+                 if (selectedSuppliersSet.size > 0 && !selectedSuppliersSet.has(String(details.codfor))) continue;
+                 if (selectedProductsSet.size > 0 && !selectedProductsSet.has(String(productCode))) continue;
+                 if (currentPasta) {
+                    const pastaDoProduto = optimizedData.productPastaMap.get(productCode) || '';
+                    if (pastaDoProduto !== currentPasta) continue;
+                 }
+                 productsWithFilteredActivity.add(productCode);
+            }
+
+            // Show Loading
+            stockAnalysisTableBody.innerHTML = '<tr><td colspan="6" class="text-center p-8"><div class="flex justify-center items-center"><svg class="animate-spin h-8 w-8 text-teal-500 mr-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span class="text-slate-400">Calculando estoque e tendências...</span></div></td></tr>';
+
+            // Convert to array for chunking
+            const productsArray = Array.from(productsWithFilteredActivity);
+
             // Pre-calculate global dates for trend
             const endDate = parseDate(sortedWorkingDays[sortedWorkingDays.length - 1]);
 
-            productsWithFilteredActivity.forEach(productCode => {
+            // ASYNC PROCESS
+            runAsyncChunked(productsArray, (productCode) => {
                 if (!activeProductCodesFromCadastro.has(productCode)) return;
 
                 const details = productDetailsMap.get(productCode) || {
@@ -7182,7 +7505,6 @@
                 const currentMonthSalesQty = currentMonthQtyByProduct.get(productCode) || 0;
                 const soldThisMonth = currentMonthSalesQty > 0;
 
-                // Use pre-aggregated list
                 const productAllSales = salesByProduct.get(productCode) || [];
 
                 const productCadastroDate = parseDate(details.dtCadastro);
@@ -7218,7 +7540,7 @@
                 const startDate = parseDate(sortedWorkingDays[targetIndex]);
                 
                 let totalQtySoldInRange = 0;
-                // Optimized loop: only iterating relevant sales for this product
+                // Optimized loop
                 productAllSales.forEach(sale => {
                     const saleDate = parseDate(sale.DTPED);
                     if (saleDate && saleDate >= startDate && saleDate <= endDate) {
@@ -7245,125 +7567,110 @@
                     hasHistory,
                     soldThisMonth
                 });
-            });
+            }, () => {
+                // --- ON COMPLETE (Render) ---
+                if (currentRenderId !== stockRenderId) return;
 
-
-            let sortedAnalysis = [...productAnalysis.values()].sort((a, b) => {
-                 // Reverted sorting to Trend Days as requested (Trend Descending)
-                 const trendA = isFinite(a.trendDays) ? a.trendDays : -1;
-                 const trendB = isFinite(b.trendDays) ? b.trendDays : -1;
-                return trendB - trendA;
-            });
-
-
-            if (stockTrendFilter !== 'all') {
-                sortedAnalysis = sortedAnalysis.filter(item => {
-                    const trend = item.trendDays;
-                    if (stockTrendFilter === 'low') return isFinite(trend) && trend < 15;
-                    if (stockTrendFilter === 'medium') return isFinite(trend) && trend >= 15 && trend < 30;
-                    if (stockTrendFilter === 'good') return isFinite(trend) && trend >= 30;
-                    return false;
+                let sortedAnalysis = [...productAnalysis.values()].sort((a, b) => {
+                     const trendA = isFinite(a.trendDays) ? a.trendDays : -1;
+                     const trendB = isFinite(b.trendDays) ? b.trendDays : -1;
+                    return trendB - trendA;
                 });
-            }
 
-
-            stockAnalysisTableBody.innerHTML = sortedAnalysis.slice(0, 500).map(item => {
-                let trendText;
-                let newTag = item.isNew ? ` <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/30 text-blue-300 ml-1">NOVO</span>` : '';
-
-                if (!isFinite(item.trendDays) && item.stock > 0) {
-                    trendText = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-500/30 text-gray-300">S/ VENDA</span>`;
-                } else if (isFinite(item.trendDays)) {
-                    const trendDays = Math.floor(item.trendDays);
-                    let trendColor = 'text-slate-400';
-                    if (trendDays < 15) trendColor = 'text-red-400';
-                    else if (trendDays < 30) trendColor = 'text-yellow-400';
-                    else trendColor = 'text-green-400';
-                    trendText = `<span class="font-bold ${trendColor}">${trendDays} dias</span>`;
-                } else {
-                    trendText = '-';
+                if (stockTrendFilter !== 'all') {
+                    sortedAnalysis = sortedAnalysis.filter(item => {
+                        const trend = item.trendDays;
+                        if (stockTrendFilter === 'low') return isFinite(trend) && trend < 15;
+                        if (stockTrendFilter === 'medium') return isFinite(trend) && trend >= 15 && trend < 30;
+                        if (stockTrendFilter === 'good') return isFinite(trend) && trend >= 30;
+                        return false;
+                    });
                 }
 
-                return `
-                    <tr class="hover:bg-slate-700/50">
-                        <td class="px-4 py-2 text-xs">(${item.code}) ${item.descricao}</td>
-                        <td class="px-4 py-2 text-xs">(${item.codfor}) ${item.fornecedor.split(' ').slice(0, 4).join(' ')}</td>
-                        <td class="px-4 py-2 text-right text-xs">${item.stock.toLocaleString('pt-BR', {maximumFractionDigits: 2})}</td>
-                        <td class="px-4 py-2 text-right text-xs">${item.monthlyAvgSale.toLocaleString('pt-BR', {maximumFractionDigits: 2})}</td>
-                        <td class="px-4 py-2 text-right text-xs">${item.dailyAvgSale.toLocaleString('pt-BR', {maximumFractionDigits: 2})}</td>
-                        <td class="px-4 py-2 text-right text-xs flex items-center justify-end">${trendText}${newTag}</td>
-                    </tr>
-                `;
-            }).join('');
+                stockAnalysisTableBody.innerHTML = sortedAnalysis.slice(0, 500).map(item => {
+                    let trendText;
+                    let newTag = item.isNew ? ` <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/30 text-blue-300 ml-1">NOVO</span>` : '';
 
-
-            const growth = [];
-            const decline = [];
-            const newProducts = [];
-            const lostProducts = [];
-
-            productAnalysis.forEach(p => {
-                 if (p.soldThisMonth && p.hasHistory) {
-                        // --- INÍCIO DA MODIFICAÇÃO: Calcular variação para ordenação ---
-                        // Adicionamos a variação ao objeto para podermos usá-la para ordenar
-                        const variation = p.monthlyAvgSale > 0 ? ((p.currentMonthSalesQty - p.monthlyAvgSale) / p.monthlyAvgSale) * 100 : (p.currentMonthSalesQty > 0 ? Infinity : 0);
-                        const productWithVariation = { ...p, variation };
-                        // --- FIM DA MODIFICAÇÃO ---
-
-                    if (p.currentMonthSalesQty >= p.monthlyAvgSale) {
-                        growth.push(productWithVariation); // <-- Usamos o objeto modificado
-                    } else if (p.currentMonthSalesQty < p.monthlyAvgSale && p.monthlyAvgSale > 0) { 
-                        decline.push(productWithVariation); // <-- Usamos o objeto modificado
-                    }
-                 } else if (p.soldThisMonth && !p.hasHistory) { 
-                    newProducts.push(p);
-                 } else if (!p.soldThisMonth && p.hasHistory) { 
-                    lostProducts.push(p);
-                 }
-            });
-
-            const renderProductTable = (bodyElement, data, showVariation = true) => {
-                bodyElement.innerHTML = data.map(p => {
-                    const variation = p.monthlyAvgSale > 0 ? ((p.currentMonthSalesQty - p.monthlyAvgSale) / p.monthlyAvgSale) * 100 : (p.currentMonthSalesQty > 0 ? Infinity : 0);
-                    const colorClass = variation > 0 ? 'text-green-400' : (variation < 0 ? 'text-red-400' : 'text-slate-400');
-                    let variationText = '0%';
-                    if (isFinite(variation)) {
-                        variationText = `${variation.toFixed(0)}%`;
-                    } else if (variation === Infinity) {
-                         variationText = 'Novo';
+                    if (!isFinite(item.trendDays) && item.stock > 0) {
+                        trendText = `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-500/30 text-gray-300">S/ VENDA</span>`;
+                    } else if (isFinite(item.trendDays)) {
+                        const trendDays = Math.floor(item.trendDays);
+                        let trendColor = 'text-slate-400';
+                        if (trendDays < 15) trendColor = 'text-red-400';
+                        else if (trendDays < 30) trendColor = 'text-yellow-400';
+                        else trendColor = 'text-green-400';
+                        trendText = `<span class="font-bold ${trendColor}">${trendDays} dias</span>`;
+                    } else {
+                        trendText = '-';
                     }
-
 
                     return `
                         <tr class="hover:bg-slate-700/50">
-                            <td class="px-2 py-1.5 text-xs">(${p.code}) ${p.descricao}</td>
-                            <td class="px-2 py-1.5 text-xs text-right">${p.currentMonthSalesQty.toLocaleString('pt-BR', {maximumFractionDigits: 2})}</td>
-                            <td class="px-2 py-1.5 text-xs text-right">${p.monthlyAvgSale.toLocaleString('pt-BR', {maximumFractionDigits: 2})}</td>
-                            ${showVariation ? `<td class="px-2 py-1.5 text-xs text-right font-bold ${colorClass}">${variationText}</td>` : ''}
-                            <td class="px-2 py-1.5 text-xs text-right">${p.stock.toLocaleString('pt-BR', {maximumFractionDigits: 2})}</td>
+                            <td class="px-4 py-2 text-xs">(${item.code}) ${item.descricao}</td>
+                            <td class="px-4 py-2 text-xs">(${item.codfor}) ${item.fornecedor.split(' ').slice(0, 4).join(' ')}</td>
+                            <td class="px-4 py-2 text-right text-xs">${item.stock.toLocaleString('pt-BR', {maximumFractionDigits: 2})}</td>
+                            <td class="px-4 py-2 text-right text-xs">${item.monthlyAvgSale.toLocaleString('pt-BR', {maximumFractionDigits: 2})}</td>
+                            <td class="px-4 py-2 text-right text-xs">${item.dailyAvgSale.toLocaleString('pt-BR', {maximumFractionDigits: 2})}</td>
+                            <td class="px-4 py-2 text-right text-xs flex items-center justify-end">${trendText}${newTag}</td>
                         </tr>
                     `;
                 }).join('');
-            };
 
-            // --- INÍCIO DA MODIFICAÇÃO: Alterar ordenação ---
-            
-            // "Produtos com Crescimento": Ordenar da maior variação (positiva) para a menor.
-            growth.sort((a, b) => b.variation - a.variation);
-            
-            // "Produtos com Queda": Ordenar da maior variação negativa (-100%) para a menor (-10%).
-            // (a.variation - b.variation) coloca os números mais negativos primeiro.
-            decline.sort((a, b) => a.variation - b.variation);
-            
-            // --- FIM DA MODIFICAÇÃO ---
+                const growth = [];
+                const decline = [];
+                const newProducts = [];
+                const lostProducts = [];
 
-            newProducts.sort((a,b) => b.currentMonthSalesQty - a.currentMonthSalesQty);
-            lostProducts.sort((a,b) => b.monthlyAvgSale - a.monthlyAvgSale);
+                productAnalysis.forEach(p => {
+                     if (p.soldThisMonth && p.hasHistory) {
+                            const variation = p.monthlyAvgSale > 0 ? ((p.currentMonthSalesQty - p.monthlyAvgSale) / p.monthlyAvgSale) * 100 : (p.currentMonthSalesQty > 0 ? Infinity : 0);
+                            const productWithVariation = { ...p, variation };
 
-            renderProductTable(growthTableBody, growth);
-            renderProductTable(declineTableBody, decline);
-            renderProductTable(newProductsTableBody, newProducts, false);
-            renderProductTable(lostProductsTableBody, lostProducts, false);
+                        if (p.currentMonthSalesQty >= p.monthlyAvgSale) {
+                            growth.push(productWithVariation);
+                        } else if (p.currentMonthSalesQty < p.monthlyAvgSale && p.monthlyAvgSale > 0) {
+                            decline.push(productWithVariation);
+                        }
+                     } else if (p.soldThisMonth && !p.hasHistory) {
+                        newProducts.push(p);
+                     } else if (!p.soldThisMonth && p.hasHistory) {
+                        lostProducts.push(p);
+                     }
+                });
+
+                const renderProductTable = (bodyElement, data, showVariation = true) => {
+                    bodyElement.innerHTML = data.map(p => {
+                        const variation = p.monthlyAvgSale > 0 ? ((p.currentMonthSalesQty - p.monthlyAvgSale) / p.monthlyAvgSale) * 100 : (p.currentMonthSalesQty > 0 ? Infinity : 0);
+                        const colorClass = variation > 0 ? 'text-green-400' : (variation < 0 ? 'text-red-400' : 'text-slate-400');
+                        let variationText = '0%';
+                        if (isFinite(variation)) {
+                            variationText = `${variation.toFixed(0)}%`;
+                        } else if (variation === Infinity) {
+                             variationText = 'Novo';
+                        }
+
+                        return `
+                            <tr class="hover:bg-slate-700/50">
+                                <td class="px-2 py-1.5 text-xs">(${p.code}) ${p.descricao}</td>
+                                <td class="px-2 py-1.5 text-xs text-right">${p.currentMonthSalesQty.toLocaleString('pt-BR', {maximumFractionDigits: 2})}</td>
+                                <td class="px-2 py-1.5 text-xs text-right">${p.monthlyAvgSale.toLocaleString('pt-BR', {maximumFractionDigits: 2})}</td>
+                                ${showVariation ? `<td class="px-2 py-1.5 text-xs text-right font-bold ${colorClass}">${variationText}</td>` : ''}
+                                <td class="px-2 py-1.5 text-xs text-right">${p.stock.toLocaleString('pt-BR', {maximumFractionDigits: 2})}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                };
+
+                growth.sort((a, b) => b.variation - a.variation);
+                decline.sort((a, b) => a.variation - b.variation);
+                newProducts.sort((a,b) => b.currentMonthSalesQty - a.currentMonthSalesQty);
+                lostProducts.sort((a,b) => b.monthlyAvgSale - a.monthlyAvgSale);
+
+                renderProductTable(growthTableBody, growth);
+                renderProductTable(declineTableBody, decline);
+                renderProductTable(newProductsTableBody, newProducts, false);
+                renderProductTable(lostProductsTableBody, lostProducts, false);
+            });
         }
 
 
