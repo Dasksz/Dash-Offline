@@ -3137,8 +3137,9 @@
                         if (hIds) {
                             let cVal = 0;
                             for (const id of hIds) {
-                                const sale = optimizedData.historyById.get(id);
-                                if (sale.TIPOVENDA !== '1' && sale.TIPOVENDA !== '9') continue;
+                            const sale = optimizedData.historyById.get(id);
+                            if (sale.TIPOVENDA !== '1' && sale.TIPOVENDA !== '9') continue;
+                            if (!parseDate(sale.DTPED)) continue;
                                 const codFor = String(sale.CODFOR);
                                 const desc = normalize(sale.DESCRICAO || '');
 
@@ -3305,6 +3306,7 @@
                         for (const id of hIds) {
                             const sale = optimizedData.historyById.get(id);
                             if (sale.TIPOVENDA !== '1' && sale.TIPOVENDA !== '9') continue;
+                            if (!parseDate(sale.DTPED)) continue;
                             const codFor = String(sale.CODFOR);
                             const desc = normalize(sale.DESCRICAO || '');
 
