@@ -1,831 +1,3 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gerador de Relatório Otimizado</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f4f7f6; /* Alterado para background claro */
-        }
-        .file-input-label {
-            display: block;
-            text-align: left;
-            font-size: 0.875rem;
-            font-weight: 500;
-            color: #475569; /* Alterado para texto escuro */
-            margin-bottom: 0.5rem;
-        }
-        .progress-bar-container {
-            background-color: #e2e8f0; /* Alterado para claro */
-            border-radius: 0.5rem;
-            overflow: hidden;
-        }
-        .progress-bar {
-            background-color: #0d9488; /* Alterado para novo destaque (teal) */
-            height: 100%;
-            transition: width 0.3s ease-in-out;
-        }
-        .stock-trend-btn.active {
-            outline: 2px solid #334155; /* Alterado para escuro */
-            outline-offset: 2px;
-            transform: scale(1.1);
-        }
-        .tooltip { position: relative; display: inline-block; cursor: pointer; }
-        .tooltip .tooltip-text { 
-            visibility: hidden; 
-            width: auto; 
-            min-width: 80px; 
-            background-color: #334155; /* Alterado para fundo escuro no tooltip */
-            color: #fff; 
-            text-align: center; 
-            border-radius: 6px; 
-            padding: 5px 8px; 
-            position: absolute; 
-            z-index: 1001; 
-            bottom: 125%; 
-            left: 50%; 
-            transform: translateX(-50%); 
-            opacity: 0; 
-            transition: opacity 0.3s; 
-            pointer-events: none; 
-            white-space: nowrap; 
-        }
-        .tooltip:hover .tooltip-text { visibility: visible; opacity: 1; }
-        input[type=number]::-webkit-inner-spin-button,
-        input[type=number]::-webkit-outer-spin-button {
-          -webkit-appearance: none;
-          margin: 0;
-        }
-        input[type=number] {
-          -moz-appearance: textfield;
-        }
-    </style>
-</head>
-<body class="text-slate-800 flex items-center justify-center min-h-screen"> <!-- Alterado para texto escuro -->
-    <div class="text-center p-8 bg-white rounded-lg shadow-2xl max-w-lg w-full m-4 border border-slate-200"> <!-- Alterado para fundo branco e borda clara -->
-        <h1 class="text-2xl font-bold text-slate-900 mb-4">Painel de Vendas - Gerador</h1> <!-- Alterado para texto escuro -->
-        <p class="text-slate-600 mb-6">Carregue os arquivos para gerar um dashboard offline. O processamento agora ocorre em segundo plano, sem travar a interface.</p> <!-- Alterado para texto escuro (médio) -->
-
-        <div class="space-y-4 mb-6">
-            <div>
-                <label for="sales-file-input" class="file-input-label">1. Arquivo de Vendas (Mês Atual)</label>
-                <input type="file" id="sales-file-input" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-200 file:text-slate-700 hover:file:bg-slate-300" accept=".csv, .xls, .xlsx"/> <!-- Cores do input alteradas -->
-            </div>
-            <div>
-                <label for="clients-file-input" class="file-input-label">2. Cadastro de Clientes</label>
-                <input type="file" id="clients-file-input" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-200 file:text-slate-700 hover:file:bg-slate-300" accept=".csv, .xls, .xlsx"/> <!-- Cores do input alteradas -->
-            </div>
-            <div>
-                <label for="products-file-input" class="file-input-label">3. Cadastro de Produtos</label>
-                <input type="file" id="products-file-input" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-200 file:text-slate-700 hover:file:bg-slate-300" accept=".csv, .xls, .xlsx"/> <!-- Cores do input alteradas -->
-            </div>
-            <div>
-                <label for="history-file-input" class="file-input-label">4. Histórico de Vendas (Trimestre Anterior)</label>
-                <input type="file" id="history-file-input" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-200 file:text-slate-700 hover:file:bg-slate-300" accept=".csv, .xls, .xlsx"/> <!-- Cores do input alteradas -->
-            </div>
-             <div>
-                <label for="innovations-file-input" class="file-input-label">5. Planilha de Inovações (Mês)</label>
-                <input type="file" id="innovations-file-input" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-200 file:text-slate-700 hover:file:bg-slate-300" accept=".csv, .xls, .xlsx"/> <!-- Cores do input alteradas -->
-            </div>
-        </div>
-
-        <button id="generate-btn" class="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg w-full disabled:bg-slate-300" disabled> <!-- Cor do botão alterada para laranja -->
-            Gerar Relatório
-        </button>
-
-        <div id="status-container" class="hidden mt-6 text-sm h-12 flex flex-col justify-center">
-            <p id="status-text" class="mb-2"></p>
-            <div class="progress-bar-container w-full h-2">
-                <div id="progress-bar" class="progress-bar"></div>
-            </div>
-        </div>
-
-        <div id="download-container" class="hidden mt-6 border-t border-slate-200 pt-6"> <!-- Borda alterada para clara -->
-            <a id="download-link" class="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-lg w-full inline-block"> <!-- Cor do botão alterada para laranja -->
-                Baixar Relatório HTML
-            </a>
-        </div>
-    </div>
-
-    <script id="worker-script" type="text/worker-javascript">
-        self.importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
-
-        const mandatoryColumns = {
-            sales: ['CODCLI', 'NOME', 'SUPERV', 'PEDIDO', 'CODUSUR', 'CODSUPERVISOR', 'DTPED', 'DTSAIDA', 'PRODUTO', 'DESCRICAO', 'FORNECEDOR', 'OBSERVACAOFOR', 'CODFOR', 'QTVENDA', 'VLVENDA', 'VLBONIFIC', 'TOTPESOLIQ', 'POSICAO', 'ESTOQUEUNIT', 'TIPOVENDA', 'FILIAL', 'ESTOQUECX'],
-            clients: ['Código', 'RCA 1', 'Nome da Cidade', 'Fantasia', 'Cliente', 'Bairro', 'CNPJ/CPF', 'Endereço Comercial', 'Número', 'CEP', 'Telefone Comercial', 'E-mail', 'Descricao', 'Data da Última Compra', 'Data e Hora de Cadastro', 'Bloqueio', 'Insc. Est. / Produtor'],
-            products: ['Código', 'Qtde embalagem master(Compra)', 'Descrição', 'Nome do fornecedor', 'Fornecedor', 'Dt.Cadastro'],
-            history: ['CODCLI', 'NOME', 'SUPERV', 'PEDIDO', 'CODUSUR', 'CODSUPERVISOR', 'DTPED', 'DTSAIDA', 'PRODUTO', 'DESCRICAO', 'FORNECEDOR', 'OBSERVACAOFOR', 'CODFOR', 'QTVENDA', 'VLVENDA', 'VLBONIFIC', 'TOTPESOLIQ', 'POSICAO', 'ESTOQUEUNIT', 'TIPOVENDA', 'FILIAL', 'ESTOQUECX']
-        };
-
-        const columnFormats = {
-            sales: {
-                'CODCLI': 'number',
-                'QTVENDA': 'number',
-                'VLVENDA': 'number',
-                'VLBONIFIC': 'number',
-                'TOTPESOLIQ': 'number',
-                'DTPED': 'date',
-                'DTSAIDA': 'date',
-                'PEDIDO': 'number',
-                'TIPOVENDA': 'number',
-                'FILIAL': 'number',
-                'ESTOQUEUNIT': 'number',
-                'ESTOQUECX': 'number'
-            },
-            clients: {
-                'Código': 'number',
-                'Data da Última Compra': 'date',
-                'Data e Hora de Cadastro': 'date'
-            },
-            products: {
-                'Código': 'number',
-                'Qtde embalagem master(Compra)': 'number',
-                'Dt.Cadastro': 'date'
-            },
-            history: {
-                'CODCLI': 'number',
-                'QTVENDA': 'number',
-                'VLVENDA': 'number',
-                'VLBONIFIC': 'number',
-                'TOTPESOLIQ': 'number',
-                'DTPED': 'date',
-                'DTSAIDA': 'date',
-                'PEDIDO': 'number',
-                'TIPOVENDA': 'number',
-                'FILIAL': 'number',
-                'ESTOQUEUNIT': 'number',
-                'ESTOQUECX': 'number'
-            }
-        };
-
-        function parseDate(dateString) {
-            if (!dateString) return null;
-            if (dateString instanceof Date) {
-                return !isNaN(dateString.getTime()) ? dateString : null;
-            }
-            if (typeof dateString === 'number') {
-                return new Date(Math.round((dateString - 25569) * 86400 * 1000));
-            }
-            if (typeof dateString !== 'string') return null;
-
-            // NEW: Handle datetime strings by taking only the date part first.
-            const dateOnlyString = dateString.split(' ')[0];
-
-            // Handle "DD/MM/YYYY" format specifically.
-            if (dateOnlyString.length === 10 && dateOnlyString.charAt(2) === '/' && dateOnlyString.charAt(5) === '/') {
-                const [day, month, year] = dateOnlyString.split('/');
-                if (year && month && day && year.length === 4) {
-                    // Use UTC to avoid timezone issues when only date is provided.
-                    // Using Date.UTC ensures the date is created at 00:00:00 UTC directly.
-                    const utcDate = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day)));
-                    if (!isNaN(utcDate.getTime())) {
-                        return utcDate;
-                    }
-                }
-            }
-            
-            // Fallback for ISO 8601 or other formats that new Date() can parse.
-            // Try parsing the original string first, in case it's a valid ISO datetime.
-            const isoDate = new Date(dateString);
-            if (!isNaN(isoDate.getTime())) {
-                return isoDate;
-            }
-
-            // If that fails, try parsing just the date part.
-            const isoDateFromDateOnly = new Date(dateOnlyString);
-            return !isNaN(isoDateFromDateOnly.getTime()) ? isoDateFromDateOnly : null;
-        }
-
-        function parseBrazilianNumber(value) {
-            if (typeof value === 'number') return value;
-            if (typeof value !== 'string' || !value) return 0;
-            
-            let numberString = value.replace(/R\$\s?/g, '').trim();
-            
-            const lastComma = numberString.lastIndexOf(',');
-            const lastDot = numberString.lastIndexOf('.');
-
-            if (lastComma > lastDot) {
-                numberString = numberString.replace(/\./g, '').replace(',', '.');
-            } else {
-                numberString = numberString.replace(/,/g, '');
-            }
-            
-            const number = parseFloat(numberString);
-            return isNaN(number) ? 0 : number;
-        }
-
-        function isValidDate(dateString) {
-            return parseDate(dateString) !== null;
-        }
-
-        function isValidNumber(value) {
-            return !isNaN(parseBrazilianNumber(String(value)));
-        }
-
-        function validateData(data, fileType, fileName) {
-            if (!data || data.length === 0) {
-                throw new Error(`O arquivo '${fileName}' (${fileType}) está vazio ou não contém dados.`);
-            }
-
-            const requiredColumns = mandatoryColumns[fileType];
-            const formats = columnFormats[fileType];
-            if (!requiredColumns) return;
-
-            const headers = Object.keys(data[0]);
-            const missingColumns = requiredColumns.filter(col => !headers.includes(col));
-
-            if (missingColumns.length > 0) {
-                throw new Error(`Erro no arquivo '${fileName}'. Colunas obrigatórias não encontradas: ${missingColumns.join(', ')}.`);
-            }
-
-            const emptyOrZeroColumns = requiredColumns.filter(col => {
-                return data.every(row => {
-                    const value = row[col];
-                    return value === null || value === undefined || String(value).trim() === '' || String(value).trim() === '0';
-                });
-            });
-
-            if (emptyOrZeroColumns.length > 0) {
-                throw new Error(`Erro no arquivo '${fileName}'. As seguintes colunas estão vazias ou contêm apenas zeros: ${emptyOrZeroColumns.join(', ')}.`);
-            }
-
-            if (formats) {
-                for (let i = 0; i < data.length; i++) {
-                    const row = data[i];
-                    for (const col in formats) {
-                        if (row.hasOwnProperty(col)) {
-                            const value = row[col];
-                            const format = formats[col];
-                            let isValid = true;
-
-                            if (value !== null && value !== undefined && String(value).trim() !== '') {
-                                if (format === 'number') {
-                                    isValid = isValidNumber(value);
-                                } else if (format === 'date') {
-                                    isValid = isValidDate(value);
-                                }
-                            }
-
-                            if (!isValid) {
-                                throw new Error(`Erro no arquivo '${fileName}', linha ${i + 2}. A coluna '${col}' contém um valor inválido: '${value}'. O formato esperado é '${format}'.`);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        const readFile = (file, fileType) => {
-            return new Promise((resolve, reject) => {
-                if (!file) {
-                    if (fileType !== 'innovations') {
-                         reject(new Error(`Arquivo obrigatório para '${fileType}' não foi fornecido.`));
-                         return;
-                    }
-                    resolve([]);
-                    return;
-                }
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    try {
-                        let jsonData;
-                        const data = event.target.result;
-                        if (file.name.endsWith('.csv')) {
-                            let decodedData;
-                            try {
-                                decodedData = new TextDecoder('utf-8', { fatal: true }).decode(new Uint8Array(data));
-                            } catch (e) {
-                                decodedData = new TextDecoder('iso-8859-1').decode(new Uint8Array(data));
-                            }
-
-                            const lines = decodedData.split(/\r?\n/).filter(line => line.trim() !== '');
-                            if (lines.length < 1) {
-                                if (fileType !== 'innovations') {
-                                    throw new Error(`O arquivo CSV '${file.name}' está vazio.`);
-                                }
-                                resolve([]);
-                                return;
-                            };
-
-                            const firstLine = lines[0];
-                            const delimiter = firstLine.includes(';') ? ';' : ',';
-                            
-                            const headers = lines.shift().trim().split(delimiter).map(h => h.replace(/"/g, '').trim().replace(/^\uFEFF/, ''));
-                            
-                            jsonData = lines.map(line => {
-                                const values = line.split(delimiter);
-                                let row = {};
-                                for (let i = 0; i < headers.length; i++) {
-                                    row[headers[i]] = (values[i] || '').replace(/"/g, '').trim();
-                                }
-                                return row;
-                            });
-                        } else {
-                            const workbook = XLSX.read(new Uint8Array(data), {type: 'array'});
-                            const firstSheetName = workbook.SheetNames[0];
-                            const worksheet = workbook.Sheets[firstSheetName];
-                            jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false, cellDates: true });
-                        }
-
-                        if (fileType !== 'innovations') {
-                            validateData(jsonData, fileType, file.name);
-                        }
-
-                        resolve(jsonData);
-                    } catch (error) {
-                        reject(error);
-                    }
-                };
-                reader.onerror = () => reject(new Error(`Erro ao ler o arquivo '${file.name}'.`));
-                reader.readAsArrayBuffer(file);
-            });
-        };
-
-        const processSalesData = (rawData, clientMap, productMasterMap, newRcaSupervisorMap) => {
-            return rawData.map(rawRow => {
-                const codCliStr = String(rawRow['CODCLI']).trim();
-                const clientInfo = clientMap.get(codCliStr) || {};
-                
-                // --- INÍCIO DA MODIFICAÇÃO: LÓGICA DE ATRIBUIÇÃO DE VENDEDOR ---
-                
-                // 1. Pega os valores padrão da linha de venda
-                let vendorName = String(rawRow['NOME'] || '');
-                let supervisorName = String(rawRow['SUPERV'] || '');
-                let codUsur = String(rawRow['CODUSUR'] || '').trim(); // Este é o 'codUsurVenda'
-                let codSupervisor = String(rawRow['CODSUPERVISOR'] || '').trim();
-                const pedido = String(rawRow['PEDIDO'] || '');
-                let isAmericanas = false;
-
-                // 2. Regra de Prioridade 1: AMERICANAS S.A (Como estava antes)
-                const nomeClienteParaLogica = (clientInfo.razaoSocial || clientInfo.fantasia || clientInfo.nomeCliente || '').toUpperCase();
-                if (nomeClienteParaLogica.includes('AMERICANAS S.A')) {
-                    vendorName = 'AMERICANAS';
-                    codUsur = '1001';
-                    supervisorName = 'BALCAO';
-                    codSupervisor = '';
-                    isAmericanas = true;
-        
-                    if (clientInfo.rcas) { 
-                         clientInfo.rca1 = '1001';
-                         if (!clientInfo.rcas.includes('1001')) {
-                            clientInfo.rcas.unshift('1001');
-                         }
-                    }
-                }
-
-                // 3. Regra de Prioridade 2: Se NÃO for Americanas, usa a nova lógica
-                if (!isAmericanas) {
-                    const rca1Cliente = (clientInfo.rca1 || '').trim();
-                    const codUsurVenda = codUsur; // Guarda o CODUSUR original da linha de venda
-                    
-                    // Prioriza o RCA 1 do cadastro de clientes. Se não tiver, usa o RCA da linha de venda.
-                    const codUsurParaBusca = rca1Cliente || codUsurVenda;
-
-                    const rcaInfo = newRcaSupervisorMap.get(codUsurParaBusca);
-
-                    if (rcaInfo) {
-                        // Encontrou informações no mapa mestre (usando RCA1 do cliente ou RCA da venda)
-                        vendorName = rcaInfo.NOME;
-                        supervisorName = rcaInfo.SUPERV;
-                        codSupervisor = rcaInfo.CODSUPERVISOR;
-                        codUsur = codUsurParaBusca; // Define o CODUSUR final
-                    } 
-                    else if (rca1Cliente && rca1Cliente !== codUsurVenda) {
-                        // Usou o RCA1 do cliente, não achou. Tenta um fallback com o RCA da linha de venda.
-                        const fallbackInfo = newRcaSupervisorMap.get(codUsurVenda);
-                        if (fallbackInfo) {
-                            vendorName = fallbackInfo.NOME;
-                            supervisorName = fallbackInfo.SUPERV;
-                            codSupervisor = fallbackInfo.CODSUPERVISOR;
-                            codUsur = codUsurVenda; // Define o CODUSUR final como o da venda (fallback)
-                        } else {
-                            // Não achou em lugar nenhum, mantém os dados da linha (já definidos no passo 1)
-                            codUsur = codUsurVenda;
-                        }
-                    } 
-                    else {
-                        // Se rca1Cliente estava vazio, codUsurParaBusca == codUsurVenda.
-                        // Se não achou rcaInfo, significa que o codUsurVenda não está no mapa.
-                        // Mantém os dados da linha (já definidos no passo 1) e o codUsur da venda.
-                        codUsur = codUsurVenda;
-                    }
-                }
-                // --- FIM DA MODIFICAÇÃO ---
-
-                const supervisorUpper = (supervisorName || '').trim().toUpperCase();
-                if (supervisorUpper === 'BALCAO' || supervisorUpper === 'BALCÃO') supervisorName = 'BALCAO';
-
-                let dtPed = rawRow['DTPED'];
-                const dtSaida = rawRow['DTSAIDA'];
-
-                // --- OPTIMIZATION: Parse Dates to Timestamp here in Worker ---
-                let parsedDtPed = parseDate(dtPed);
-                const parsedDtSaida = parseDate(dtSaida);
-
-                if (parsedDtPed && parsedDtSaida && (parsedDtPed.getUTCFullYear() < parsedDtSaida.getUTCFullYear() || (parsedDtPed.getUTCFullYear() === parsedDtSaida.getUTCFullYear() && parsedDtPed.getUTCMonth() < parsedDtSaida.getUTCMonth()))) {
-                    parsedDtPed = parsedDtSaida;
-                }
-
-                // Convert to Timestamp (Number) for lighter JSON and faster parsing in main thread
-                const tsDtPed = parsedDtPed ? parsedDtPed.getTime() : null;
-                const tsDtSaida = parsedDtSaida ? parsedDtSaida.getTime() : null;
-
-                const productCode = String(rawRow['PRODUTO'] || '').trim();
-                let qtdeMaster = productMasterMap.get(productCode);
-                if (!qtdeMaster || qtdeMaster <= 0) qtdeMaster = 1;
-                const qtVenda = parseInt(String(rawRow['QTVENDA'] || '0').trim(), 10) || 0;
-
-                // --- INÍCIO DA MODIFICAÇÃO: REGRA TIPOVENDA ---
-                // Captura o tipo de venda primeiro
-                const tipoVenda = String(rawRow['TIPOVENDA'] || 'N/A').trim();
-                
-                // Apenas TIPOVENDA '1' e '9' contam para faturamento e peso
-                const isFaturamento = (tipoVenda === '1' || tipoVenda === '9');
-                
-                // Captura os valores originais
-                const vlVendaOriginal = parseBrazilianNumber(rawRow['VLVENDA']);
-                const vlBonificOriginal = parseBrazilianNumber(rawRow['VLBONIFIC']);
-                const pesoOriginal = parseBrazilianNumber(rawRow['TOTPESOLIQ']);
-                // --- FIM DA MODIFICAÇÃO ---
-
-                let filialValue = String(rawRow['FILIAL'] || '').trim();
-                if (filialValue === '5') filialValue = '05';
-                if (filialValue === '8') filialValue = '08';
-
-                return {
-                    PEDIDO: pedido, NOME: vendorName, SUPERV: supervisorName, PRODUTO: productCode,
-                    DESCRICAO: String(rawRow['DESCRICAO'] || ''), FORNECEDOR: String(rawRow['FORNECEDOR'] || ''),
-                    OBSERVACAOFOR: String(rawRow['OBSERVACAOFOR'] || '').trim(), CODFOR: String(rawRow['CODFOR'] || '').trim(),
-                    CODUSUR: codUsur, CODCLI: codCliStr, CLIENTE_NOME: clientInfo.nomeCliente || 'N/A',
-                    CIDADE: clientInfo.cidade || 'N/A', BAIRRO: clientInfo.bairro || 'N/A',
-                    QTVENDA: qtVenda,
-                    CODSUPERVISOR: codSupervisor, // Added to ensure supervisor code is available for indexing
-                    
-                    // --- INÍCIO DA MODIFICAÇÃO: APLICAÇÃO DA REGRA ---
-                    // Se não for faturamento (1 ou 9), VLVENDA é 0
-                    VLVENDA: isFaturamento ? vlVendaOriginal : 0,
-                    
-                    // Se não for faturamento, soma o que veio em VLVENDA (indevidamente) ao VLBONIFIC
-                    VLBONIFIC: isFaturamento ? vlBonificOriginal : (vlVendaOriginal + vlBonificOriginal),
-                    
-                    // Peso (tonelada) - [Instrução do usuário: Deve somar sempre, mesmo não sendo faturamento]
-                    TOTPESOLIQ: pesoOriginal, 
-                    DTPED: tsDtPed, DTSAIDA: tsDtSaida, // Optimized: Numbers
-                    POSICAO: String(rawRow['POSICAO'] || ''),
-                    ESTOQUEUNIT: parseBrazilianNumber(rawRow['ESTOQUEUNIT']),
-                    QTVENDA_EMBALAGEM_MASTER: isNaN(qtdeMaster) || qtdeMaster === 0 ? 0 : qtVenda / qtdeMaster,
-                    // Garante que o tipo de venda correto é passado
-                    TIPOVENDA: tipoVenda,
-                    // Adiciona a filial normalizada para permitir filtragem
-                    FILIAL: filialValue 
-                    // --- FIM DA MODIFICAÇÃO ---
-                };
-            });
-        };
-
-        function getPassedWorkingDaysInSpecificMonth(year, month, today) {
-            let count = 0;
-            const date = new Date(Date.UTC(year, month, 1));
-            // Ensure comparison is done in UTC terms
-            const todayUTC = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-            
-            while (date <= todayUTC && date.getUTCMonth() === month) {
-                const dayOfWeek = date.getUTCDay();
-                if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-                    count++;
-                }
-                date.setUTCDate(date.getUTCDate() + 1);
-            }
-            return count > 0 ? count : 1;
-        }
-
-        // --- OPTIMIZATION: Columnar Data Transformation ---
-        function toColumnar(data) {
-            if (!data || data.length === 0) return { columns: [], values: {}, length: 0 };
-            const columns = Object.keys(data[0]);
-            const values = {};
-            columns.forEach(col => values[col] = new Array(data.length));
-
-            for (let i = 0; i < data.length; i++) {
-                for (let j = 0; j < columns.length; j++) {
-                    values[columns[j]][i] = data[i][columns[j]];
-                }
-            }
-            return { columns, values, length: data.length };
-        }
-
-        self.onmessage = async (event) => {
-            const { salesFile, clientsFile, productsFile, historyFile, innovationsFile } = event.data;
-
-            try {
-                self.postMessage({ type: 'progress', status: 'Lendo arquivos...', percentage: 10 });
-                const [salesDataRaw, clientsDataRaw, productsDataRaw, historyDataRaw, innovationsDataRaw] = await Promise.all([
-                    readFile(salesFile, 'sales'),
-                    readFile(clientsFile, 'clients'),
-                    readFile(productsFile, 'products'),
-                    readFile(historyFile, 'history'),
-                    readFile(innovationsFile, 'innovations')
-                ]);
-
-                self.postMessage({ type: 'progress', status: 'Criando mapa mestre de supervisores...', percentage: 20 });
-                const newRcaSupervisorMap = new Map();
-                const lastSaleDateMap = new Map();
-
-                // --- INÍCIO DA MODIFICAÇÃO: Usar vendas atuais E históricas para o mapa mestre ---
-                const allSalesForMap = [...salesDataRaw, ...historyDataRaw];
-
-                allSalesForMap.forEach(row => {
-                // --- FIM DA MODIFICAÇÃO ---
-                    try {
-                        const codUsur = String(row['CODUSUR'] || '').trim();
-                        if (codUsur === '1001') return;
-
-                        const dtPed = row['DTPED'];
-                        if (!codUsur || !dtPed) return;
-
-                        const saleDate = parseDate(dtPed);
-                        if (!saleDate || isNaN(saleDate.getTime())) return;
-
-                        const lastDate = lastSaleDateMap.get(codUsur);
-                        if (!lastDate || saleDate >= lastDate) {
-                            lastSaleDateMap.set(codUsur, saleDate);
-                            newRcaSupervisorMap.set(codUsur, {
-                                NOME: String(row['NOME'] || ''),
-                                SUPERV: String(row['SUPERV'] || ''),
-                                CODSUPERVISOR: String(row['CODSUPERVISOR'] || '').trim()
-                            });
-                        }
-                    } catch (e) {
-                        console.error('Erro ao processar linha para mapa mestre:', e, row);
-                    }
-                });
-
-                self.postMessage({ type: 'progress', status: 'Extraindo estoque do arquivo de vendas...', percentage: 25 });
-                const stockMap05 = new Map();
-                const stockMap08 = new Map();
-
-                salesDataRaw.forEach(item => {
-                    const productCode = String(item['PRODUTO'] || '').trim();
-                    let branch = String(item['FILIAL'] || '').trim();
-                    const stockQtyCx = parseBrazilianNumber(item['ESTOQUECX']);
-
-                    if (productCode && branch) {
-                        if (branch === '5') branch = '05';
-                        if (branch === '8') branch = '08';
-
-                        if (branch === '05') {
-                            stockMap05.set(productCode, stockQtyCx);
-                        } else if (branch === '08') {
-                            stockMap08.set(productCode, stockQtyCx);
-                        }
-                    }
-                });
-
-                self.postMessage({ type: 'progress', status: 'Mapeando produtos e criando lista de ativos...', percentage: 30 });
-                const productMasterMap = new Map();
-                const activeProductCodesFromCadastro = new Set();
-                const productDetailsMap = new Map();
-
-                productsDataRaw.forEach(prod => {
-                    const productCode = String(prod['Código'] || '').trim();
-                    if (!productCode) return;
-                    activeProductCodesFromCadastro.add(productCode);
-                    let qtdeMaster = parseInt(prod['Qtde embalagem master(Compra)'], 10);
-                    if (isNaN(qtdeMaster) || qtdeMaster <= 0) qtdeMaster = 1;
-                    productMasterMap.set(productCode, qtdeMaster);
-                    if (!productDetailsMap.has(productCode)) {
-                            const dtCad = parseDate(prod['Dt.Cadastro']);
-                            productDetailsMap.set(productCode, {
-                                descricao: String(prod['Descrição'] || `Produto ${productCode}`),
-                                fornecedor: String(prod['Nome do fornecedor'] || 'N/A'),
-                                codfor: String(prod['Fornecedor'] || 'N/A'),
-                                dtCadastro: dtCad ? dtCad.getTime() : null
-                            });
-                        }
-                });
-
-
-                const clientRcaOverrides = new Map();
-                salesDataRaw.forEach(rawRow => {
-                    const pedido = String(rawRow['PEDIDO'] || '');
-                    const codCli = String(rawRow['CODCLI'] || '').trim();
-                    if(!codCli) return;
-                });
-
-                self.postMessage({ type: 'progress', status: 'Processando clientes...', percentage: 50 });
-                const clientMap = new Map();
-                clientsDataRaw.forEach(client => {
-                    const codCli = String(client['Código'] || '').trim();
-                    if (!codCli) return;
-
-                    const rca1 = String(client['RCA 1'] || '');
-                    const rcas = new Set();
-                    if (rca1) rcas.add(rca1);
-
-                    const uc = parseDate(client['Data da Última Compra']);
-                    const dc = parseDate(client['Data e Hora de Cadastro']);
-
-                    const clientData = {
-                        'Código': codCli,
-                        rcas: Array.from(rcas),
-                        rca1: rca1,
-                        cidade: String(client['Nome da Cidade'] || 'N/A'),
-                        nomeCliente: String(client['Fantasia'] || client['Cliente'] || 'N/A'),
-                        bairro: String(client['Bairro'] || 'N/A'),
-                        razaoSocial: String(client['Cliente'] || 'N/A'),
-                        fantasia: String(client['Fantasia'] || 'N/A'),
-                        cnpj_cpf: String(client['CNPJ/CPF'] || 'N/A'),
-                        endereco: String(client['Endereço Comercial'] || client['Endereço'] || 'N/A'),
-                        numero: String(client['Número'] || 'SN'),
-                        cep: String(client['CEP'] || 'N/A'),
-                        telefone: String(client['Telefone Comercial'] || 'N/A'),
-                        email: String(client['E-mail'] || 'N/A'),
-                        ramo: String(client['Descricao'] || 'N/A'),
-                        ultimaCompra: uc ? uc.getTime() : null,
-                        dataCadastro: dc ? dc.getTime() : null,
-                        bloqueio: String(client['Bloqueio'] || '').trim().toUpperCase(),
-                        inscricaoEstadual: String(client['Insc. Est. / Produtor'] || 'N/A')
-                    };
-                    if (clientRcaOverrides.has(codCli)) clientData.rcas.unshift(clientRcaOverrides.get(codCli));
-                    clientMap.set(codCli, clientData);
-                });
-
-                self.postMessage({ type: 'progress', status: 'Cruzando dados de vendas...', percentage: 70 });
-                const processedSalesData = processSalesData(salesDataRaw, clientMap, productMasterMap, newRcaSupervisorMap);
-                const processedHistoryData = processSalesData(historyDataRaw, clientMap, productMasterMap, newRcaSupervisorMap);
-
-                self.postMessage({ type: 'progress', status: 'Aplicando regra de filial...', percentage: 75 });
-
-                const allProcessedSales = [...processedSalesData, ...processedHistoryData].sort((a, b) => {
-                    const dateA = parseDate(a.DTPED) || new Date(0);
-                    const dateB = parseDate(b.DTPED) || new Date(0);
-                    return dateA - dateB;
-                });
-
-                const clientLastBranch = new Map();
-                const clientsWith05Purchase = new Set();
-
-                allProcessedSales.forEach(sale => {
-                    const codCli = sale.CODCLI;
-                    const filial = sale.FILIAL;
-                    if (codCli && filial) {
-                        clientLastBranch.set(codCli, filial);
-                        if (filial === '05') {
-                            clientsWith05Purchase.add(codCli);
-                        }
-                    }
-                });
-
-                const clientBranchOverride = new Map();
-                clientsWith05Purchase.forEach(codCli => {
-                    const lastBranch = clientLastBranch.get(codCli);
-                    if (lastBranch && lastBranch === '08') {
-                        clientBranchOverride.set(codCli, '08');
-                    }
-                });
-
-                const applyBranchOverride = (salesArray, overrideMap) => {
-                    // Use standard loop for better performance in worker
-                    for(let i=0; i<salesArray.length; i++) {
-                        const sale = salesArray[i];
-                        const override = overrideMap.get(sale.CODCLI);
-                        if (override && sale.FILIAL === '05') {
-                            sale.FILIAL = override;
-                        }
-                    }
-                    return salesArray;
-                };
-
-                let finalSalesData = applyBranchOverride(processedSalesData, clientBranchOverride);
-                let finalHistoryData = applyBranchOverride(processedHistoryData, clientBranchOverride);
-
-                self.postMessage({ type: 'progress', status: 'Aplicando regra específica para Supervisor Tiago...', percentage: 78 });
-                const tiagoSellersToMoveTo08 = new Set(['291', '292', '293', '284', '289', '287', '286']);
-
-                const applyTiagoRule = (salesArray) => {
-                    for(let i=0; i<salesArray.length; i++) {
-                        const sale = salesArray[i];
-                        if (sale.CODSUPERVISOR === '12' && tiagoSellersToMoveTo08.has(sale.CODUSUR)) {
-                            sale.FILIAL = '08';
-                        }
-                    }
-                    return salesArray;
-                };
-
-                finalSalesData = applyTiagoRule(finalSalesData);
-                finalHistoryData = applyTiagoRule(finalHistoryData);
-
-
-                self.postMessage({ type: 'progress', status: 'Atualizando datas de compra...', percentage: 80 });
-                const latestSaleDateByClient = new Map();
-                // Performance: use for loop
-                for(let i=0; i<finalSalesData.length; i++) {
-                    const sale = finalSalesData[i];
-                    const codcli = sale.CODCLI;
-                    const saleDate = sale.DTPED; // Already timestamp (number)
-                    if (codcli && saleDate) {
-                        const existingDate = latestSaleDateByClient.get(codcli);
-                        if (!existingDate || saleDate > existingDate) latestSaleDateByClient.set(codcli, saleDate);
-                    }
-                }
-
-                clientMap.forEach((client, codcli) => {
-                    const lastPurchaseDate = client.ultimaCompra; // Already timestamp
-                    const latestSaleDate = latestSaleDateByClient.get(codcli);
-                    // Compare numbers
-                    if (latestSaleDate && (!lastPurchaseDate || latestSaleDate > lastPurchaseDate)) {
-                        client.ultimaCompra = latestSaleDate;
-                    }
-                });
-
-                self.postMessage({ type: 'progress', status: 'Agregando pedidos...', percentage: 90 });
-                const aggregateOrders = (data) => {
-                    const orders = new Map();
-                    // Performance: for loop
-                    for(let i=0; i<data.length; i++) {
-                        const row = data[i];
-                        if (!row.PEDIDO) continue;
-                        if (!orders.has(row.PEDIDO)) {
-                            orders.set(row.PEDIDO, {
-                                ...row,
-                                QTVENDA: 0,
-                                VLVENDA: 0,
-                                VLBONIFIC: 0,
-                                TOTPESOLIQ: 0,
-                                FORNECEDORES: new Set(),
-                                CODFORS: new Set()
-                            });
-                        }
-                        const order = orders.get(row.PEDIDO);
-                        order.QTVENDA += row.QTVENDA;
-                        order.VLVENDA += row.VLVENDA;
-                        order.VLBONIFIC += row.VLBONIFIC;
-                        order.TOTPESOLIQ += row.TOTPESOLIQ;
-                        if (row.OBSERVACAOFOR) order.FORNECEDORES.add(row.OBSERVACAOFOR);
-                        if (row.CODFOR) order.CODFORS.add(row.CODFOR);
-                    }
-                    return Array.from(orders.values()).map(order => {
-                        order.FORNECEDORES_LIST = Array.from(order.FORNECEDORES);
-                        order.FORNECEDORES_STR = order.FORNECEDORES_LIST.join(', ');
-                        order.CODFORS_LIST = Array.from(order.CODFORS);
-                        return order;
-                    });
-                };
-                const aggregatedByOrder = aggregateOrders(finalSalesData);
-
-                // Calculate Max Date using Numbers (Timestamps)
-                let maxTs = 0;
-                for(let i=0; i<finalSalesData.length; i++) {
-                    const ts = finalSalesData[i].DTPED;
-                    if(ts && ts > maxTs) maxTs = ts;
-                }
-                const lastSaleDate = maxTs > 0 ? new Date(maxTs) : new Date();
-                lastSaleDate.setUTCHours(0,0,0,0);
-                const passedWorkingDaysCurrentMonth = getPassedWorkingDaysInSpecificMonth(
-                    lastSaleDate.getUTCFullYear(),
-                    lastSaleDate.getUTCMonth(),
-                    lastSaleDate
-                );
-
-
-                self.postMessage({ type: 'progress', status: 'Otimizando e Finalizando...', percentage: 95 });
-
-                // Convert large datasets to Columnar format
-                const columnarDetailed = toColumnar(finalSalesData);
-                const columnarHistory = toColumnar(finalHistoryData);
-                const columnarClients = toColumnar(Array.from(clientMap.values()));
-
-                self.postMessage({ type: 'progress', status: 'Pronto!', percentage: 100 });
-
-                self.postMessage({
-                    type: 'result',
-                    data: {
-                        detailed: columnarDetailed,
-                        history: columnarHistory,
-                        byOrder: aggregatedByOrder,
-                        clients: columnarClients,
-                        stockMap05: Object.fromEntries(stockMap05),
-                        stockMap08: Object.fromEntries(stockMap08),
-                        innovationsMonth: innovationsDataRaw,
-                        activeProductCodes: Array.from(activeProductCodesFromCadastro),
-                        productDetails: Object.fromEntries(productDetailsMap),
-                        passedWorkingDaysCurrentMonth: passedWorkingDaysCurrentMonth,
-                        isColumnar: true
-                    }
-                });
-
-            } catch (error) {
-                self.postMessage({ type: 'error', message: error.message + (error.stack ? `\nStack: ${error.stack}`: '') });
-            }
-        };
-    </script>
-
-    <script id="report-logic-script" type="text/template">
         // --- OPTIMIZATION: Lazy Columnar Accessor with Write-Back Support ---
         class ColumnarDataset {
             constructor(columnarData) {
@@ -1021,7 +193,7 @@
                 // Timestamp
                 return new Date(dateString);
             }
-            
+
             if (typeof dateString !== 'string') return null;
 
             // Tentativa de parse para 'YYYY-MM-DDTHH:mm:ss.sssZ' ou 'YYYY-MM-DD'
@@ -1083,7 +255,7 @@
 
             nextChunk();
         }
-        
+
         let allSalesData, allHistoryData, allClientsData;
 
         if (embeddedData.isColumnar) {
@@ -1225,10 +397,10 @@
                     client.rcas = ['1001'];
                     americanasCodCli = codCli;
                 }
-                
+
                 if (client.rca1) clientToCurrentSellerMap.set(codCli, String(client.rca1));
                 clientRamoMap.set(codCli, client.ramo || 'N/A');
-                
+
                 if (client.rcas) {
                     for (let j = 0; j < client.rcas.length; j++) {
                         const rca = client.rcas[j];
@@ -1250,7 +422,7 @@
             optimizedData.productPastaMap = new Map();
             const supervisorToRcaMap = new Map();
             const workingDaysSet = new Set();
-            
+
             const processDatasetForIndices = (data, indexSet, dataMap, isHistory) => {
                 const { bySupervisor, byRca, byPasta, bySupplier, byClient, byPosition, byRede, byTipoVenda, byProduct, byCity, byFilial } = indexSet;
 
@@ -1258,7 +430,7 @@
 
                 for (let i = 0; i < data.length; i++) {
                     const sale = isColumnar ? data.get(i) : data[i];
-                    
+
                     // Convert Timestamp Number to Date Object if not already
                     if (sale.DTPED && !(sale.DTPED instanceof Date)) sale.DTPED = new Date(sale.DTPED);
                     if (sale.DTSAIDA && !(sale.DTSAIDA instanceof Date)) sale.DTSAIDA = new Date(sale.DTSAIDA);
@@ -1274,10 +446,10 @@
                             }
                         }
                     }
-                    
+
                     sale.SUPERV = sale.SUPERV || 'N/A';
                     sale.NOME = sale.NOME || 'N/A';
-                    
+
                     const id = `${isHistory ? 'h' : 'c'}_${i}`;
 
                     // --- KEY CHANGE: Store Index if using IndexMap, otherwise Object ---
@@ -1298,7 +470,7 @@
                     const product = sale.PRODUTO;
                     const city = (sale.CIDADE || 'N/A').toLowerCase();
                     const filial = sale.FILIAL;
-                    
+
                     if (!bySupervisor.has(supervisor)) bySupervisor.set(supervisor, new Set()); bySupervisor.get(supervisor).add(id);
                     if (!byRca.has(rca)) byRca.set(rca, new Set()); byRca.get(rca).add(id);
                     if (!byPasta.has(pasta)) byPasta.set(pasta, new Set()); byPasta.get(pasta).add(id);
@@ -1310,17 +482,17 @@
                     if (product) { if (!byProduct.has(product)) byProduct.set(product, new Set()); byProduct.get(product).add(id); }
                     if (city) { if (!byCity.has(city)) byCity.set(city, new Set()); byCity.get(city).add(id); }
                     if (filial) { if (!byFilial.has(filial)) byFilial.set(filial, new Set()); byFilial.get(filial).add(id); }
-                    
+
                     if (sale.CODUSUR && supervisor) { if (!supervisorToRcaMap.has(supervisor)) supervisorToRcaMap.set(supervisor, new Set()); supervisorToRcaMap.get(supervisor).add(sale.CODUSUR); }
                     if (supplier && product) { if (!optimizedData.productsBySupplier.has(supplier)) optimizedData.productsBySupplier.set(supplier, new Set()); optimizedData.productsBySupplier.get(supplier).add(product); }
                     if (rca && sale.CODUSUR) { optimizedData.rcaCodeByName.set(rca, sale.CODUSUR); optimizedData.rcaNameByCode.set(sale.CODUSUR, rca); }
                     if (supervisor && sale.CODSUPERVISOR) { optimizedData.supervisorCodeByName.set(supervisor, sale.CODSUPERVISOR); }
                     if (client && filial) { clientLastBranch.set(client, filial); }
                     if (product && pasta && !optimizedData.productPastaMap.has(product)) { optimizedData.productPastaMap.set(product, pasta); }
-                    
+
                     const date = sale.DTPED;
                     if (date) { const dayOfWeek = date.getUTCDay(); if (dayOfWeek >= 1 && dayOfWeek <= 5) workingDaysSet.add(date.toISOString().split('T')[0]); }
-                    
+
                     if (product) {
                         const targetMap = isHistory ? optimizedData.salesByProduct.history : optimizedData.salesByProduct.current;
                         if (!targetMap.has(product)) targetMap.set(product, []);
@@ -1328,14 +500,14 @@
                     }
                 }
             };
-            
+
             processDatasetForIndices(allSalesData, optimizedData.indices.current, optimizedData.salesById, false);
             processDatasetForIndices(allHistoryData, optimizedData.indices.history, optimizedData.historyById, true);
-            
+
             supervisorToRcaMap.forEach((rcas, supervisor) => {
                 optimizedData.rcasBySupervisor.set(supervisor, Array.from(rcas));
             });
-            
+
             // Process Aggregated Orders (Remap only)
             for(let i = 0; i < aggregatedOrders.length; i++) {
                 const sale = aggregatedOrders[i];
@@ -1355,11 +527,11 @@
                     }
                 }
             }
-            
+
             sortedWorkingDays = Array.from(workingDaysSet).sort((a, b) => new Date(a) - new Date(b));
             maxWorkingDaysStock = workingDaysSet.size > 0 ? workingDaysSet.size : 1;
             customWorkingDaysStock = maxWorkingDaysStock;
-        
+
             setTimeout(() => {
                 const maxDaysLabel = document.getElementById('max-working-days-label');
                 if (maxDaysLabel) maxDaysLabel.textContent = `(Máx: ${maxWorkingDaysStock})`;
@@ -1584,18 +756,18 @@
         const goalsSvContent = document.getElementById('goals-sv-content');
         const goalsGvTableBody = document.getElementById('goals-gv-table-body');
         const goalsGvTotalValueEl = document.getElementById('goals-gv-total-value');
-        
+
         const goalsGvSupervisorFilterBtn = document.getElementById('goals-gv-supervisor-filter-btn');
         const goalsGvSupervisorFilterText = document.getElementById('goals-gv-supervisor-filter-text');
         const goalsGvSupervisorFilterDropdown = document.getElementById('goals-gv-supervisor-filter-dropdown');
-        
+
         const goalsGvSellerFilterBtn = document.getElementById('goals-gv-seller-filter-btn');
         const goalsGvSellerFilterText = document.getElementById('goals-gv-seller-filter-text');
         const goalsGvSellerFilterDropdown = document.getElementById('goals-gv-seller-filter-dropdown');
-        
+
         const goalsGvCodcliFilter = document.getElementById('goals-gv-codcli-filter');
         const clearGoalsGvFiltersBtn = document.getElementById('clear-goals-gv-filters-btn');
-        
+
         const goalsSvSupervisorFilterBtn = document.getElementById('goals-sv-supervisor-filter-btn');
         const goalsSvSupervisorFilterText = document.getElementById('goals-sv-supervisor-filter-text');
         const goalsSvSupervisorFilterDropdown = document.getElementById('goals-sv-supervisor-filter-dropdown');
@@ -1618,7 +790,7 @@
         const mainHolidayPickerBtn = document.getElementById('main-holiday-picker-btn');
         const comparisonHolidayPickerBtn = document.getElementById('comparison-holiday-picker-btn');
         const calendarContainer = document.getElementById('calendar-container');
-        
+
         const tablePaginationControls = document.getElementById('table-pagination-controls');
         const prevPageBtn = document.getElementById('prev-page-btn');
         const nextPageBtn = document.getElementById('next-page-btn');
@@ -1742,9 +914,9 @@
             });
             // Take last 3
             const last3 = sorted.slice(-3);
-            
+
             const monthNames = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
-            
+
             quarterMonths = last3.map(k => {
                 const [y, m] = k.split('-');
                 return { key: k, label: monthNames[parseInt(m)] };
@@ -1755,9 +927,9 @@
             if (quarterMonths.length === 0) identifyQuarterMonths();
 
             // Helper to init metrics structure
-            const createMetric = () => ({ 
-                fat: 0, vol: 0, prevFat: 0, prevVol: 0, 
-                prevClientsSet: new Set(), 
+            const createMetric = () => ({
+                fat: 0, vol: 0, prevFat: 0, prevVol: 0,
+                prevClientsSet: new Set(),
                 quarterlyPosClientsSet: new Set(), // New Set for Quarter Active
                 monthlyClientsSets: new Map() // Map<MonthKey, Set<CodCli>>
             });
@@ -1790,17 +962,17 @@
             activeClients.forEach(client => {
                 const codCli = client['Código'];
                 const clientHistoryIds = optimizedData.indices.history.byClient.get(codCli);
-                
+
                 // Temp accumulation for this client to ensure Positive Balance check
                 const clientTotals = {}; // key -> { prevFat: 0, monthlyFat: Map<MonthKey, val> }
 
                 if (clientHistoryIds) {
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
-                        
+
                         let key = null;
                         const codFor = String(sale.CODFOR);
-                        
+
                         if (codFor === '707') key = '707';
                         else if (codFor === '708') key = '708';
                         else if (codFor === '752') key = '752';
@@ -1823,7 +995,7 @@
                                 if (isPrevMonth) {
                                     globalGoalsMetrics[key].prevFat += sale.VLVENDA;
                                     globalGoalsMetrics[key].prevVol += sale.TOTPESOLIQ;
-                                    
+
                                     // Initialize Client Goal with Prev Month Value
                                     if (!globalClientGoals.has(codCli)) globalClientGoals.set(codCli, new Map());
                                     const cGoals = globalClientGoals.get(codCli);
@@ -1837,9 +1009,9 @@
                             // 2. Accumulate for Client Count Check (Balance per period)
                             if (d) {
                                 if (!clientTotals[key]) clientTotals[key] = { prevFat: 0, monthlyFat: new Map() };
-                                
+
                                 if (isPrevMonth) clientTotals[key].prevFat += sale.VLVENDA;
-                                
+
                                 const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
                                 const currentMVal = clientTotals[key].monthlyFat.get(monthKey) || 0;
                                 clientTotals[key].monthlyFat.set(monthKey, currentMVal + sale.VLVENDA);
@@ -1868,7 +1040,7 @@
             // Calculate Averages and Finalize
             // First calculate basic metrics for leaf keys
             const leafKeys = ['707', '708', '752', '1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
-            
+
             // Helper for aggregation
             const aggregateToAll = (targetKey, sourceKeys) => {
                 const target = globalGoalsMetrics[targetKey];
@@ -1878,10 +1050,10 @@
                     target.vol += source.vol;
                     target.prevFat += source.prevFat;
                     target.prevVol += source.prevVol; // Already raw, keep raw for now
-                    
+
                     source.prevClientsSet.forEach(c => target.prevClientsSet.add(c));
                     source.quarterlyPosClientsSet.forEach(c => target.quarterlyPosClientsSet.add(c));
-                    
+
                     source.monthlyClientsSets.forEach((set, monthKey) => {
                         if (!target.monthlyClientsSets.has(monthKey)) {
                             target.monthlyClientsSets.set(monthKey, new Set());
@@ -1898,13 +1070,13 @@
             // Finalize calculations for ALL keys
             for (const key in globalGoalsMetrics) {
                 const m = globalGoalsMetrics[key];
-                
+
                 m.avgFat = m.fat / QUARTERLY_DIVISOR;
                 m.avgVol = (m.vol / 1000) / QUARTERLY_DIVISOR; // Tons
                 m.prevVol = m.prevVol / 1000; // Tons
-                
+
                 m.prevClients = m.prevClientsSet.size;
-                
+
                 let sumClients = 0;
                 m.monthlyClientsSets.forEach(set => sumClients += set.size);
                 m.avgClients = sumClients / QUARTERLY_DIVISOR;
@@ -1940,14 +1112,14 @@
         const coverageTipoVendaFilterBtn = document.getElementById('coverage-tipo-venda-filter-btn');
         const coverageTipoVendaFilterText = document.getElementById('coverage-tipo-venda-filter-text');
         const coverageTipoVendaFilterDropdown = document.getElementById('coverage-tipo-venda-filter-dropdown');
-        
+
         let mainTableState = {
             currentPage: 1,
             itemsPerPage: 50,
             filteredData: [],
             totalPages: 1
         };
-        
+
         let mixTableState = {
             currentPage: 1,
             itemsPerPage: 100,
@@ -2058,7 +1230,7 @@
             });
 
             const clientCodes = new Set(clients.map(c => c['Código']));
-            
+
             const filters = {
                 supervisor: supervisorsSet,
                 seller: sellersSet,
@@ -2067,9 +1239,9 @@
                 tipoVenda: tiposVendaSet,
                 clientCodes: clientCodes
             };
-            
+
             const sales = getFilteredDataFromIndices(optimizedData.indices.current, optimizedData.salesById, filters, excludeFilter);
-            
+
             return { clients, sales };
         }
 
@@ -2080,13 +1252,13 @@
                 const { sales } = getMixFilteredData({ excludeFilter: 'supervisor' });
                 selectedMixSupervisors = updateSupervisorFilter(document.getElementById('mix-supervisor-filter-dropdown'), document.getElementById('mix-supervisor-filter-text'), selectedMixSupervisors, sales);
             }
-            
+
             const { sales: salesSeller } = getMixFilteredData({ excludeFilter: 'seller' });
             selectedMixSellers = updateSellerFilter(selectedMixSupervisors, document.getElementById('mix-vendedor-filter-dropdown'), document.getElementById('mix-vendedor-filter-text'), selectedMixSellers, salesSeller, skipFilter === 'seller');
 
             const { sales: salesTV } = getMixFilteredData({ excludeFilter: 'tipoVenda' });
             selectedMixTiposVenda = updateTipoVendaFilter(document.getElementById('mix-tipo-venda-filter-dropdown'), document.getElementById('mix-tipo-venda-filter-text'), selectedMixTiposVenda, salesTV, skipFilter === 'tipoVenda');
-            
+
             if (skipFilter !== 'rede') {
                  const { clients: clientsRede } = getMixFilteredData({ excludeFilter: 'rede' });
                  if (mixRedeGroupFilter === 'com_rede') {
@@ -2137,7 +1309,7 @@
 
             sales.forEach(s => {
                 if (!s.CODCLI || !s.PRODUTO) return;
-                
+
                 if (!clientProductNetValues.has(s.CODCLI)) {
                     clientProductNetValues.set(s.CODCLI, new Map());
                 }
@@ -2157,11 +1329,11 @@
             // Sync Loop for Map aggregation is fast enough
             clientProductNetValues.forEach((productsMap, codCli) => {
                 const positivatedCats = new Set();
-                
+
                 productsMap.forEach((netValue, prodCode) => {
                     if (netValue > 1) {
                         const desc = normalize(clientProductDesc.get(prodCode) || '');
-                        
+
                         // Checar Salty
                         MIX_SALTY_CATEGORIES.forEach(cat => {
                             if (desc.includes(cat)) positivatedCats.add(cat);
@@ -2178,18 +1350,18 @@
             let positivadosSalty = 0;
             let positivadosFoods = 0;
             let positivadosBoth = 0;
-            
+
             const tableData = [];
 
             // ASYNC CHUNKED PROCESSING for Clients
             runAsyncChunked(clients, (client) => {
                 const codcli = client['Código'];
                 const positivatedCats = clientPositivatedCategories.get(codcli) || new Set();
-                
+
                 // Determine Status based on "Buying ALL" (Strict Positive)
                 const hasSalty = MIX_SALTY_CATEGORIES.every(b => positivatedCats.has(b));
                 const hasFoods = MIX_FOODS_CATEGORIES.every(b => positivatedCats.has(b));
-                
+
                 if (hasSalty) positivadosSalty++;
                 if (hasFoods) positivadosFoods++;
                 if (hasSalty && hasFoods) positivadosBoth++;
@@ -2201,7 +1373,7 @@
                 MIX_FOODS_CATEGORIES.forEach(b => { if(!positivatedCats.has(b)) missing.push(b); });
 
                 const missingText = missing.length > 0 ? missing.join(', ') : '';
-                
+
                 // Resolve Vendor Name
                 const rcaCode = client.rcas[0];
                 let vendorName = 'N/A';
@@ -2359,8 +1531,8 @@
 
         async function exportMixPDF() {
             const { jsPDF } = window.jspdf;
-            const doc = new jsPDF('landscape'); 
-            
+            const doc = new jsPDF('landscape');
+
             const supervisor = document.getElementById('mix-supervisor-filter-text').textContent;
             const vendedor = document.getElementById('mix-vendedor-filter-text').textContent;
             const city = document.getElementById('mix-city-filter').value.trim();
@@ -2376,9 +1548,9 @@
             // Determine dynamic columns
             const saltyCols = MIX_SALTY_CATEGORIES.map(c => c.substring(0, 8)); // Truncate headers
             const foodsCols = MIX_FOODS_CATEGORIES.map(c => c.substring(0, 8));
-            
+
             const head = [['Cód', 'Cliente', 'Cidade', 'Vendedor', ...saltyCols, ...foodsCols]];
-            
+
             const body = mixTableDataForExport.map(row => {
                 const saltyCells = MIX_SALTY_CATEGORIES.map(b => row.brands.has(b) ? 'OK' : 'X');
                 const foodsCells = MIX_FOODS_CATEGORIES.map(b => row.brands.has(b) ? 'OK' : 'X');
@@ -2405,7 +1577,7 @@
                 { content: String(totalSalty), colSpan: MIX_SALTY_CATEGORIES.length, styles: { halign: 'center', fontStyle: 'bold', fontSize: 12, textColor: [45, 212, 191], fillColor: [50, 50, 50] } }, // Teal-400
                 { content: String(totalFoods), colSpan: MIX_FOODS_CATEGORIES.length, styles: { halign: 'center', fontStyle: 'bold', fontSize: 12, textColor: [250, 204, 21], fillColor: [50, 50, 50] } } // Yellow-400
             ];
-            
+
             body.push(footerRow);
 
             doc.autoTable({
@@ -2415,7 +1587,7 @@
                 theme: 'grid',
                 styles: { fontSize: 6, cellPadding: 1, textColor: [0, 0, 0], halign: 'center' },
                 headStyles: { fillColor: [20, 184, 166], textColor: 255, fontStyle: 'bold', fontSize: 8 },
-                columnStyles: { 
+                columnStyles: {
                     0: { halign: 'left', cellWidth: 15 },
                     1: { halign: 'left', cellWidth: 40 },
                     2: { halign: 'left', cellWidth: 25 },
@@ -2480,7 +1652,7 @@
             const readOnlyStyle = { fill: { fgColor: { rgb: "F1F5F9" } } }; // Light Slate
             const totalRowStyle = { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "334155" } }, border: { top: { style: "thick" } } };
             const grandTotalStyle = { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "0F172A" } }, border: { top: { style: "thick" } } };
-            
+
             // Format Strings
             const fmtMoney = "\"R$ \"#,##0.00";
             const fmtVol = "0.000";
@@ -2517,7 +1689,7 @@
             let colIdx = 2;
 
             const svColumns = [
-                { id: 'total_elma', label: 'TOTAL ELMA', type: 'standard', isAgg: true }, 
+                { id: 'total_elma', label: 'TOTAL ELMA', type: 'standard', isAgg: true },
                 { id: '707', label: 'EXTRUSADOS', type: 'standard' },
                 { id: '708', label: 'NÃO EXTRUSADOS', type: 'standard' },
                 { id: '752', label: 'TORCIDA', type: 'standard' },
@@ -2539,7 +1711,7 @@
                 colMap[col.id] = colIdx;
                 const style = { ...headerStyle };
                 if (colorMap[col.id]) style.fill = colorMap[col.id]; // Apply Group Color
-                
+
                 row1.push(createCell(col.label, style));
                 let span = 0;
                 if (col.type === 'standard') span = 4;
@@ -2556,7 +1728,7 @@
             // Row 2: Metric Names
             const row2 = [createCell("", headerStyle), createCell("", headerStyle)];
             svColumns.forEach(col => {
-                const style = { ...subHeaderStyle, font: { bold: true, color: { rgb: "FFFFFF" } } }; 
+                const style = { ...subHeaderStyle, font: { bold: true, color: { rgb: "FFFFFF" } } };
                 if (col.type === 'standard') {
                     row2.push(createCell("FATURAMENTO", style), createCell("", style), createCell("POSITIVAÇÃO", style), createCell("", style));
                     merges.push({ s: { r: 1, c: colMap[col.id] }, e: { r: 1, c: colMap[col.id] + 1 } });
@@ -2594,22 +1766,22 @@
             ws_data.push(row3);
 
             // --- 2. Data Rows ---
-            let currentRow = 3; 
-            const colCellsForGrandTotal = {}; 
+            let currentRow = 3;
+            const colCellsForGrandTotal = {};
             svColumns.forEach(c => colCellsForGrandTotal[c.id] = { fat: [], pos: [], vol: [], mix: [], avg: [] });
 
             currentGoalsSvData.forEach(sup => {
-                const sellers = sup.sellers; 
-                const colCellsForSupTotal = {}; 
+                const sellers = sup.sellers;
+                const colCellsForSupTotal = {};
                 svColumns.forEach(c => colCellsForSupTotal[c.id] = { fat: [], pos: [], vol: [], mix: [], avg: [] });
 
                 sellers.forEach(seller => {
                     const rowData = [createCell(seller.code), createCell(seller.name)];
-                    
+
                     svColumns.forEach(col => {
                         const d = seller.data[col.id] || { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0, avgFat: 0 };
                         const cIdx = colMap[col.id];
-                        const excelRow = currentRow + 1; 
+                        const excelRow = currentRow + 1;
                         const getColLet = (idx) => XLSX.utils.encode_col(idx);
 
                         // Highlight Logic
@@ -2619,21 +1791,21 @@
 
                         if (col.type === 'standard') {
                             rowData.push(createCell(d.metaFat, readOnlyStyle, fmtMoney));
-                            
+
                             // Formula for Aggregate Logic
                             if (col.id === 'total_elma' || col.id === 'total_foods') {
                                 const ids = col.id === 'total_elma' ? ['707', '708', '752'] : ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
-                                const compCols = ids.map(id => colMap[id] + 1); 
+                                const compCols = ids.map(id => colMap[id] + 1);
                                 const compColsPos = ids.map(id => colMap[id] + 3);
                                 const formulaFat = compCols.map(c => `${getColLet(c)}${excelRow}`).join("+");
-                                
-                                rowData.push({ t: 'n', v: d.metaFat, f: formulaFat, s: { ...aggCellStyle, numFmt: fmtMoney }, z: fmtMoney }); 
+
+                                rowData.push({ t: 'n', v: d.metaFat, f: formulaFat, s: { ...aggCellStyle, numFmt: fmtMoney }, z: fmtMoney });
                                 rowData.push(createCell(d.metaPos, readOnlyStyle, fmtInt));
                                 // Static value for Positivation (Unique Clients), no formula
                                 rowData.push(createCell(d.metaPos, aggCellStyle, fmtInt));
                             } else {
                                 // Editable Cells
-                                rowData.push(createCell(d.metaFat, cellStyle, fmtMoney)); 
+                                rowData.push(createCell(d.metaFat, cellStyle, fmtMoney));
                                 rowData.push(createCell(d.metaPos, readOnlyStyle, fmtInt));
                                 rowData.push(createCell(d.metaPos, cellStyle, fmtInt));
                             }
@@ -2660,7 +1832,7 @@
                             const foodsIdx = colMap['total_foods'];
                             const elmaTonIdx = colMap['tonelada_elma'];
                             const foodsTonIdx = colMap['tonelada_foods'];
-                            
+
                             const fFat = `${getColLet(elmaIdx + 1)}${excelRow}+${getColLet(foodsIdx + 1)}${excelRow}`;
                             const fTon = `${getColLet(elmaTonIdx + 2)}${excelRow}+${getColLet(foodsTonIdx + 2)}${excelRow}`;
                             const fPos = `${getColLet(elmaIdx + 3)}${excelRow}+${getColLet(foodsIdx + 3)}${excelRow}`;
@@ -2693,7 +1865,7 @@
                 svColumns.forEach(col => {
                     const cIdx = colMap[col.id];
                     const getColLet = (idx) => XLSX.utils.encode_col(idx);
-                    
+
                     if (col.type === 'standard') {
                         const rangeFat = colCellsForSupTotal[col.id].fat;
                         const fFatRange = rangeFat.length > 0 ? `SUM(${rangeFat[0]}:${rangeFat[rangeFat.length-1]})` : "0";
@@ -2717,7 +1889,7 @@
                         const fVolRange = rangeVol.length > 0 ? `SUM(${rangeVol[0]}:${rangeVol[rangeVol.length-1]})` : "0";
                         supRowData.push({ t: 'n', v: 0, f: fVolRange, s: { ...totalRowStyle, numFmt: fmtVol }, z: fmtVol });
                         supRowData.push({ t: 'n', v: 0, f: fVolRange, s: { ...totalRowStyle, numFmt: fmtVol }, z: fmtVol });
-                        
+
                         colCellsForGrandTotal[col.id].vol.push(`${getColLet(cIdx+2)}${excelSupRow}`);
                         colCellsForGrandTotal[col.id].avg.push(`${getColLet(cIdx)}${excelSupRow}`);
 
@@ -2730,7 +1902,7 @@
                         const fMixRange = rangeMix.length > 0 ? `SUM(${rangeMix[0]}:${rangeMix[rangeMix.length-1]})` : "0";
                         supRowData.push({ t: 'n', v: 0, f: fMixRange, s: { ...totalRowStyle, numFmt: fmtInt }, z: fmtInt });
                         supRowData.push({ t: 'n', v: 0, f: fMixRange, s: { ...totalRowStyle, numFmt: fmtInt }, z: fmtInt });
-                        
+
                         colCellsForGrandTotal[col.id].mix.push(`${getColLet(cIdx+2)}${excelSupRow}`);
                         colCellsForGrandTotal[col.id].avg.push(`${getColLet(cIdx)}${excelSupRow}`);
 
@@ -2742,7 +1914,7 @@
                         const rangeFat = colCellsForSupTotal[col.id].fat;
                         const fFatRange = rangeFat.length > 0 ? `SUM(${rangeFat[0]}:${rangeFat[rangeFat.length-1]})` : "0";
                         supRowData.push({ t: 'n', v: 0, f: fFatRange, s: { ...totalRowStyle, numFmt: fmtMoney }, z: fmtMoney });
-                        
+
                         const rangeVol = colCellsForSupTotal[col.id].vol;
                         const fVolRange = rangeVol.length > 0 ? `SUM(${rangeVol[0]}:${rangeVol[rangeVol.length-1]})` : "0";
                         supRowData.push({ t: 'n', v: 0, f: fVolRange, s: { ...totalRowStyle, numFmt: fmtVol }, z: fmtVol });
@@ -2763,7 +1935,7 @@
                         colCellsForGrandTotal[col.id].pos.push(`${getColLet(cIdx)}${excelSupRow}`);
                     }
                 });
-                
+
                 ws_data.push(supRowData);
                 currentRow++;
             });
@@ -2830,7 +2002,7 @@
             // Create Sheet
             const ws = XLSX.utils.aoa_to_sheet(ws_data);
             ws['!merges'] = merges;
-            
+
             // Auto-width
             const wscols = [{ wch: 10 }, { wch: 20 }];
             for(let i = 2; i < 50; i++) wscols.push({ wch: 12 });
@@ -2893,9 +2065,9 @@
 
         function getMetricsForSupervisors(supervisorsList) {
             // Helper to init metrics structure
-            const createMetric = () => ({ 
-                fat: 0, vol: 0, prevFat: 0, prevVol: 0, 
-                prevClientsSet: new Set(), 
+            const createMetric = () => ({
+                fat: 0, vol: 0, prevFat: 0, prevVol: 0,
+                prevClientsSet: new Set(),
                 quarterlyPosClientsSet: new Set(), // New Set for Quarter Active
                 monthlyClientsSets: new Map() // Map<MonthKey, Set<CodCli>>
             });
@@ -2936,17 +2108,17 @@
             activeClients.forEach(client => {
                 const codCli = client['Código'];
                 const clientHistoryIds = optimizedData.indices.history.byClient.get(codCli);
-                
+
                 // Temp accumulation for this client to ensure Positive Balance check
                 const clientTotals = {}; // key -> { prevFat: 0, monthlyFat: Map<MonthKey, val> }
 
                 if (clientHistoryIds) {
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
-                        
+
                         let key = null;
                         const codFor = String(sale.CODFOR);
-                        
+
                         if (codFor === '707') key = '707';
                         else if (codFor === '708') key = '708';
                         else if (codFor === '752') key = '752';
@@ -2975,9 +2147,9 @@
                             // 2. Accumulate for Client Count Check (Balance per period)
                             if (d) {
                                 if (!clientTotals[key]) clientTotals[key] = { prevFat: 0, monthlyFat: new Map() };
-                                
+
                                 if (isPrevMonth) clientTotals[key].prevFat += sale.VLVENDA;
-                                
+
                                 const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
                                 const currentMVal = clientTotals[key].monthlyFat.get(monthKey) || 0;
                                 clientTotals[key].monthlyFat.set(monthKey, currentMVal + sale.VLVENDA);
@@ -3015,14 +2187,14 @@
             // Calculate Averages and Finalize
             for (const key in metricsMap) {
                 const m = metricsMap[key];
-                
+
                 m.avgFat = m.fat / QUARTERLY_DIVISOR;
                 m.avgVol = (m.vol / 1000) / QUARTERLY_DIVISOR; // Tons
                 m.prevVol = m.prevVol / 1000; // Tons
-                
+
                 m.prevClients = m.prevClientsSet.size;
                 m.quarterlyPos = m.quarterlyPosClientsSet.size; // New Metric
-                
+
                 let sumClients = 0;
                 m.monthlyClientsSets.forEach(set => sumClients += set.size);
                 m.avgClients = sumClients / QUARTERLY_DIVISOR;
@@ -3176,13 +2348,13 @@
 
             const cardsHTML = summaryItems.map(item => {
                 const key = item.supplier + (item.brand ? `_${item.brand}` : '');
-                
+
                 const target = summaryGoalsSums[key] || { fat: 0, vol: 0 };
                 const metrics = displayMetrics[key] || { avgFat: 0, prevFat: 0 };
 
                 totalFat += target.fat;
                 totalVol += target.vol;
-                
+
                 const colorMap = {
                     teal: 'border-teal-500 text-teal-400 bg-teal-900/10',
                     blue: 'border-blue-500 text-blue-400 bg-blue-900/10',
@@ -3191,7 +2363,7 @@
                     amber: 'border-amber-500 text-amber-400 bg-amber-900/10',
                     cyan: 'border-cyan-500 text-cyan-400 bg-cyan-900/10'
                 };
-                
+
                 const styleClass = colorMap[item.color] || colorMap.teal;
                 const textColor = styleClass.split(' ')[1];
 
@@ -3216,7 +2388,7 @@
                                     <span>Ant: <span class="text-slate-300">${metrics.prevFat.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></span>
                                 </div>
                             </div>
-                            
+
                             <div>
                                 <div class="flex justify-between items-baseline mb-1">
                                     <p class="text-xs text-slate-400 uppercase font-semibold">Meta Volume (Ton)</p>
@@ -3253,14 +2425,14 @@
             const totalPosEl = document.getElementById('summary-total-pos');
             const mixSaltyEl = document.getElementById('summary-mix-salty');
             const mixFoodsEl = document.getElementById('summary-mix-foods');
-            
+
             if(totalFatEl) totalFatEl.textContent = totalFat.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
             if(totalVolEl) totalVolEl.textContent = totalVol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-            
+
             // Total Meta Pos = Sum of ELMA + FOODS effective goals
             const totalPosCount = (effectiveTotals['ELMA_ALL'] || 0) + (effectiveTotals['FOODS_ALL'] || 0);
             if(totalPosEl) totalPosEl.textContent = totalPosCount.toLocaleString('pt-BR');
-            
+
             // Mix Base (Exclude Americanas)
             let mixBase = 0;
             activeSellers.forEach(sellerName => {
@@ -3285,7 +2457,7 @@
 
         function calculateDistributedGoals(filteredClients, currentGoalsSupplier, currentGoalsBrand, goalFat, goalVol) {
             const cacheKey = currentGoalsSupplier + (currentGoalsBrand ? `_${currentGoalsBrand}` : '');
-            
+
             if (quarterMonths.length === 0) identifyQuarterMonths();
 
             // Determine dates for Previous Month calc
@@ -3353,22 +2525,22 @@
                         globalTotalAvgVol += ((sumVol / 1000) / QUARTERLY_DIVISOR);
                     }
                 });
-                
+
                 globalGoalsTotalsCache[cacheKey] = { fat: globalTotalAvgFat, vol: globalTotalAvgVol };
             }
-            
+
             const clientMetrics = [];
 
             filteredClients.forEach(client => {
                 const codCli = client['Código'];
                 const clientHistoryIds = optimizedData.indices.history.byClient.get(codCli);
-                
+
                 let sumFat = 0;
-                let sumVol = 0; 
+                let sumVol = 0;
                 let prevFat = 0;
                 let prevVol = 0;
                 const monthlyActivity = new Map(); // MonthKey -> Fat
-                
+
                 // Initialize monthly values for breakdown
                 const monthlyValues = {};
                 quarterMonths.forEach(m => monthlyValues[m.key] = 0);
@@ -3392,7 +2564,7 @@
                                     // Activity per Month Calc
                                     const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
                                     monthlyActivity.set(monthKey, (monthlyActivity.get(monthKey) || 0) + sale.VLVENDA);
-                                    
+
                                     if (monthlyValues.hasOwnProperty(monthKey)) {
                                         monthlyValues[monthKey] += sale.VLVENDA;
                                     }
@@ -3403,8 +2575,8 @@
                 }
 
                 const avgFat = sumFat / QUARTERLY_DIVISOR;
-                const avgVol = (sumVol / 1000) / QUARTERLY_DIVISOR; 
-                
+                const avgVol = (sumVol / 1000) / QUARTERLY_DIVISOR;
+
                 let activeMonthsCount = 0;
                 monthlyActivity.forEach(val => { if(val > 1) activeMonthsCount++; });
 
@@ -3417,14 +2589,14 @@
                 // Retrieve Stored Goal
                 let metaFat = 0;
                 let metaVol = 0;
-                
+
                 if (currentGoalsSupplier === 'ELMA_ALL' || currentGoalsSupplier === 'FOODS_ALL') {
                     if (globalClientGoals.has(codCli)) {
                         const cGoals = globalClientGoals.get(codCli);
-                        const keysToSum = currentGoalsSupplier === 'ELMA_ALL' 
-                            ? ['707', '708', '752'] 
+                        const keysToSum = currentGoalsSupplier === 'ELMA_ALL'
+                            ? ['707', '708', '752']
                             : ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
-                        
+
                         keysToSum.forEach(k => {
                             if (cGoals.has(k)) {
                                 const g = cGoals.get(k);
@@ -3464,7 +2636,7 @@
                     monthlyValues
                 });
             });
-            
+
             return clientMetrics;
         }
 
@@ -3487,7 +2659,7 @@
         function distributeGoals(type) {
             const inputId = type === 'fat' ? 'goal-global-fat' : 'goal-global-vol';
             const inputValue = parseInputMoney(inputId);
-            
+
             const filteredClients = getGoalsFilteredData();
             if (filteredClients.length === 0) return;
 
@@ -3508,7 +2680,7 @@
             filteredClients.forEach(client => {
                 const codCli = client['Código'];
                 const clientHistoryIds = optimizedData.indices.history.byClient.get(codCli);
-                
+
                 if (!distributionMap.has(codCli)) distributionMap.set(codCli, new Map());
                 const clientMap = distributionMap.get(codCli);
 
@@ -3517,11 +2689,11 @@
                     if (clientHistoryIds) {
                         clientHistoryIds.forEach(id => {
                             const sale = optimizedData.historyById.get(id);
-                            
+
                             // Check if sale belongs to targetKey
                             let saleKey = String(sale.CODFOR);
                             const codFor = String(sale.CODFOR);
-                            
+
                             // Special handling for broken down categories (FOODS)
                             if (codFor === '1119') {
                                 const desc = normalize(sale.DESCRICAO || '');
@@ -3539,7 +2711,7 @@
                             }
                         });
                     }
-                    
+
                     // Apply divisor
                     let avg = sumVal / QUARTERLY_DIVISOR;
                     if (type === 'vol') avg = avg / 1000; // Tons
@@ -3553,14 +2725,14 @@
             filteredClients.forEach(client => {
                 const codCli = client['Código'];
                 const clientMap = distributionMap.get(codCli);
-                
+
                 if (!globalClientGoals.has(codCli)) globalClientGoals.set(codCli, new Map());
                 const cGoals = globalClientGoals.get(codCli);
 
                 keysToProcess.forEach(key => {
                     const avg = clientMap.get(key) || 0;
                     let share = totalDenominator > 0 ? (avg / totalDenominator) : 0;
-                    
+
                     if (totalDenominator === 0) {
                          const totalItems = filteredClients.length * keysToProcess.length;
                          if (totalItems > 0) share = 1 / totalItems;
@@ -3570,12 +2742,12 @@
 
                     if (!cGoals.has(key)) cGoals.set(key, { fat: 0, vol: 0 });
                     const g = cGoals.get(key);
-                    
+
                     if (type === 'fat') g.fat = newGoal;
                     else g.vol = newGoal;
                 });
             });
-            
+
             recalculateTotalGoals();
             updateGoalsView();
         }
@@ -3585,21 +2757,21 @@
             const msgEl = document.getElementById('confirmation-message');
             const confirmBtn = document.getElementById('confirmation-confirm-btn');
             const cancelBtn = document.getElementById('confirmation-cancel-btn');
-            
+
             msgEl.textContent = message;
             modal.classList.remove('hidden');
-            
+
             // Clean up old listeners to avoid duplicates
             const newConfirmBtn = confirmBtn.cloneNode(true);
             const newCancelBtn = cancelBtn.cloneNode(true);
             confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
             cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
-            
+
             newConfirmBtn.addEventListener('click', () => {
                 modal.classList.add('hidden');
                 onConfirm();
             });
-            
+
             newCancelBtn.addEventListener('click', () => {
                 modal.classList.add('hidden');
             });
@@ -3642,13 +2814,13 @@ function getFilterDescription() {
             if (goalsGvCodcliFilter.value) {
                 return `Cliente "${goalsGvCodcliFilter.value}"`;
             }
-            
+
             // Default to Tab Name
             if (currentGoalsSupplier === '707') return 'EXTRUSADOS';
             if (currentGoalsSupplier === '708') return 'NÃO EXTRUSADOS';
             if (currentGoalsSupplier === '752') return 'TORCIDA';
             if (currentGoalsBrand) return currentGoalsBrand;
-            
+
             return 'filtro atual';
         }
 
@@ -3699,7 +2871,7 @@ function getFilterDescription() {
 
             // Cache Key for Global Totals
             const cacheKey = currentGoalsSupplier + (currentGoalsBrand ? `_${currentGoalsBrand}` : '');
-            
+
             // NOTE: Global Totals must be calculated before individual shares.
             // If we are async, we can do this first.
             // We reuse the existing cache logic inside 'calculateDistributedGoals' which we will break apart or call in chunks.
@@ -3944,7 +3116,7 @@ function getFilterDescription() {
 
         function getGoalsSvFilteredData() {
             const supervisorsSet = new Set(selectedGoalsSvSupervisors);
-            
+
             let clients = allClientsData;
 
             clients = clients.filter(c => {
@@ -3962,13 +3134,13 @@ function getFilterDescription() {
                 });
                 clients = clients.filter(c => c.rcas.some(r => rcasSet.has(r)));
             }
-            
+
             return clients;
         }
 
         function recalculateGoalsSvTotals(input) {
             const { supId, colId, field, sellerId } = input.dataset;
-            
+
             // Helper to parse input value
             const parseVal = (str) => {
                 let val = parseFloat(str.replace(/\./g, '').replace(',', '.'));
@@ -3987,7 +3159,7 @@ function getFilterDescription() {
                     const supInputs = document.querySelectorAll(`.goals-sv-input[data-sup-id="${supId}"][data-col-id="${cId}"][data-field="${fld}"]`);
                     supInputs.forEach(inp => supSum += parseVal(inp.value));
                 }
-                
+
                 const supTotalEl = document.getElementById(`total-sup-${supId}-${cId}-${fld}`);
                 if (supTotalEl) {
                     if (fld === 'fat') supTotalEl.textContent = supSum.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
@@ -4004,7 +3176,7 @@ function getFilterDescription() {
                     const allInputs = document.querySelectorAll(`.goals-sv-input[data-col-id="${cId}"][data-field="${fld}"]`);
                     allInputs.forEach(inp => grandSum += parseVal(inp.value));
                 }
-                
+
                 const grandTotalEl = document.getElementById(`total-grand-${cId}-${fld}`);
                 if (grandTotalEl) {
                     if (fld === 'fat') grandTotalEl.textContent = grandSum.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
@@ -4019,10 +3191,10 @@ function getFilterDescription() {
             // B. Row Aggregation Logic (Update Total Elma/Foods and Geral)
             const elmaIds = ['707', '708', '752'];
             const foodsIds = ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
-            
+
             let groupTotalId = null;
             let components = [];
-            
+
             if (elmaIds.includes(colId)) {
                 groupTotalId = 'total_elma';
                 components = elmaIds;
@@ -4030,7 +3202,7 @@ function getFilterDescription() {
                 groupTotalId = 'total_foods';
                 components = foodsIds;
             }
-            
+
             // Only aggregate if we are editing a base column (not changing mix or tonnage directly if those were editable)
             if (groupTotalId) {
                 // 1. Recalculate Group Total (Row)
@@ -4039,14 +3211,14 @@ function getFilterDescription() {
                     const el = document.querySelector(`.goals-sv-input[data-seller-id="${sellerId}"][data-col-id="${cId}"][data-field="${field}"]`);
                     if (el) groupSum += parseVal(el.value);
                 });
-                
+
                 // Update Group Total Input (Read-only)
                 const groupInput = document.querySelector(`.goals-sv-input[data-seller-id="${sellerId}"][data-col-id="${groupTotalId}"][data-field="${field}"]`);
                 if (groupInput) {
                     if (field === 'fat') groupInput.value = groupSum.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
                     else if (field === 'vol') groupInput.value = groupSum.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3});
                     else groupInput.value = groupSum; // Pos
-                    
+
                     // Update Column Totals for the Group Column
                     updateColumnTotals(groupTotalId, field);
 
@@ -4067,11 +3239,11 @@ function getFilterDescription() {
             if (field === 'fat' || field === 'vol') {
                 const elmaInput = document.querySelector(`.goals-sv-input[data-seller-id="${sellerId}"][data-col-id="total_elma"][data-field="${field}"]`);
                 const foodsInput = document.querySelector(`.goals-sv-input[data-seller-id="${sellerId}"][data-col-id="total_foods"][data-field="${field}"]`);
-                
+
                 let elmaVal = elmaInput ? parseVal(elmaInput.value) : 0;
                 let foodsVal = foodsInput ? parseVal(foodsInput.value) : 0;
                 let geralSum = elmaVal + foodsVal;
-                
+
                 // Map field 'vol' to 'ton' for Geral if needed, or keep consistent
                 // In column definitions: 'tonelada_elma' is type 'tonnage' (field 'vol'). 'geral' is type 'geral'.
                 // Geral uses field 'fat' and 'ton'.
@@ -4081,7 +3253,7 @@ function getFilterDescription() {
                 if (geralCell) {
                     if (geralField === 'fat') geralCell.textContent = geralSum.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
                     else geralCell.textContent = geralSum.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3});
-                    
+
                     // Update Column Totals for Geral
                     updateColumnTotals('geral', geralField);
                 }
@@ -4094,10 +3266,10 @@ function getFilterDescription() {
 
             if (quarterMonths.length === 0) identifyQuarterMonths();
             const filteredClients = getGoalsSvFilteredData();
-            
+
             // Define Column Blocks (Metrics Config)
             const svColumns = [
-                { id: 'total_elma', label: 'TOTAL ELMA', type: 'standard', isAgg: true, colorClass: 'text-teal-400', components: ['707', '708', '752'] }, 
+                { id: 'total_elma', label: 'TOTAL ELMA', type: 'standard', isAgg: true, colorClass: 'text-teal-400', components: ['707', '708', '752'] },
                 { id: '707', label: 'EXTRUSADOS', type: 'standard', supplier: '707', brand: null, colorClass: 'text-slate-300' },
                 { id: '708', label: 'NÃO EXTRUSADOS', type: 'standard', supplier: '708', brand: null, colorClass: 'text-slate-300' },
                 { id: '752', label: 'TORCIDA', type: 'standard', supplier: '752', brand: null, colorClass: 'text-slate-300' },
@@ -4278,7 +3450,7 @@ function getFilterDescription() {
                                 quarterMonths.forEach(m => monthlySum[m.key] += (sellerObj.data[compId].monthlyValues[m.key] || 0));
                             }
                         });
-                        
+
                         // Use calculated unique client count for Total Elma/Foods DEFAULT
                         if (aggCol.id === 'total_elma') sumPos = sellerObj.elmaPos || 0;
                         else if (aggCol.id === 'total_foods') sumPos = sellerObj.foodsPos || 0;
@@ -4470,7 +3642,7 @@ function getFilterDescription() {
                         });
                         bodyHTML += `</tr>`;
                     });
-                    
+
                     bodyHTML += `<tr class="bg-slate-800 font-bold border-b border-slate-600"><td class="px-2 py-2 text-center text-slate-400 font-mono">${sup.code}</td><td class="px-2 py-2 text-left text-white uppercase tracking-wider">${sup.name}</td>`;
                     svColumns.forEach(col => {
                         const d = sup.totals[col.id]; const color = col.id.includes('total') || col.type === 'tonnage' || col.type === 'mix' ? 'text-white' : 'text-slate-300';
@@ -4500,10 +3672,9 @@ function getFilterDescription() {
                 bodyHTML += `</tr></tbody>`;
                 mainTable.innerHTML = headerHTML + bodyHTML;
             }, () => currentRenderId !== goalsSvRenderId);
-        }
 
         function handleGoalsFilterChange() {
-            // Update Dropdown Lists based on available data? 
+            // Update Dropdown Lists based on available data?
             // Standard pattern: Update filter lists based on selection of others?
             // For now, simpler: Just update the view.
             if (window.goalsUpdateTimeout) clearTimeout(window.goalsUpdateTimeout);
@@ -4514,7 +3685,7 @@ function getFilterDescription() {
                 // But we can stick to standard updateSellerFilter using 'allSalesData' or 'allClientsData'?
                 // updateSellerFilter uses a sales/data array.
                 // Let's use allSalesData for consistency with other views to populate seller lists.
-                
+
                 updateGoalsView();
             }, 50);
         }
@@ -4523,15 +3694,15 @@ function getFilterDescription() {
             selectedGoalsGvSupervisors = [];
             selectedGoalsGvSellers = [];
             goalsGvCodcliFilter.value = '';
-            
+
             selectedGoalsGvSupervisors = updateSupervisorFilter(goalsGvSupervisorFilterDropdown, goalsGvSupervisorFilterText, selectedGoalsGvSupervisors, allSalesData);
             selectedGoalsGvSellers = updateSellerFilter(selectedGoalsGvSupervisors, goalsGvSellerFilterDropdown, goalsGvSellerFilterText, selectedGoalsGvSellers, allSalesData);
-            
+
             updateGoalsView();
         }
 
         // <!-- INÍCIO DO CÓDIGO RESTAURADO -->
-        
+
         function getCoverageFilteredData(options = {}) {
             const { excludeFilter = null } = options;
             const isExcluded = (f) => excludeFilter === f || (Array.isArray(excludeFilter) && excludeFilter.includes(f));
@@ -4572,7 +3743,7 @@ function getFilterDescription() {
                 });
             }
             const clientCodes = new Set(clients.map(c => c['Código']));
-            
+
             // --- Sales Filtering (Optimized via Indices) ---
             const filters = {
                 supervisor: supervisorsSet,
@@ -4596,10 +3767,10 @@ function getFilterDescription() {
                 sales = sales.filter(unitPriceFilter);
                 history = history.filter(unitPriceFilter);
             }
-            
+
             return { sales, history, clients };
         }
-        
+
         function updateAllCoverageFilters(options = {}) {
             const { skipFilter = null } = options;
 
@@ -4630,7 +3801,7 @@ function getFilterDescription() {
                  updateCoverageView();
             }, 10);
         }
-        
+
         function resetCoverageFilters() {
             selectedCoverageSupervisors = [];
             coverageCityFilter.value = '';
@@ -4650,7 +3821,7 @@ function getFilterDescription() {
             updateAllCoverageFilters();
             updateCoverageView();
         }
-        
+
         function updateCoverageView() {
             coverageRenderId++;
             const currentRenderId = coverageRenderId;
@@ -4674,7 +3845,7 @@ function getFilterDescription() {
             const activeClientsForCoverage = clients.filter(c => {
                 const codcli = c['Código'];
                 const rca1 = String(c.rca1 || '').trim();
-                
+
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 return (isAmericanas || rca1 !== '53' || clientsWithSalesThisMonth.has(codcli));
             });
@@ -4763,7 +3934,7 @@ function getFilterDescription() {
 
             // Pre-calculate global dates for Trend
             const endDate = parseDate(sortedWorkingDays[sortedWorkingDays.length - 1]);
-            
+
             // --- ASYNC CHUNKED PROCESSING ---
             runAsyncChunked(productsToAnalyze, (productCode) => {
                 const productInfo = productDetailsMap.get(productCode) || { descricao: `Produto ${productCode}`};
@@ -4772,7 +3943,7 @@ function getFilterDescription() {
                 let clientsWhoGotProductPrevious = 0;
 
                 // --- OTIMIZAÇÃO CRÍTICA: Iterar apenas os compradores do produto em vez de todos os clientes ativos ---
-                
+
                 // Check Current
                 const buyersCurrent = productClientsCurrent.get(productCode);
                 if (buyersCurrent) {
@@ -4796,7 +3967,7 @@ function getFilterDescription() {
                 }
 
                 const coverageCurrent = activeClientsCount > 0 ? (clientsWhoGotProductCurrent / activeClientsCount) * 100 : 0;
-                
+
                 if (coverageCurrent > topCoverageItem.coverage) {
                     topCoverageItem = {
                         name: `(${productCode}) ${productInfo.descricao}`,
@@ -4809,7 +3980,7 @@ function getFilterDescription() {
 
                 // Trend Calculation
                 const productAllSales = trendSalesMap.get(productCode) || [];
-                
+
                 const productCadastroDate = parseDate(productInfo.dtCadastro);
                 let productFirstWorkingDayIndex = 0;
                 if (productCadastroDate) {
@@ -4818,7 +3989,7 @@ function getFilterDescription() {
                     if (productFirstWorkingDayIndex === -1) productFirstWorkingDayIndex = sortedWorkingDays.length;
                 }
                 const productMaxLifeInWorkingDays = sortedWorkingDays.length - productFirstWorkingDayIndex;
-                
+
                 const hasHistory = productAllSales.some(s => {
                     const d = parseDate(s.DTPED);
                     return d && (d.getUTCFullYear() < currentYear || (d.getUTCFullYear() === currentYear && d.getUTCMonth() < currentMonth));
@@ -4839,11 +4010,11 @@ function getFilterDescription() {
                         effectiveDaysToCalculate = productMaxLifeInWorkingDays;
                     }
                 }
-                
+
                 const daysDivisor = effectiveDaysToCalculate > 0 ? effectiveDaysToCalculate : 1;
                 const targetIndex = Math.max(0, sortedWorkingDays.length - daysDivisor);
                 const startDate = parseDate(sortedWorkingDays[targetIndex]);
-                
+
                 let totalQtySoldInRange = 0;
                 // Optimized loop: only iterating relevant sales for this product
                 productAllSales.forEach(sale => {
@@ -4855,7 +4026,7 @@ function getFilterDescription() {
 
                 const dailyAvgSale = totalQtySoldInRange / daysDivisor;
                 const trendDays = dailyAvgSale > 0 ? (stockQty / dailyAvgSale) : (stockQty > 0 ? Infinity : 0);
-                
+
                 // Box Quantities (Pre-calculated)
                 const boxesSoldCurrentMonth = boxesSoldCurrentMap.get(productCode) || 0;
                 const boxesSoldPreviousMonth = boxesSoldPreviousMap.get(productCode) || 0;
@@ -4959,7 +4130,7 @@ function getFilterDescription() {
                 // Render Top 10 Cities Chart
                 const salesByCity = {};
                 const salesBySeller = {};
-                
+
                 sales.forEach(s => {
                     const city = s.CIDADE || 'N/A';
                     salesByCity[city] = (salesByCity[city] || 0) + s.QTVENDA_EMBALAGEM_MASTER;
@@ -5036,7 +4207,7 @@ function getFilterDescription() {
                 }
             }, () => currentRenderId !== coverageRenderId);
         }
-        
+
         // <!-- FIM DO CÓDIGO RESTAURADO -->
 
         function getUniqueMonthCount(data) {
@@ -5061,7 +4232,7 @@ function getFilterDescription() {
             const faturamentoMap = new Map();
 
             // --- INÍCIO DA MODIFICAÇÃO: KPIs de Cobertura e SKU ---
-            
+
             // 1. Lógica de Positivação (Cobertura)
             // Registar clientes que tiveram *qualquer* operação (Venda OU Bonificação)
             const positiveClients = new Set();
@@ -5145,7 +4316,7 @@ function getFilterDescription() {
             if (pluginsToRegister.length > 0) {
                 try { Chart.register(...pluginsToRegister); } catch (e) {}
             }
-            
+
             const professionalPalette = ['#14b8a6', '#6366f1', '#ec4899', '#f97316', '#8b5cf6', '#06b6d4', '#f59e0b', '#ef4444', '#22c55e'];
 
             let finalDatasets;
@@ -5154,12 +4325,12 @@ function getFilterDescription() {
             } else {
                  finalDatasets = [{ data: chartData || [], backgroundColor: canvasId === 'customerStatusChart' ? ['#2dd4bf', '#f59e0b'] : professionalPalette }];
             }
-            
+
             let baseOptions = { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 25 } }, plugins: { legend: { display: false, labels: {color: '#cbd5e1'} }, datalabels: { display: false } }, scales: { y: { beginAtZero: true, grace: '5%', ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255, 255, 255, 0.05)'} }, x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255, 255, 255, 0.05)'} } } };
             let typeDefaults = {};
             if (type === 'bar') typeDefaults = { layout: { padding: { right: 30, top: 30 } }, plugins: { datalabels: { display: true, anchor: 'end', align: 'end', offset: -4, color: '#cbd5e1', font: { size: 10 }, formatter: (v) => (v > 1000 ? (v/1000).toFixed(1) + 'k' : v.toFixed(0)) } } };
             if (type === 'doughnut') typeDefaults = { maintainAspectRatio: true, scales: { y: { display: false }, x: { display: false } }, plugins: { legend: { position: 'top', labels: { color: '#cbd5e1' } }, datalabels: { display: true, color: '#fff', font: { size: 11, weight: 'bold' }, formatter: (v, ctx) => { const total = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0); if(total === 0 || v === 0) return ''; const p = (v / total) * 100; return p > 5 ? p.toFixed(0) + '%' : ''; } } } };
-            
+
             // 1. Sempre construir um objeto de opções novo e limpo
             const options = mergeDeep({}, baseOptions, typeDefaults, optionsOverrides);
 
@@ -5167,7 +4338,7 @@ function getFilterDescription() {
                 charts[canvasId].data.labels = labels;
                 charts[canvasId].data.datasets = finalDatasets;
                 // 2. Substituir as opções antigas pelas novas, em vez de tentar um merge
-                charts[canvasId].options = options; 
+                charts[canvasId].options = options;
                 charts[canvasId].update();
                 return;
             }
@@ -5178,7 +4349,7 @@ function getFilterDescription() {
             container.appendChild(newCanvas);
             container.style.display = ''; container.style.alignItems = ''; container.style.justifyContent = '';
             const ctx = newCanvas.getContext('2d');
-            
+
             charts[canvasId] = new Chart(ctx, { type, data: { labels, datasets: finalDatasets }, options });
         }
 
@@ -5229,7 +4400,7 @@ function getFilterDescription() {
                 }
                 return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${classes}">${posicao}</span>`;
             };
-            
+
             tableBody.innerHTML = pageData.map(row => `
                 <tr class="hover:bg-slate-700">
                     <td class="px-4 py-2"><a href="#" class="text-teal-400 hover:underline" data-pedido-id="${row.PEDIDO}">${row.PEDIDO}</a></td>
@@ -5305,7 +4476,7 @@ function getFilterDescription() {
             const currentMonthRevenue = currentSales.reduce((sum, sale) => sum + sale.VLVENDA, 0);
             const trend = passedWorkingDays > 0 && totalWorkingDays > 0 ? (currentMonthRevenue / passedWorkingDays) * totalWorkingDays : 0;
             const lineChartDataset = [{ label: 'Valor', data: [averageMonthlyRevenue, trend], fill: true, borderColor: '#14b8a6', backgroundColor: 'rgba(20, 184, 166, 0.1)', tension: 0.2, pointRadius: 6, pointBackgroundColor: '#14b8a6', pointBorderColor: '#FFF', pointBorderWidth: 2, pointHoverRadius: 8 }];
-            
+
             const formatLabelValue = (v) => {
                 if (typeof v !== 'number') return ''; // Proteção contra valores não numéricos
                 return (v >= 1000000 ? (v / 1000000).toFixed(2) + ' M' : (v / 1000).toFixed(0) + 'k');
@@ -5332,7 +4503,7 @@ function getFilterDescription() {
                 const rca1 = String(c.rca1 || '').trim();
 
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                
+
                 // Regra de inclusão (Americanas ou RCA 1 diferente de 53)
                 return (isAmericanas || rca1 !== '53' || clientsWithSalesThisMonth.has(c['Código']));
             });
@@ -5349,7 +4520,7 @@ function getFilterDescription() {
 
             const intersectSets = (sets) => {
                 if (sets.length === 0) return new Set();
-                
+
                 // --- OPTIMIZATION START ---
                 // Sort sets by size to intersect the smallest sets first.
                 sets.sort((a, b) => a.size - b.size);
@@ -5357,7 +4528,7 @@ function getFilterDescription() {
                 let result = new Set(sets[0]);
                 for (let i = 1; i < sets.length; i++) {
                     if (result.size === 0) break; // Stop early if the result is already empty
-                    
+
                     const currentSet = sets[i];
                     for (const id of result) {
                         if (!currentSet.has(id)) {
@@ -5378,7 +4549,7 @@ function getFilterDescription() {
                     if (indices.byClient.has(codcli)) {
                         setsToIntersect.push(indices.byClient.get(codcli));
                     } else {
-                        return []; 
+                        return [];
                     }
                 } else {
                     if (selectedMainSupervisors.length > 0) {
@@ -5429,7 +4600,7 @@ function getFilterDescription() {
                     setsToIntersect.push(supplierIds);
                 }
 
-                if (indices.byPosition && posicao) { 
+                if (indices.byPosition && posicao) {
                     hasFilter = true;
                     if (indices.byPosition.has(posicao)) {
                         setsToIntersect.push(indices.byPosition.get(posicao));
@@ -5437,7 +4608,7 @@ function getFilterDescription() {
                         return [];
                     }
                 }
-                
+
                 if (mainRedeGroupFilter) {
                     hasFilter = true;
                     const redeIds = new Set();
@@ -5448,11 +4619,11 @@ function getFilterDescription() {
                 }
 
                 if (setsToIntersect.length === 0 && hasFilter) {
-                    return []; 
+                    return [];
                 }
-                
+
                 if (setsToIntersect.length === 0 && !hasFilter) {
-                    return Array.from(dataMap.values()); 
+                    return Array.from(dataMap.values());
                 }
 
                 const finalIds = intersectSets(setsToIntersect);
@@ -5461,7 +4632,7 @@ function getFilterDescription() {
 
             const filteredSalesData = getFilteredIds(optimizedData.indices.current, optimizedData.salesById);
             const filteredHistoryData = getFilteredIds(optimizedData.indices.history, optimizedData.historyById);
-            
+
             const filteredTableData = aggregatedOrders.filter(order => {
                 let matches = true;
                 if (mainRedeGroupFilter) {
@@ -5520,7 +4691,7 @@ function getFilterDescription() {
         function updateSupervisorFilter(dropdown, filterText, selectedArray, dataSource, skipRender = false) {
             if (!dropdown || !filterText) return selectedArray;
             const supervisors = [...new Set(dataSource.map(item => item.SUPERV).filter(Boolean))].sort();
-            
+
             selectedArray = selectedArray.filter(sup => supervisors.includes(sup));
 
             if (!skipRender) {
@@ -5547,7 +4718,7 @@ function getFilterDescription() {
             } else {
                 sellersToShow = [...new Set(dataSource.map(item => item.NOME).filter(Boolean))].sort();
             }
-            
+
             selectedArray = selectedArray.filter(seller => sellersToShow.includes(seller));
 
             if (!skipRender) {
@@ -5700,7 +4871,7 @@ function getFilterDescription() {
             updateRedeFilter(stockRedeFilterDropdown, stockComRedeBtnText, selectedStockRedes, allClientsData, 'Com Rede');
 
             document.querySelectorAll('#stock-fornecedor-toggle-container .fornecedor-btn').forEach(b => b.classList.remove('active'));
-            
+
             customWorkingDaysStock = maxWorkingDaysStock;
             const daysInput = document.getElementById('stock-working-days-input');
             if(daysInput) daysInput.value = customWorkingDaysStock;
@@ -5718,7 +4889,7 @@ function getFilterDescription() {
             const tiposVendaSet = new Set(selectedCityTiposVenda);
 
             let clients = allClientsData;
-            
+
             if (excludeFilter !== 'rede') {
                  if (cityRedeGroupFilter === 'com_rede') {
                     clients = clients.filter(c => c.ramo && c.ramo !== 'N/A');
@@ -5751,13 +4922,13 @@ function getFilterDescription() {
             if (excludeFilter !== 'city' && cityInput) {
                 clients = clients.filter(c => c.cidade && c.cidade.toLowerCase() === cityInput);
             }
-            
+
             if (excludeFilter !== 'codcli' && codCli) {
                  clients = clients.filter(c => String(c['Código']) === codCli);
             }
 
             const clientCodes = new Set(clients.map(c => c['Código']));
-            
+
             const supervisorSet = new Set(selectedCitySupervisors);
 
             const filters = {
@@ -5767,9 +4938,9 @@ function getFilterDescription() {
                 tipoVenda: tiposVendaSet,
                 clientCodes: clientCodes
             };
-            
+
             const sales = getFilteredDataFromIndices(optimizedData.indices.current, optimizedData.salesById, filters, excludeFilter);
-            
+
             return { clients, sales };
         }
 
@@ -5780,13 +4951,13 @@ function getFilterDescription() {
                 const { sales } = getCityFilteredData({ excludeFilter: 'supervisor' });
                 selectedCitySupervisors = updateSupervisorFilter(document.getElementById('city-supervisor-filter-dropdown'), document.getElementById('city-supervisor-filter-text'), selectedCitySupervisors, sales);
             }
-            
+
             const { sales: salesSeller } = getCityFilteredData({ excludeFilter: 'seller' });
             selectedCitySellers = updateSellerFilter(selectedCitySupervisors, cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, salesSeller, skipFilter === 'seller');
 
             const { sales: salesTV } = getCityFilteredData({ excludeFilter: 'tipoVenda' });
             selectedCityTiposVenda = updateTipoVendaFilter(cityTipoVendaFilterDropdown, cityTipoVendaFilterText, selectedCityTiposVenda, salesTV, skipFilter === 'tipoVenda');
-            
+
             if (skipFilter !== 'rede') {
                  const { clients: clientsRede } = getCityFilteredData({ excludeFilter: 'rede' });
                  if (cityRedeGroupFilter === 'com_rede') {
@@ -5834,7 +5005,7 @@ function getFilterDescription() {
             const referenceDate = lastSaleDate;
             const currentMonth = referenceDate.getUTCMonth();
             const currentYear = referenceDate.getUTCFullYear();
-            
+
             const selectedTiposVendaSet = new Set(selectedCityTiposVenda);
 
             // Pre-aggregate "Sales This Month" for Status Classification
@@ -6019,7 +5190,7 @@ function getFilterDescription() {
 
         function updateWeeklyView() {
             const selectedSupervisors = Array.from(weeklySupervisorFilter.querySelectorAll('input:checked')).map(cb => cb.value);
-            
+
             // Optimize using indices
             const filters = {};
             if (selectedSupervisors.length > 0) {
@@ -6027,13 +5198,13 @@ function getFilterDescription() {
                  // Indices for 'bySupervisor' is a Map<Name, Set<Id>>.
                  // We can manually intersect or just pass null if complex multiselect logic isn't supported by that helper yet.
                  // But getFilteredDataFromIndices doesn't support multiple supervisors array directly in 'filters.supervisor'.
-                 // However, we can filter after or adapt. 
+                 // However, we can filter after or adapt.
                  // Let's manually use the indices here for maximum speed if we want to replace O(N).
             }
-            
+
             // Actually, getFilteredDataFromIndices doesn't support multi-supervisor array yet, only single.
             // Let's stick to a simpler optimization: Use the pasta filter index if available.
-            
+
             let dataForGeneralCharts;
 
             if (currentWeeklyFornecedor) {
@@ -6176,23 +5347,23 @@ function getFilterDescription() {
             const weeks = [];
             // Find the first day of the month
             const firstOfMonth = new Date(Date.UTC(year, month, 1));
-            
+
             // Find the Sunday on or before the 1st
             const dayOfWeek = firstOfMonth.getUTCDay(); // 0 (Sun) to 6 (Sat)
             let currentStart = new Date(firstOfMonth);
             currentStart.setUTCDate(firstOfMonth.getUTCDate() - dayOfWeek);
-            
+
             // Find the last day of the month
             const lastOfMonth = new Date(Date.UTC(year, month + 1, 0));
-            
+
             // Iterate weeks until we cover the last day of the month
             while (currentStart <= lastOfMonth) {
                 const currentEnd = new Date(currentStart);
                 currentEnd.setUTCDate(currentStart.getUTCDate() + 6);
                 currentEnd.setUTCHours(23, 59, 59, 999);
-                
+
                 weeks.push({ start: new Date(currentStart), end: currentEnd });
-                
+
                 // Move to next Sunday
                 currentStart.setUTCDate(currentStart.getUTCDate() + 7);
             }
@@ -6369,16 +5540,16 @@ function getFilterDescription() {
             const currentYear = lastSaleDate.getUTCFullYear();
             const currentMonth = lastSaleDate.getUTCMonth();
             const currentMonthWeeks = getMonthWeeks(currentYear, currentMonth);
-            
+
             const metrics = {
-                current: { 
-                    fat: 0, peso: 0, clients: 0, 
-                    mixPepsico: 0, positivacaoSalty: 0, positivacaoFoods: 0 
+                current: {
+                    fat: 0, peso: 0, clients: 0,
+                    mixPepsico: 0, positivacaoSalty: 0, positivacaoFoods: 0
                 },
-                history: { 
+                history: {
                     fat: 0, peso: 0,
-                    avgFat: 0, avgPeso: 0, avgClients: 0, 
-                    avgMixPepsico: 0, avgPositivacaoSalty: 0, avgPositivacaoFoods: 0 
+                    avgFat: 0, avgPeso: 0, avgClients: 0,
+                    avgMixPepsico: 0, avgPositivacaoSalty: 0, avgPositivacaoFoods: 0
                 },
                 charts: {
                     weeklyCurrent: new Array(currentMonthWeeks.length).fill(0),
@@ -6412,11 +5583,11 @@ function getFilterDescription() {
                     metrics.current.fat += s.VLVENDA;
                     metrics.current.peso += s.TOTPESOLIQ;
                 }
-                
+
                 if (s.CODCLI) {
                     // Accumulate for Positive Check (using VLVENDA which is 0 for non-1/9 anyway, but keeping consistent)
                     currentClientsSet.set(s.CODCLI, (currentClientsSet.get(s.CODCLI) || 0) + s.VLVENDA);
-                    
+
                     if (!currentClientProductMap.has(s.CODCLI)) currentClientProductMap.set(s.CODCLI, new Map());
                     const cMap = currentClientProductMap.get(s.CODCLI);
                     if (!cMap.has(s.PRODUTO)) cMap.set(s.PRODUTO, { val: 0, desc: s.DESCRICAO, codfor: String(s.CODFOR) });
@@ -6457,7 +5628,7 @@ function getFilterDescription() {
                 prods.forEach(pData => {
                     if (pData.val > 1) {
                         if (pepsicoCodfors.has(pData.codfor)) pepsicoCount++;
-                        
+
                         const desc = norm(pData.desc);
                         saltyCategories.forEach(cat => { if (desc.includes(cat)) boughtCatsSalty.add(cat); });
                         foodsCategories.forEach(cat => { if (desc.includes(cat)) boughtCatsFoods.add(cat); });
@@ -6490,7 +5661,7 @@ function getFilterDescription() {
                 }
             });
             debugMixList.sort((a, b) => a.mix - b.mix);
-            
+
             console.group("Diagnóstico Mix Pepsico");
             console.log(`Total Soma Mix: ${sumMix}`);
             console.log(`Total Clientes no Denominador: ${countMixClients}`);
@@ -6505,9 +5676,9 @@ function getFilterDescription() {
 
             // --- 3. Process History Sales (Single Pass) ---
             const historyMonths = new Map(); // MonthKey -> { fat, clientMap, weekSales: [] }
-            
+
             // Cache week ranges for history months to avoid recalculating
-            const monthWeeksCache = new Map(); 
+            const monthWeeksCache = new Map();
 
             historySales.forEach(s => {
                 // Filter: Only Type 1 and 9 count for Metrics (Fat/Peso/Charts)
@@ -6520,12 +5691,12 @@ function getFilterDescription() {
 
                 const d = parseDate(s.DTPED);
                 if (!d) return;
-                
+
                 const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
-                
+
                 if (!historyMonths.has(monthKey)) {
-                    historyMonths.set(monthKey, { 
-                        fat: 0, 
+                    historyMonths.set(monthKey, {
+                        fat: 0,
                         clients: new Map(), // Client -> Total
                         productMap: new Map() // Client -> Product -> Data
                     });
@@ -6535,10 +5706,10 @@ function getFilterDescription() {
                 if (isValidType) {
                     mData.fat += s.VLVENDA;
                 }
-                
+
                 if (s.CODCLI) {
                     mData.clients.set(s.CODCLI, (mData.clients.get(s.CODCLI) || 0) + s.VLVENDA);
-                    
+
                     if (!mData.productMap.has(s.CODCLI)) mData.productMap.set(s.CODCLI, new Map());
                     const cMap = mData.productMap.get(s.CODCLI);
                     if (!cMap.has(s.PRODUTO)) cMap.set(s.PRODUTO, { val: 0, desc: s.DESCRICAO, codfor: String(s.CODFOR) });
@@ -6557,7 +5728,7 @@ function getFilterDescription() {
                 }
                 const weeks = monthWeeksCache.get(monthKey);
                 const wIdx = weeks.findIndex(w => d >= w.start && d <= w.end);
-                
+
                 // Map to Current Month's structure (0..4)
                 if (wIdx !== -1 && wIdx < metrics.charts.weeklyHistory.length && isValidType) {
                     metrics.charts.weeklyHistory[wIdx] += s.VLVENDA;
@@ -6574,18 +5745,18 @@ function getFilterDescription() {
             metrics.history.avgFat = metrics.history.fat / QUARTERLY_DIVISOR;
             metrics.history.avgPeso = metrics.history.peso / QUARTERLY_DIVISOR;
             metrics.charts.weeklyHistory = metrics.charts.weeklyHistory.map(v => v / QUARTERLY_DIVISOR);
-            
+
             // Normalize Supervisor History
             Object.values(metrics.charts.supervisorData).forEach(d => d.history /= QUARTERLY_DIVISOR);
 
             // Process Monthly KPIs (Clients, Mix)
             // Sort months to ensure we take the last 3 if there are more
             const sortedMonths = Array.from(historyMonths.keys()).sort();
-            
-            // Apply Logic: If first month has < 20 days of data, maybe skip? 
+
+            // Apply Logic: If first month has < 20 days of data, maybe skip?
             // Original code: if (firstSaleInFirstMonth && firstSaleInFirstMonth.getUTCDate() > 20) sortedMonths.shift();
             // We'll stick to simple slice(-3) for performance and consistency with requested "Last 3 months" logic.
-            const monthsToProcess = sortedMonths.slice(-3); 
+            const monthsToProcess = sortedMonths.slice(-3);
 
             let sumClients = 0;
             let sumMixPep = 0;
@@ -6594,7 +5765,7 @@ function getFilterDescription() {
 
             monthsToProcess.forEach(mKey => {
                 const mData = historyMonths.get(mKey);
-                
+
                 // Clients
                 let posClients = 0;
                 mData.clients.forEach(v => { if(v > 1) posClients++; });
@@ -6631,14 +5802,14 @@ function getFilterDescription() {
                 sumMixPep += (mCountMixClients > 0 ? mSumMix / mCountMixClients : 0);
                 sumPosSalty += mCountSalty;
                 sumPosFoods += mCountFoods;
-                
+
                 // For Monthly Chart (Labels and Values)
                 const [y, m] = mKey.split('-');
                 const label = new Date(Date.UTC(parseInt(y), parseInt(m), 1)).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit', timeZone: 'UTC' });
-                metrics.charts.monthlyData.push({ 
-                    label, 
-                    fat: mData.fat, 
-                    clients: posClients 
+                metrics.charts.monthlyData.push({
+                    label,
+                    fat: mData.fat,
+                    clients: posClients
                 });
             });
 
@@ -6671,7 +5842,7 @@ function getFilterDescription() {
                     sortedMonths.shift();
                 }
             }
-            
+
             const monthsToAverage = sortedMonths.slice(-3);
 
             const kpiValues = monthsToAverage.map(monthKey => {
@@ -6831,7 +6002,7 @@ function getFilterDescription() {
                 // --- OPTIMIZATION START ---
                 // Sort sets by size to intersect the smallest sets first.
                 setsToIntersect.sort((a, b) => a.size - b.size);
-                
+
                 // Start with the smallest set.
                 resultIds = new Set(setsToIntersect[0]);
 
@@ -6952,7 +6123,7 @@ function getFilterDescription() {
             const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
 
             const products = [...new Map(dataSource.map(s => [s.PRODUTO, s.DESCRICAO])).entries()].sort((a,b) => a[1].localeCompare(b[1]));
-            
+
             // Filter selectedArray to keep only items present in the current dataSource
             const availableProductCodes = new Set(products.map(p => p[0]));
             selectedArray = selectedArray.filter(code => availableProductCodes.has(code));
@@ -7128,7 +6299,7 @@ function getFilterDescription() {
             comparisonRenderId++;
             const currentRenderId = comparisonRenderId;
             const { currentSales, historySales } = getComparisonFilteredData();
-            
+
             // Show Loading State on Charts
             const chartContainers = ['weeklyComparisonChart', 'monthlyComparisonChart', 'dailyWeeklyComparisonChart'];
             chartContainers.forEach(id => {
@@ -7143,7 +6314,7 @@ function getFilterDescription() {
             const currentYear = lastSaleDate.getUTCFullYear();
             const currentMonth = lastSaleDate.getUTCMonth();
             const currentMonthWeeks = getMonthWeeks(currentYear, currentMonth);
-            
+
             const metrics = {
                 current: { fat: 0, peso: 0, clients: 0, mixPepsico: 0, positivacaoSalty: 0, positivacaoFoods: 0 },
                 history: { fat: 0, peso: 0, avgFat: 0, avgPeso: 0, avgClients: 0, avgMixPepsico: 0, avgPositivacaoSalty: 0, avgPositivacaoFoods: 0 },
@@ -7235,13 +6406,13 @@ function getFilterDescription() {
                     }
                     const d = parseDate(s.DTPED);
                     if (!d) return;
-                    
+
                     const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
                     if (!historyMonths.has(monthKey)) historyMonths.set(monthKey, { fat: 0, clients: new Map(), productMap: new Map() });
                     const mData = historyMonths.get(monthKey);
 
                     if (isValidType) mData.fat += s.VLVENDA;
-                    
+
                     if (s.CODCLI) {
                         mData.clients.set(s.CODCLI, (mData.clients.get(s.CODCLI) || 0) + s.VLVENDA);
                         if (!mData.productMap.has(s.CODCLI)) mData.productMap.set(s.CODCLI, new Map());
@@ -7483,11 +6654,11 @@ function getFilterDescription() {
                         const pastaDoProduto = optimizedData.productPastaMap.get(productCode) || '';
                         if (pastaDoProduto !== currentPasta) return;
                     }
-                    
+
                     productsWithFilteredActivity.add(productCode);
                 }
             });
-            
+
             // Also include products with sales even if 0 stock (logic from original)
             // Iterate salesByProduct keys (which implies sales existed)
             for (const productCode of totalQtyByProduct.keys()) {
@@ -7537,19 +6708,19 @@ function getFilterDescription() {
 
                 const productCadastroDate = parseDate(details.dtCadastro);
                 let productFirstWorkingDayIndex = 0;
-                
+
                 if (productCadastroDate) {
                     const cadastroDateString = productCadastroDate.toISOString().split('T')[0];
                     productFirstWorkingDayIndex = sortedWorkingDays.findIndex(d => d >= cadastroDateString);
                     if (productFirstWorkingDayIndex === -1) {
-                        productFirstWorkingDayIndex = sortedWorkingDays.length; 
+                        productFirstWorkingDayIndex = sortedWorkingDays.length;
                     }
                 }
-                
+
                 const productMaxLifeInWorkingDays = sortedWorkingDays.length - productFirstWorkingDayIndex;
                 const daysFromBox = customWorkingDaysStock;
                 let effectiveDaysToCalculate;
-                
+
                 const isFactuallyNewOrReactivated = (!hasHistory && soldThisMonth);
 
                 if (isFactuallyNewOrReactivated) {
@@ -7559,14 +6730,14 @@ function getFilterDescription() {
                     if (daysFromBox > 0) {
                         effectiveDaysToCalculate = Math.min(daysFromBox, productMaxLifeInWorkingDays);
                     } else {
-                        effectiveDaysToCalculate = productMaxLifeInWorkingDays; 
+                        effectiveDaysToCalculate = productMaxLifeInWorkingDays;
                     }
                 }
-                
+
                 const daysDivisor = effectiveDaysToCalculate > 0 ? effectiveDaysToCalculate : 1;
-                const targetIndex = Math.max(0, sortedWorkingDays.length - daysDivisor); 
+                const targetIndex = Math.max(0, sortedWorkingDays.length - daysDivisor);
                 const startDate = parseDate(sortedWorkingDays[targetIndex]);
-                
+
                 let totalQtySoldInRange = 0;
                 // Optimized loop
                 productAllSales.forEach(sale => {
@@ -7744,7 +6915,7 @@ function getFilterDescription() {
             innovationsMonthCategoryFilter.value = '';
             selectedInnovationsMonthSellers = [];
             selectedInnovationsMonthTiposVenda = [];
-            
+
             selectedInnovationsSupervisors = updateSupervisorFilter(document.getElementById('innovations-month-supervisor-filter-dropdown'), document.getElementById('innovations-month-supervisor-filter-text'), selectedInnovationsSupervisors, allSalesData);
             updateSellerFilter(selectedInnovationsSupervisors, innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
             selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
@@ -7774,7 +6945,7 @@ function getFilterDescription() {
             const categories = globalInnovationCategories || {};
             const currentFilterValue = innovationsMonthCategoryFilter.value;
             const allCategories = Object.keys(categories).sort();
-            
+
             // Only update dropdown if empty or number of items changed significantly (simplistic check)
             if (innovationsMonthCategoryFilter.options.length <= 1 && allCategories.length > 0) {
                 innovationsMonthCategoryFilter.innerHTML = '<option value="">Todas as Categorias</option>';
@@ -7812,7 +6983,7 @@ function getFilterDescription() {
             const activeClientCodes = new Set(activeClients.map(c => c['Código']));
 
             // --- OPTIMIZED AGGREGATION LOGIC ---
-            
+
             // Determine types to use
             const availableTypes = new Set([...allSalesData.map(s => s.TIPOVENDA), ...allHistoryData.map(s => s.TIPOVENDA)]);
             let currentSelection = selectedInnovationsMonthTiposVenda.length > 0 ? selectedInnovationsMonthTiposVenda : Array.from(availableTypes);
@@ -7826,11 +6997,11 @@ function getFilterDescription() {
             } else {
                 const mainTypes = currentSelection.filter(t => t !== '5' && t !== '11');
                 const bonusTypes = currentSelection.filter(t => t === '5' || t === '11');
-                
+
                 // Optimized Map Building (2 passes instead of 4)
                 mapsCurrent = buildInnovationSalesMaps(allSalesData, mainTypes, bonusTypes);
                 mapsPrevious = buildInnovationSalesMaps(allHistoryData, mainTypes, bonusTypes);
-                
+
                 viewState.inovacoes.lastTypesKey = currentSelectionKey;
                 viewState.inovacoes.cache = { mapsCurrent, mapsPrevious };
             }
@@ -7842,14 +7013,14 @@ function getFilterDescription() {
             const productResults = {};
 
             for (const cat in categories) {
-                categoryResults[cat] = { 
-                    current: new Set(), 
+                categoryResults[cat] = {
+                    current: new Set(),
                     previous: new Set(),
                     bonusCurrent: new Set(),
                     bonusPrevious: new Set()
                 };
                 categories[cat].productCodes.forEach(p => {
-                    productResults[p] = { current: new Set(), previous: new Set() }; 
+                    productResults[p] = { current: new Set(), previous: new Set() };
                 });
             }
 
@@ -7876,11 +7047,11 @@ function getFilterDescription() {
                                 }
                             }
                         }
-                        
+
                         if (!soldBySelected) return;
 
                         const targetSetField = isCurrent ? 'current' : 'previous';
-                        
+
                         // Add to Category Set (Normal or Bonus)
                         if (categoryResults[category]) {
                             if (isBonus) {
@@ -7909,14 +7080,14 @@ function getFilterDescription() {
             let topCoverageItem = { name: '-', coverage: 0, clients: 0 };
 
             // Consolidate Product Results for Top Item
-            // We need to merge Main and Bonus for product coverage if needed, 
+            // We need to merge Main and Bonus for product coverage if needed,
             // but `processMap` populated `productResults` separately for main/bonus?
             // Wait, `processMap` handles Main and Bonus calls sequentially.
-            // `productResults[prodCode].current` is a Set. 
+            // `productResults[prodCode].current` is a Set.
             // If we call processMap for Main, it adds clients.
             // If we call processMap for Bonus, it adds clients to SAME Set.
             // So `productResults` automatically handles the UNION of Main and Bonus coverage per product.
-            
+
             if (selectedCategory && categories[selectedCategory]) {
                 categories[selectedCategory].products.forEach(product => {
                     const pCode = String(product.Codigo).trim();
@@ -7934,14 +7105,14 @@ function getFilterDescription() {
                     const set = categoryResults[cat].current; // Main coverage
                     // Wait, original logic: "gotItCurrent" if sales OR bonus.
                     // My categoryResults structure separates them. I need to union them for the metric?
-                    // Original logic: 
+                    // Original logic:
                     // clientsWhoGotAnyVisibleProductCurrent.add(codcli) if (Sales OR Bonus) of ANY product in category.
-                    
+
                     // Let's create a Union Set for the category coverage metric
                     const unionSet = new Set([...categoryResults[cat].current, ...categoryResults[cat].bonusCurrent]);
                     const count = unionSet.size;
                     const coverage = activeClientsCount > 0 ? (count / activeClientsCount) * 100 : 0;
-                    
+
                     if (coverage > topCoverageItem.coverage) {
                         topCoverageItem = { name: cat, coverage, clients: count };
                     }
@@ -7956,24 +7127,24 @@ function getFilterDescription() {
 
             for (const cat in categoryResults) {
                 if (selectedCategory && cat !== selectedCategory) continue;
-                
+
                 // Merge sets into global KPI sets
                 categoryResults[cat].current.forEach(c => clientsWhoGotAnyVisibleProductCurrent.add(c));
                 categoryResults[cat].previous.forEach(c => clientsWhoGotAnyVisibleProductPrevious.add(c));
                 categoryResults[cat].bonusCurrent.forEach(c => clientsWhoGotBonusAnyVisibleProductCurrent.add(c));
                 categoryResults[cat].bonusPrevious.forEach(c => clientsWhoGotBonusAnyVisibleProductPrevious.add(c));
-                
+
                 // Prepare Analysis Object for Chart/Table
                 const currentUnion = new Set([...categoryResults[cat].current, ...categoryResults[cat].bonusCurrent]);
                 const previousUnion = new Set([...categoryResults[cat].previous, ...categoryResults[cat].bonusPrevious]);
-                
-                // NOTE: The chart/table in original code used "coverageCurrent" derived from 
+
+                // NOTE: The chart/table in original code used "coverageCurrent" derived from
                 // (clientsCurrentCount / activeClientsCount).
                 // clientsCurrentCount was incremented if (Sales OR Bonus).
-                
+
                 const countCurr = currentUnion.size;
                 const countPrev = previousUnion.size;
-                
+
                 const covCurr = activeClientsCount > 0 ? (countCurr / activeClientsCount) * 100 : 0;
                 const covPrev = activeClientsCount > 0 ? (countPrev / activeClientsCount) * 100 : 0;
                 const varPct = covPrev > 0 ? ((covCurr - covPrev) / covPrev) * 100 : (covCurr > 0 ? Infinity : 0);
@@ -7994,7 +7165,7 @@ function getFilterDescription() {
             // It kept them separate for the KPI cards at the top.
             // "Innovations Month Selection Coverage" -> Sales
             // "Innovations Month Bonus Coverage" -> Bonus
-            
+
             const selectionCoveredCountCurrent = clientsWhoGotAnyVisibleProductCurrent.size;
             const selectionCoveragePercentCurrent = activeClientsCount > 0 ? (selectionCoveredCountCurrent / activeClientsCount) * 100 : 0;
             const selectionCoveredCountPrevious = clientsWhoGotAnyVisibleProductPrevious.size;
@@ -8067,7 +7238,7 @@ function getFilterDescription() {
 
             chartLabels.forEach(categoryName => {
                 const categoryData = categories[categoryName];
-                
+
                 categoryData.products.forEach((product) => {
                     const productCode = product.Codigo;
                     const productName = product.Produto;
@@ -8076,12 +7247,12 @@ function getFilterDescription() {
                     // Re-calculate per product using the Product Results Sets
                     // Optimization: productResults[productCode] already contains sets of clients who bought
                     const pRes = productResults[productCode];
-                    
+
                     // IMPORTANT: productResults contains ALL clients who bought.
                     // We must filter by 'activeClientCodes' if not already done?
                     // 'processMap' already checked: `if (!activeClientCodes.has(codCli)) return;`
                     // So the sets in productResults are already filtered by active clients.
-                    
+
                     const clientsCurrentCount = pRes ? pRes.current.size : 0;
                     const clientsPreviousCount = pRes ? pRes.previous.size : 0;
 
@@ -8160,14 +7331,14 @@ function getFilterDescription() {
             const clientInnovationStatus = activeClients.map(client => {
                 const codcli = client['Código'];
                 const status = {};
-                
+
                 chartLabels.forEach(catName => {
                     // Check if client exists in Main OR Bonus sets for this category
                     const inMain = categoryResults[catName].current.has(codcli);
                     const inBonus = categoryResults[catName].bonusCurrent.has(codcli);
                     status[catName] = inMain || inBonus;
                 });
-                
+
                 return { ...client, innovationStatus: status };
             });
 
@@ -8191,7 +7362,7 @@ function getFilterDescription() {
                 const startIndex = (page - 1) * itemsPerPage;
                 const endIndex = startIndex + itemsPerPage;
                 const pageData = clientInnovationStatus.slice(startIndex, endIndex);
-                
+
                 const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-400 mx-auto" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>`;
                 const xIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-400 mx-auto" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>`;
 
@@ -8224,7 +7395,7 @@ function getFilterDescription() {
                         infoText.textContent = `Página ${page} de ${totalPages} (${clientInnovationStatus.length} clientes)`;
                         prevBtn.disabled = page === 1;
                         nextBtn.disabled = page === totalPages;
-                        
+
                         // Clone and replace buttons to remove old event listeners
                         const newPrevBtn = prevBtn.cloneNode(true);
                         const newNextBtn = nextBtn.cloneNode(true);
@@ -8628,7 +7799,7 @@ function getFilterDescription() {
             doc.autoTable({ head: [tableColumn], body: tableRows, startY: 60, theme: 'grid', styles: { fontSize: 8, cellPadding: 1.5, textColor: [0, 0, 0] }, headStyles: { fillColor: [41, 128, 185], textColor: 255, fontSize: 8, fontStyle: 'bold' }, alternateRowStyles: { fillColor: [240, 248, 255] }, margin: { top: 10 } });
             const pageCount = doc.internal.getNumberOfPages();
             for(let i = 1; i <= pageCount; i++) { doc.setPage(i); doc.setFontSize(9); doc.setTextColor(10); doc.text(`Página ${i} de ${pageCount}`, doc.internal.pageSize.width / 2, doc.internal.pageSize.height - 10, { align: 'center' }); }
-            
+
             let fileNameParam = 'geral';
             if (selectedCitySellers.length === 1) {
                 fileNameParam = getFirstName(selectedCitySellers[0]);
@@ -8708,7 +7879,7 @@ function getFilterDescription() {
                     document.body.setAttribute('data-loading', 'true');
                     loaderText.textContent = text;
                     loader.classList.remove('opacity-0', 'pointer-events-none');
-                    setTimeout(resolve, 50); 
+                    setTimeout(resolve, 50);
                 } else {
                     resolve();
                 }
@@ -8739,7 +7910,7 @@ function getFilterDescription() {
         async function navigateTo(view) {
             const sideMenu = document.getElementById('side-menu');
             const sidebarOverlay = document.getElementById('sidebar-overlay');
-            
+
             if (sideMenu) sideMenu.classList.add('-translate-x-full');
             if (sidebarOverlay) sidebarOverlay.classList.add('hidden');
 
@@ -8755,7 +7926,7 @@ function getFilterDescription() {
                 mix: 'Mix'
             };
             const friendlyName = viewNameMap[view] || 'a página';
-            
+
             await showLoader(`Carregando ${friendlyName}...`);
 
             // This function now runs after the loader is visible
@@ -8769,7 +7940,7 @@ function getFilterDescription() {
                     const icon = link.querySelector('svg');
                     if(icon) icon.classList.remove('text-white');
                 });
-                
+
                 const activeLink = document.querySelector(`.nav-link[data-target="${view}"]`);
                 if (activeLink) {
                     activeLink.classList.add('bg-slate-700', 'text-white');
@@ -8809,7 +7980,7 @@ function getFilterDescription() {
                     case 'estoque':
                         stockView.classList.remove('hidden');
                         if (viewState.estoque.dirty) {
-                            handleStockFilterChange(); 
+                            handleStockFilterChange();
                             viewState.estoque.dirty = false;
                         }
                         break;
@@ -8825,14 +7996,14 @@ function getFilterDescription() {
                         cityView.classList.remove('hidden');
                         if (viewState.cidades.dirty) {
                             updateAllCityFilters();
-                            updateCityView(); 
+                            updateCityView();
                             viewState.cidades.dirty = false;
                         }
                         break;
                     case 'semanal':
                         weeklyView.classList.remove('hidden');
                         if (viewState.semanal.dirty) {
-                            populateWeeklyFilters(); 
+                            populateWeeklyFilters();
                             updateWeeklyView();
                             viewState.semanal.dirty = false;
                         }
@@ -8864,9 +8035,9 @@ function getFilterDescription() {
                         break;
                 }
             };
-            
+
             updateContent();
-            
+
             await hideLoader();
         }
 
@@ -8903,7 +8074,7 @@ function getFilterDescription() {
                     const { value, checked } = e.target;
                     if (checked) selectedMainSupervisors.push(value);
                     else selectedMainSupervisors = selectedMainSupervisors.filter(s => s !== value);
-                    
+
                     selectedSellers = []; // Reset sellers when supervisor changes to avoid inconsistent state? Or keep valid intersection?
                     // Better: Re-run updateSellerFilter which filters 'selectedSellers' to only keep valid ones.
                     selectedMainSupervisors = updateSupervisorFilter(supervisorFilterDropdown, document.getElementById('supervisor-filter-text'), selectedMainSupervisors, allSalesData);
@@ -8921,7 +8092,7 @@ function getFilterDescription() {
                     const { value, checked } = e.target;
                     if (checked) selectedMainSuppliers.push(value);
                     else selectedMainSuppliers = selectedMainSuppliers.filter(s => s !== value);
-                    
+
                     let supplierDataSource = [...allSalesData, ...allHistoryData];
                     if (currentFornecedor) {
                         supplierDataSource = supplierDataSource.filter(s => s.OBSERVACAOFOR === currentFornecedor);
@@ -8933,26 +8104,26 @@ function getFilterDescription() {
             });
 
             vendedorFilterBtn.addEventListener('click', () => vendedorFilterDropdown.classList.toggle('hidden'));
-            vendedorFilterDropdown.addEventListener('change', (e) => { 
-                if (e.target.type === 'checkbox') { 
-                    const { value, checked } = e.target; 
-                    if (checked) selectedSellers.push(value); else selectedSellers = selectedSellers.filter(s => s !== value); 
-                    selectedSellers = updateSellerFilter(selectedMainSupervisors, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData); 
-                    mainTableState.currentPage = 1; 
-                    updateDashboard(); 
-                } 
+            vendedorFilterDropdown.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox') {
+                    const { value, checked } = e.target;
+                    if (checked) selectedSellers.push(value); else selectedSellers = selectedSellers.filter(s => s !== value);
+                    selectedSellers = updateSellerFilter(selectedMainSupervisors, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData);
+                    mainTableState.currentPage = 1;
+                    updateDashboard();
+                }
             });
-            
+
             tipoVendaFilterBtn.addEventListener('click', () => tipoVendaFilterDropdown.classList.toggle('hidden'));
-            tipoVendaFilterDropdown.addEventListener('change', (e) => { 
-                if (e.target.type === 'checkbox') { 
-                    const { value, checked } = e.target; 
-                    if (checked) selectedTiposVenda.push(value); 
-                    else selectedTiposVenda = selectedTiposVenda.filter(s => s !== value); 
-                    selectedTiposVenda = updateTipoVendaFilter(tipoVendaFilterDropdown, tipoVendaFilterText, selectedTiposVenda, allSalesData); 
-                    mainTableState.currentPage = 1; 
-                    updateDashboard(); 
-                } 
+            tipoVendaFilterDropdown.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox') {
+                    const { value, checked } = e.target;
+                    if (checked) selectedTiposVenda.push(value);
+                    else selectedTiposVenda = selectedTiposVenda.filter(s => s !== value);
+                    selectedTiposVenda = updateTipoVendaFilter(tipoVendaFilterDropdown, tipoVendaFilterText, selectedTiposVenda, allSalesData);
+                    mainTableState.currentPage = 1;
+                    updateDashboard();
+                }
             });
 
             posicaoFilter.addEventListener('change', () => { mainTableState.currentPage = 1; updateDashboard(); });
@@ -8963,7 +8134,7 @@ function getFilterDescription() {
                 debouncedUpdateDashboard();
             });
             clearFiltersBtn.addEventListener('click', () => { resetMainFilters(); markDirty('dashboard'); markDirty('pedidos'); });
-            
+
             prevPageBtn.addEventListener('click', () => {
                 if (mainTableState.currentPage > 1) {
                     mainTableState.currentPage--;
@@ -9018,23 +8189,23 @@ function getFilterDescription() {
                     const { value, checked } = e.target;
                     if (checked) selectedCitySupervisors.push(value);
                     else selectedCitySupervisors = selectedCitySupervisors.filter(s => s !== value);
-                    
+
                     selectedCitySellers = [];
                     handleCityFilterChange();
                 }
             });
 
             cityVendedorFilterBtn.addEventListener('click', () => cityVendedorFilterDropdown.classList.toggle('hidden'));
-            cityVendedorFilterDropdown.addEventListener('change', (e) => { 
-                if (e.target.type === 'checkbox') { 
-                    const { value, checked } = e.target; 
+            cityVendedorFilterDropdown.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox') {
+                    const { value, checked } = e.target;
                     if (checked) {
                         if (!selectedCitySellers.includes(value)) selectedCitySellers.push(value);
                     } else {
                         selectedCitySellers = selectedCitySellers.filter(s => s !== value);
                     }
-                    handleCityFilterChange({ skipFilter: 'seller' }); 
-                } 
+                    handleCityFilterChange({ skipFilter: 'seller' });
+                }
             });
 
             cityTipoVendaFilterBtn.addEventListener('click', () => cityTipoVendaFilterDropdown.classList.toggle('hidden'));
@@ -9086,23 +8257,23 @@ function getFilterDescription() {
                 debouncedUpdateCity();
             });
 
-            cityNameFilter.addEventListener('input', (e) => { 
-                e.target.value = e.target.value.replace(/[0-9]/g, ''); 
-                const { clients } = getCityFilteredData({ excludeFilter: 'city' }); 
-                updateCitySuggestions(cityNameFilter, citySuggestions, clients); 
-            });
-            cityNameFilter.addEventListener('focus', () => { 
+            cityNameFilter.addEventListener('input', (e) => {
+                e.target.value = e.target.value.replace(/[0-9]/g, '');
                 const { clients } = getCityFilteredData({ excludeFilter: 'city' });
-                citySuggestions.classList.remove('manual-hide'); 
-                updateCitySuggestions(cityNameFilter, citySuggestions, clients); 
+                updateCitySuggestions(cityNameFilter, citySuggestions, clients);
+            });
+            cityNameFilter.addEventListener('focus', () => {
+                const { clients } = getCityFilteredData({ excludeFilter: 'city' });
+                citySuggestions.classList.remove('manual-hide');
+                updateCitySuggestions(cityNameFilter, citySuggestions, clients);
             });
             cityNameFilter.addEventListener('blur', () => setTimeout(() => citySuggestions.classList.add('hidden'), 150));
-            cityNameFilter.addEventListener('keydown', (e) => { 
-                if (e.key === 'Enter') { 
-                    citySuggestions.classList.add('hidden', 'manual-hide'); 
-                    handleCityFilterChange(); 
-                    e.target.blur(); 
-                } 
+            cityNameFilter.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    citySuggestions.classList.add('hidden', 'manual-hide');
+                    handleCityFilterChange();
+                    e.target.blur();
+                }
             });
 
             document.addEventListener('click', (e) => {
@@ -9110,20 +8281,20 @@ function getFilterDescription() {
                 if (!fornecedorFilterBtn.contains(e.target) && !fornecedorFilterDropdown.contains(e.target)) fornecedorFilterDropdown.classList.add('hidden');
                 if (!vendedorFilterBtn.contains(e.target) && !vendedorFilterDropdown.contains(e.target)) vendedorFilterDropdown.classList.add('hidden');
                 if (!tipoVendaFilterBtn.contains(e.target) && !tipoVendaFilterDropdown.contains(e.target)) tipoVendaFilterDropdown.classList.add('hidden');
-                
+
                 if (!citySupervisorFilterBtn.contains(e.target) && !citySupervisorFilterDropdown.contains(e.target)) citySupervisorFilterDropdown.classList.add('hidden');
                 if (!cityVendedorFilterBtn.contains(e.target) && !cityVendedorFilterDropdown.contains(e.target)) cityVendedorFilterDropdown.classList.add('hidden');
                 if (!cityTipoVendaFilterBtn.contains(e.target) && !cityTipoVendaFilterDropdown.contains(e.target)) cityTipoVendaFilterDropdown.classList.add('hidden');
                 if (!cityComRedeBtn.contains(e.target) && !cityRedeFilterDropdown.contains(e.target)) cityRedeFilterDropdown.classList.add('hidden');
                 if (!mainComRedeBtn.contains(e.target) && !mainRedeFilterDropdown.contains(e.target)) mainRedeFilterDropdown.classList.add('hidden');
-                
+
                 if (!comparisonSupervisorFilterBtn.contains(e.target) && !comparisonSupervisorFilterDropdown.contains(e.target)) comparisonSupervisorFilterDropdown.classList.add('hidden');
                 if (!comparisonComRedeBtn.contains(e.target) && !comparisonRedeFilterDropdown.contains(e.target)) comparisonRedeFilterDropdown.classList.add('hidden');
                 if (!comparisonVendedorFilterBtn.contains(e.target) && !comparisonVendedorFilterDropdown.contains(e.target)) comparisonVendedorFilterDropdown.classList.add('hidden');
                 if (!comparisonTipoVendaFilterBtn.contains(e.target) && !comparisonTipoVendaFilterDropdown.contains(e.target)) comparisonTipoVendaFilterDropdown.classList.add('hidden');
                 if (!comparisonSupplierFilterBtn.contains(e.target) && !comparisonSupplierFilterDropdown.contains(e.target)) comparisonSupplierFilterDropdown.classList.add('hidden');
                 if (!comparisonProductFilterBtn.contains(e.target) && !comparisonProductFilterDropdown.contains(e.target)) comparisonProductFilterDropdown.classList.add('hidden');
-                
+
                 if (!stockSupervisorFilterBtn.contains(e.target) && !stockSupervisorFilterDropdown.contains(e.target)) stockSupervisorFilterDropdown.classList.add('hidden');
                 if (!stockComRedeBtn.contains(e.target) && !stockRedeFilterDropdown.contains(e.target)) stockRedeFilterDropdown.classList.add('hidden');
                 if (!stockVendedorFilterBtn.contains(e.target) && !stockVendedorFilterDropdown.contains(e.target)) stockVendedorFilterDropdown.classList.add('hidden');
@@ -9143,11 +8314,11 @@ function getFilterDescription() {
                 else if (!stockCityFilter.contains(e.target)) stockCitySuggestions.classList.add('hidden');
             });
 
-            fornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(btn => { 
-                btn.addEventListener('click', () => { 
-                    const fornecedor = btn.dataset.fornecedor; 
-                    if (currentFornecedor === fornecedor) { currentFornecedor = ''; btn.classList.remove('active'); } else { currentFornecedor = fornecedor; fornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); } 
-                    
+            fornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const fornecedor = btn.dataset.fornecedor;
+                    if (currentFornecedor === fornecedor) { currentFornecedor = ''; btn.classList.remove('active'); } else { currentFornecedor = fornecedor; fornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
+
                     let supplierDataSource = [...allSalesData, ...allHistoryData];
                     if (currentFornecedor) {
                         supplierDataSource = supplierDataSource.filter(s => s.OBSERVACAOFOR === currentFornecedor);
@@ -9155,11 +8326,11 @@ function getFilterDescription() {
                     selectedMainSuppliers = updateSupplierFilter(document.getElementById('fornecedor-filter-dropdown'), document.getElementById('fornecedor-filter-text'), selectedMainSuppliers, supplierDataSource, 'main');
 
                     selectedMainSupervisors = updateSupervisorFilter(document.getElementById('supervisor-filter-dropdown'), document.getElementById('supervisor-filter-text'), selectedMainSupervisors, allSalesData);
-                    selectedSellers = []; 
-                    updateSellerFilter(selectedMainSupervisors, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData); 
-                    mainTableState.currentPage = 1; 
-                    updateDashboard(); 
-                }); 
+                    selectedSellers = [];
+                    updateSellerFilter(selectedMainSupervisors, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData);
+                    mainTableState.currentPage = 1;
+                    updateDashboard();
+                });
             });
 
             const updateWeekly = () => {
@@ -9167,12 +8338,12 @@ function getFilterDescription() {
                 updateWeeklyView();
             };
 
-            weeklyFornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(btn => { 
-                btn.addEventListener('click', () => { 
-                    const fornecedor = btn.dataset.fornecedor; 
-                    if (currentWeeklyFornecedor === fornecedor) { currentWeeklyFornecedor = ''; btn.classList.remove('active'); } else { currentWeeklyFornecedor = fornecedor; weeklyFornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); } 
-                    updateWeekly(); 
-                }); 
+            weeklyFornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const fornecedor = btn.dataset.fornecedor;
+                    if (currentWeeklyFornecedor === fornecedor) { currentWeeklyFornecedor = ''; btn.classList.remove('active'); } else { currentWeeklyFornecedor = fornecedor; weeklyFornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
+                    updateWeekly();
+                });
             });
             weeklySupervisorFilter.addEventListener('change', updateWeekly);
             clearWeeklyFiltersBtn.addEventListener('click', () => { resetWeeklyFilters(); markDirty('semanal'); });
@@ -9296,7 +8467,7 @@ function getFilterDescription() {
                 updateComparisonProductFilter();
                 comparisonProductFilterDropdown.classList.toggle('hidden');
             });
-            
+
             const debouncedComparisonProductSearch = debounce(updateComparisonProductFilter, 250);
             comparisonProductFilterDropdown.addEventListener('input', (e) => {
                 if (e.target.id === 'comparison-product-search-input') {
@@ -9327,11 +8498,11 @@ function getFilterDescription() {
                     updateStockProductFilter();
                 }
             });
-        
+
             stockFilialFilter.addEventListener('change', handleStockFilterChange);
             clearStockFiltersBtn.addEventListener('click', resetStockFilters);
             stockFornecedorToggleContainer.addEventListener('click', (e) => { if (e.target.tagName === 'BUTTON') { const fornecedor = e.target.dataset.fornecedor; if (currentStockFornecedor === fornecedor) { currentStockFornecedor = ''; e.target.classList.remove('active'); } else { currentStockFornecedor = fornecedor; stockFornecedorToggleContainer.querySelectorAll('.fornecedor-btn').forEach(b => b.classList.remove('active')); e.target.classList.add('active'); } handleStockFilterChange(); } });
-            
+
             const stockSupervisorFilterBtn = document.getElementById('stock-supervisor-filter-btn');
             const stockSupervisorFilterDropdown = document.getElementById('stock-supervisor-filter-dropdown');
             stockSupervisorFilterBtn.addEventListener('click', () => stockSupervisorFilterDropdown.classList.toggle('hidden'));
@@ -9340,7 +8511,7 @@ function getFilterDescription() {
                     const { value, checked } = e.target;
                     if (checked) selectedStockSupervisors.push(value);
                     else selectedStockSupervisors = selectedStockSupervisors.filter(s => s !== value);
-                    
+
                     selectedStockSellers = [];
                     handleStockFilterChange();
                 }
@@ -9534,7 +8705,7 @@ function getFilterDescription() {
                     const { value, checked } = e.target;
                     if (checked) selectedInnovationsSupervisors.push(value);
                     else selectedInnovationsSupervisors = selectedInnovationsSupervisors.filter(s => s !== value);
-                    
+
                     selectedInnovationsSupervisors = updateSupervisorFilter(innovationsMonthSupervisorFilterDropdown, document.getElementById('innovations-month-supervisor-filter-text'), selectedInnovationsSupervisors, allSalesData, true);
 
                     selectedInnovationsMonthSellers = [];
@@ -9604,7 +8775,7 @@ function getFilterDescription() {
 
 
             document.getElementById('export-coverage-pdf-btn').addEventListener('click', exportCoveragePDF);
-            
+
             const coverageChartToggleBtn = document.getElementById('coverage-chart-toggle-btn');
             if (coverageChartToggleBtn) {
                 coverageChartToggleBtn.addEventListener('click', () => {
@@ -9644,19 +8815,19 @@ function getFilterDescription() {
 
                     btn.classList.remove('text-slate-400', 'font-medium');
                     btn.classList.add('active', 'text-teal-400', 'font-bold', 'border-b-2', 'border-teal-400');
-                    
+
                     const indicator = document.createElement('span');
                     indicator.className = 'w-2 h-2 rounded-full bg-teal-400 inline-block indicator mr-2';
                     btn.prepend(indicator);
 
                     currentGoalsSupplier = btn.dataset.supplier;
                     currentGoalsBrand = btn.dataset.brand || null;
-                    
+
                     const cacheKey = currentGoalsSupplier + (currentGoalsBrand ? `_${currentGoalsBrand}` : '');
-                    
+
                     // --- Update Metrics Display and Pre-fill Inputs ---
                     const metrics = globalGoalsMetrics[cacheKey];
-                    
+
                     if (!goalsTargets[cacheKey]) {
                         goalsTargets[cacheKey] = { fat: 0, vol: 0 };
                     }
@@ -9671,7 +8842,7 @@ function getFilterDescription() {
                     // Update Input Fields
                     const fatInput = document.getElementById('goal-global-fat');
                     const volInput = document.getElementById('goal-global-vol');
-                    
+
                     if (fatInput) fatInput.value = target.fat.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                     if (volInput) volInput.value = target.vol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
                     // ----------------------------------------------------------
@@ -9687,13 +8858,13 @@ function getFilterDescription() {
             const btnSummary = document.getElementById('goals-category-summary-btn');
             const subTabsElmaChips = document.getElementById('goals-sub-tabs-elmachips');
             const subTabsFoods = document.getElementById('goals-sub-tabs-foods');
-            
+
             // Containers
             const goalsMainContainer = document.getElementById('goals-input-cards');
             const goalsTableContainer = document.getElementById('goals-table-container'); // Main table wrapper
             const goalsFiltersContainer = document.querySelector('#goals-gv-content > div.mb-4'); // Filters wrapper
             const goalsSummaryContainer = document.getElementById('goals-summary-content');
-            
+
             // Filter Wrappers
             const wrapperSupervisor = document.getElementById('goals-gv-supervisor-filter-wrapper');
             const wrapperSeller = document.getElementById('goals-gv-seller-filter-wrapper');
@@ -9711,7 +8882,7 @@ function getFilterDescription() {
                 // Hide All Sub-tabs
                 if(subTabsElmaChips) subTabsElmaChips.classList.add('hidden');
                 if(subTabsFoods) subTabsFoods.classList.add('hidden');
-                
+
                 // Toggle Content
                 if (view === 'summary') {
                     if(btnSummary) {
@@ -9721,10 +8892,10 @@ function getFilterDescription() {
                     if(goalsSummaryContainer) goalsSummaryContainer.classList.remove('hidden');
                     if(goalsMainContainer) goalsMainContainer.classList.add('hidden');
                     if(goalsTableContainer) goalsTableContainer.classList.add('hidden');
-                    
+
                     // HIDE Main Filters Container completely
                     if(goalsFiltersContainer) goalsFiltersContainer.classList.add('hidden');
-                    
+
                     // Ensure Summary Filters are initialized/visible (they are inside summary container)
                     updateGoalsSummaryView();
                 } else {
@@ -9732,7 +8903,7 @@ function getFilterDescription() {
                     if(goalsSummaryContainer) goalsSummaryContainer.classList.add('hidden');
                     if(goalsMainContainer) goalsMainContainer.classList.remove('hidden');
                     if(goalsTableContainer) goalsTableContainer.classList.remove('hidden');
-                    
+
                     // SHOW Main Filters Container and all wrappers
                     if(goalsFiltersContainer) goalsFiltersContainer.classList.remove('hidden');
                     if(wrapperSupervisor) wrapperSupervisor.classList.remove('hidden');
@@ -9745,7 +8916,7 @@ function getFilterDescription() {
                             btnElmaChips.classList.add('bg-[#0d9488]', 'text-white', 'shadow-lg', 'border-teal-500/50');
                         }
                         if(subTabsElmaChips) subTabsElmaChips.classList.remove('hidden');
-                        
+
                         // Select First Tab of Elma Chips
                         const firstTab = subTabsElmaChips.querySelector('.goals-sub-tab');
                         if (firstTab) firstTab.click();
@@ -9755,12 +8926,12 @@ function getFilterDescription() {
                             btnFoods.classList.add('bg-[#0d9488]', 'text-white', 'shadow-lg', 'border-teal-500/50');
                         }
                         if(subTabsFoods) subTabsFoods.classList.remove('hidden');
-                        
+
                         // Select First Tab of Foods
                         const firstTab = subTabsFoods.querySelector('.goals-sub-tab');
                         if (firstTab) firstTab.click();
                     }
-                    
+
                     // --- FIX: Update Inputs for Default Selection when Switching Category ---
                     // When clicking "Elma Chips" or "Foods", we default to the first tab.
                     // We need to ensure the inputs are loaded for that default tab.
@@ -9809,14 +8980,14 @@ function getFilterDescription() {
                     const { value, checked } = e.target;
                     if (checked) selectedGoalsGvSupervisors.push(value);
                     else selectedGoalsGvSupervisors = selectedGoalsGvSupervisors.filter(s => s !== value);
-                    
+
                     selectedGoalsGvSupervisors = updateSupervisorFilter(goalsGvSupervisorFilterDropdown, goalsGvSupervisorFilterText, selectedGoalsGvSupervisors, allSalesData, true);
 
-                    // Reset sellers or keep intersection? 
+                    // Reset sellers or keep intersection?
                     // Standard: Update Seller Options based on Supervisor
                     selectedGoalsGvSellers = [];
                     selectedGoalsGvSellers = updateSellerFilter(selectedGoalsGvSupervisors, goalsGvSellerFilterDropdown, goalsGvSellerFilterText, selectedGoalsGvSellers, allSalesData);
-                    
+
                     updateGoals();
                 }
             });
@@ -9827,9 +8998,9 @@ function getFilterDescription() {
                     const { value, checked } = e.target;
                     if (checked) selectedGoalsGvSellers.push(value);
                     else selectedGoalsGvSellers = selectedGoalsGvSellers.filter(s => s !== value);
-                    
+
                     selectedGoalsGvSellers = updateSellerFilter(selectedGoalsGvSupervisors, goalsGvSellerFilterDropdown, goalsGvSellerFilterText, selectedGoalsGvSellers, allSalesData, true);
-                    
+
                     updateGoals();
                 }
             });
@@ -9846,13 +9017,13 @@ function getFilterDescription() {
 
             if (goalsSummarySupervisorFilterBtn && goalsSummarySupervisorFilterDropdown) {
                 goalsSummarySupervisorFilterBtn.addEventListener('click', () => goalsSummarySupervisorFilterDropdown.classList.toggle('hidden'));
-                
+
                 goalsSummarySupervisorFilterDropdown.addEventListener('change', (e) => {
                     if (e.target.type === 'checkbox') {
                         const { value, checked } = e.target;
                         if (checked) selectedGoalsSummarySupervisors.push(value);
                         else selectedGoalsSummarySupervisors = selectedGoalsSummarySupervisors.filter(s => s !== value);
-                        
+
                         updateSupervisorFilter(goalsSummarySupervisorFilterDropdown, document.getElementById('goals-summary-supervisor-filter-text'), selectedGoalsSummarySupervisors, allSalesData, true);
                         updateGoalsSummaryView();
                     }
@@ -9901,7 +9072,7 @@ function getFilterDescription() {
             // Add Input Listeners for Real-time State Updates
             const fatInput = document.getElementById('goal-global-fat');
             const volInput = document.getElementById('goal-global-vol');
-            
+
             // REMOVED: Automatic update on change/input to prevent overwriting user input before distribution.
             // Values are now read directly from the input when the "Distribute" button is clicked.
 
@@ -9914,7 +9085,7 @@ function getFilterDescription() {
                     const { value, checked } = e.target;
                     if (checked) selectedGoalsSvSupervisors.push(value);
                     else selectedGoalsSvSupervisors = selectedGoalsSvSupervisors.filter(s => s !== value);
-                    
+
                     selectedGoalsSvSupervisors = updateSupervisorFilter(goalsSvSupervisorFilterDropdown, goalsSvSupervisorFilterText, selectedGoalsSvSupervisors, allSalesData, true);
                     updateGoalsSvView();
                 }
@@ -9987,10 +9158,10 @@ function getFilterDescription() {
             });
 
             document.getElementById('mix-filial-filter').addEventListener('change', updateMix);
-            
+
             const mixCityFilter = document.getElementById('mix-city-filter');
             const mixCitySuggestions = document.getElementById('mix-city-suggestions');
-            
+
             mixCityFilter.addEventListener('input', (e) => {
                 e.target.value = e.target.value.replace(/[0-9]/g, '');
                 const { clients } = getMixFilteredData({ excludeFilter: 'city' });
@@ -10039,11 +9210,11 @@ function getFilterDescription() {
                     const { value, checked } = e.target;
                     if (checked) selectedMixRedes.push(value);
                     else selectedMixRedes = selectedMixRedes.filter(r => r !== value);
-                    
+
                     mixRedeGroupFilter = 'com_rede';
                     document.getElementById('mix-rede-group-container').querySelectorAll('button').forEach(b => b.classList.remove('active'));
                     document.getElementById('mix-com-rede-btn').classList.add('active');
-                    
+
                     handleMixFilterChange({ skipFilter: 'rede' });
                 }
             });
@@ -10056,7 +9227,7 @@ function getFilterDescription() {
                 markDirty('mix');
                 updateMixView();
             });
-            
+
             document.getElementById('mix-prev-page-btn').addEventListener('click', () => {
                 if (mixTableState.currentPage > 1) {
                     mixTableState.currentPage--;
@@ -10087,7 +9258,7 @@ function getFilterDescription() {
             const debouncedHandleCoverageChange = debounce(updateCoverage, 400);
 
             coverageFilialFilter.addEventListener('change', updateCoverage);
-            
+
             const coverageSupervisorFilterBtn = document.getElementById('coverage-supervisor-filter-btn');
             const coverageSupervisorFilterDropdown = document.getElementById('coverage-supervisor-filter-dropdown');
             coverageSupervisorFilterBtn.addEventListener('click', () => coverageSupervisorFilterDropdown.classList.toggle('hidden'));
@@ -10096,7 +9267,7 @@ function getFilterDescription() {
                     const { value, checked } = e.target;
                     if (checked) selectedCoverageSupervisors.push(value);
                     else selectedCoverageSupervisors = selectedCoverageSupervisors.filter(s => s !== value);
-                    
+
                     selectedCoverageSellers = [];
                     updateCoverage();
                 }
@@ -10261,7 +9432,7 @@ function getFilterDescription() {
         selectedMainSuppliers = updateSupplierFilter(document.getElementById('fornecedor-filter-dropdown'), document.getElementById('fornecedor-filter-text'), selectedMainSuppliers, [...allSalesData, ...allHistoryData], 'main');
         selectedCitySupervisors = updateSupervisorFilter(document.getElementById('city-supervisor-filter-dropdown'), document.getElementById('city-supervisor-filter-text'), selectedCitySupervisors, allSalesData);
         selectedStockSupervisors = updateSupervisorFilter(document.getElementById('stock-supervisor-filter-dropdown'), document.getElementById('stock-supervisor-filter-text'), selectedStockSupervisors, [...allSalesData, ...allHistoryData]);
-        
+
         updateSellerFilter(selectedMainSupervisors, vendedorFilterDropdown, vendedorFilterText, selectedSellers, allSalesData);
         updateTipoVendaFilter(tipoVendaFilterDropdown, tipoVendaFilterText, selectedTiposVenda, allSalesData);
         updateSellerFilter(selectedCitySupervisors, cityVendedorFilterDropdown, cityVendedorFilterText, selectedCitySellers, allSalesData);
@@ -10291,10 +9462,10 @@ function getFilterDescription() {
 
         initializeRedeFilters();
         setupEventListeners();
-        
+
         // Assegura que os dados históricos estão prontos antes da primeira renderização
         calculateHistoricalBests();
-        
+
         // --- Initialization for Goals Metrics ---
         calculateGoalsMetrics();
         // Initialize Targets with Defaults (Pre-fill)
@@ -10314,7 +9485,7 @@ function getFilterDescription() {
             const vi = document.getElementById('goal-global-vol');
             if (fi) fi.value = defGoalsMetric.prevFat.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             if (vi) vi.value = defGoalsMetric.prevVol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-            
+
             const refAvgFat = document.getElementById('ref-avg-fat');
             const refPrevFat = document.getElementById('ref-prev-fat');
             const refAvgVol = document.getElementById('ref-avg-vol');
@@ -10326,1497 +9497,3 @@ function getFilterDescription() {
 
         navigateTo('dashboard');
         renderTable(aggregatedOrders);
-    </script>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const salesFileInput = document.getElementById('sales-file-input');
-            const clientsFileInput = document.getElementById('clients-file-input');
-            const productsFileInput = document.getElementById('products-file-input');
-            const historyFileInput = document.getElementById('history-file-input');
-            const innovationsFileInput = document.getElementById('innovations-file-input');
-            const generateBtn = document.getElementById('generate-btn');
-
-            const statusContainer = document.getElementById('status-container');
-            const statusText = document.getElementById('status-text');
-            const progressBar = document.getElementById('progress-bar');
-
-            const downloadContainer = document.getElementById('download-container');
-            const downloadLink = document.getElementById('download-link');
-
-            let files = {};
-
-            const checkFiles = () => {
-                generateBtn.disabled = !(files.salesFile && files.clientsFile && files.productsFile && files.historyFile && files.innovationsFile);
-                downloadContainer.classList.add('hidden');
-            };
-
-            salesFileInput.addEventListener('change', (e) => { files.salesFile = e.target.files[0]; checkFiles(); });
-            clientsFileInput.addEventListener('change', (e) => { files.clientsFile = e.target.files[0]; checkFiles(); });
-            productsFileInput.addEventListener('change', (e) => { files.productsFile = e.target.files[0]; checkFiles(); });
-            historyFileInput.addEventListener('change', (e) => { files.historyFile = e.target.files[0]; checkFiles(); });
-            innovationsFileInput.addEventListener('change', (e) => { files.innovationsFile = e.target.files[0]; checkFiles(); });
-
-            const workerScript = document.getElementById('worker-script').textContent;
-            const workerBlob = new Blob([workerScript], { type: 'application/javascript' });
-            const workerUrl = URL.createObjectURL(workerBlob);
-            const worker = new Worker(workerUrl);
-
-            worker.onmessage = (event) => {
-                const { type, status, percentage, data, message } = event.data;
-
-                if (type === 'progress') {
-                    statusText.textContent = status;
-                    progressBar.style.width = `${percentage}%`;
-                } else if (type === 'result') {
-                    statusText.textContent = 'O seu relatório está pronto!';
-                    progressBar.style.width = '100%';
-                    generateReportFile(data);
-                    downloadContainer.classList.remove('hidden');
-                    generateBtn.disabled = false;
-                } else if (type === 'error') {
-                    statusContainer.classList.remove('hidden');
-                    statusText.innerHTML = `<p class="text-red-500">Erro: ${message}</p>`;
-                    progressBar.style.width = '0%';
-                    generateBtn.disabled = false;
-                }
-            };
-
-            generateBtn.addEventListener('click', () => {
-                if (!files.salesFile || !files.clientsFile || !files.productsFile || !files.historyFile || !files.innovationsFile) return;
-
-                generateBtn.disabled = true;
-                statusContainer.classList.remove('hidden');
-                statusText.textContent = 'A iniciar o processamento...';
-                progressBar.style.width = '0%';
-                downloadContainer.classList.add('hidden');
-
-                worker.postMessage({
-                    salesFile: files.salesFile,
-                    clientsFile: files.clientsFile,
-                    productsFile: files.productsFile,
-                    historyFile: files.historyFile,
-                    innovationsFile: files.innovationsFile
-                });
-            });
-
-            function generateReportFile(data) {
-                // Escape closing script tags to prevent breaking the HTML structure
-                const jsonDataString = JSON.stringify(data).replace(/<\/script>/g, '<\\/script>');
-                const generationDate = new Date().toLocaleString('pt-BR');
-
-                const scriptLogic = document.getElementById('report-logic-script').textContent;
-
-                // INÍCIO DO TEMPLATE MODIFICADO COM TEMA ESCURO
-                const reportTemplate = `
-                    <!DOCTYPE html>
-                    <html lang="pt-br">
-                    <head>
-                        <meta charset="UTF-8">
-                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                        <title>Painel de Vendas - PRIME DISTRIBUIÇÃO</title>
-                        <link rel="icon" type="image/jpeg" href="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSnaaZ2WnZBJIxPRfabS4Ug78PKK6Gu3nbHlw&s">
-                        <script src="https://cdn.tailwindcss.com"><\/script>
-                        <script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script>
-                        <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"><\/script>
-                        <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>
-                        <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"><\/script>
-                        <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.min.js"><\/script>
-                        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-                        <style>
-                            /* Estilo base do tema escuro */
-                            body { font-family: 'Inter', sans-serif; background-color: #0d1126; }
-                            
-                            /* Scrollbars personalizadas para o tema escuro */
-                            ::-webkit-scrollbar { width: 8px; }
-                            ::-webkit-scrollbar-track { background: #161e3d; } /* Cor de fundo da trilha */
-                            ::-webkit-scrollbar-thumb { background: #4a5568; border-radius: 10px; } /* Cor do "polegar" */
-                            ::-webkit-scrollbar-corner { background: #161e3d; }
-                            
-                            /* Cabeçalhos de tabela fixos (sticky) */
-                            .sticky-header th { 
-                                position: sticky; 
-                                top: 0; 
-                                z-index: 10; 
-                                background-color: #161e3d; /* Cor de fundo escura para o cabeçalho */
-                                border-bottom: 2px solid #2d3748; /* Borda escura */
-                            }
-                            .hidden { display: none; }
-                            
-                            /* Estilo de botões ativos (filtros, toggles) */
-                            .metric-btn.active, .monthly-metric-btn.active, .fornecedor-btn.active, .comparison-toggle-btn.active, .group-btn.active, #main-rede-group-container > div > button.active, #city-rede-group-container > div > button.active, #comparison-rede-group-container > div > button.active, #stock-rede-group-container > div > button.active { 
-                                background-color: #38b2ac; /* teal-500 */
-                                color: #FFF; 
-                            }
-                            
-                            /* Overlay do modal */
-                            .modal-overlay { 
-                                position: fixed; 
-                                top: 0; left: 0; right: 0; bottom: 0; 
-                                background: rgba(0,0,0,0.7); /* Overlay mais escuro */
-                                display: flex; 
-                                align-items: center; 
-                                justify-content: center; 
-                                z-index: 1000; 
-                            }
-                            
-                            /* Tooltip */
-                            .tooltip { position: relative; display: inline-block; cursor: pointer; }
-                            .tooltip .tooltip-text { 
-                                visibility: hidden; 
-                                width: auto; 
-                                min-width: 80px; 
-                                background-color: #1f2937; /* bg-gray-800 */
-                                color: #fff; 
-                                text-align: center; 
-                                border-radius: 6px; 
-                                padding: 5px 8px; 
-                                position: absolute; 
-                                z-index: 1001; 
-                                bottom: 125%; 
-                                left: 50%; 
-                                transform: translateX(-50%); 
-                                opacity: 0; 
-                                transition: opacity 0.3s; 
-                                pointer-events: none; 
-                                white-space: nowrap; 
-                            }
-                            .tooltip:hover .tooltip-text { visibility: visible; opacity: 1; }
-                            
-                            /* Scrollbar customizada para elementos internos */
-                            .custom-scrollbar::-webkit-scrollbar { width: 8px; }
-                            .custom-scrollbar::-webkit-scrollbar-track { background: #161e3d; }
-                            .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #4a5568; border-radius: 10px; }
-                            
-                            /* Estilo dos cartões KPI */
-                            .kpi-card { 
-                                background-color: #1d2347; /* Fundo do cartão */
-                                border-radius: 0.5rem; 
-                                padding: 1.5rem; 
-                                text-align: center; 
-                                border: 1px solid #2d3748; /* Borda (slate-700) */
-                                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); 
-                            }
-                            
-                            /* Botão de tendência de estoque ativo */
-        .stock-trend-btn.active, .coverage-trend-btn.active {
-                                outline: 2px solid #38b2ac; /* Destaque teal-500 */
-                                outline-offset: 2px; 
-                                transform: scale(1.1); 
-                            }
-                            
-                            /* Remove setas de input[type=number] */
-                            input[type=number]::-webkit-inner-spin-button, 
-                            input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-                            input[type=number] { -moz-appearance: textfield; }
-                        </style>
-                    </head>
-                    <body class="bg-[#0d1126] text-slate-300 antialiased">
-                        <aside id="side-menu" class="fixed top-0 left-0 z-50 w-64 h-screen transition-transform -translate-x-full bg-[#1d2347] border-r border-slate-700 flex flex-col">
-                            <div class="flex items-center justify-between p-4 border-b border-slate-700">
-                                <span class="text-xl font-bold text-white">Menu</span>
-                                <button id="close-sidebar-btn" class="text-slate-400 hover:text-white">
-                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                                </button>
-                            </div>
-                            <div class="flex-1 overflow-y-auto custom-scrollbar py-4 px-3">
-                                <ul class="space-y-2 font-medium">
-                                    <li>
-                                        <button data-target="dashboard" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
-                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
-                                            <span class="ml-3">Dashboard</span>
-                                        </button>
-                                    </li>
-                                    <li>
-                                        <button data-target="pedidos" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
-                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
-                                            <span class="ml-3">Pedidos</span>
-                                        </button>
-                                    </li>
-                                    <li>
-                                        <button data-target="comparativo" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
-                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
-                                            <span class="ml-3">Comparativo</span>
-                                        </button>
-                                    </li>
-                                    <li>
-                                        <button data-target="estoque" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
-                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
-                                            <span class="ml-3">Estoque</span>
-                                        </button>
-                                    </li>
-                                    <li>
-                                        <button data-target="cobertura" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
-                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
-                                            <span class="ml-3">Cobertura</span>
-                                        </button>
-                                    </li>
-                                    <li>
-                                        <button data-target="cidades" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
-                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                                            <span class="ml-3">Cidades</span>
-                                        </button>
-                                    </li>
-                                    <li>
-                                        <button data-target="semanal" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
-                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                                            <span class="ml-3">Semanal</span>
-                                        </button>
-                                    </li>
-                                    <li>
-                                        <button data-target="inovacoes-mes" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
-                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                                            <span class="ml-3">Inovações</span>
-                                        </button>
-                                    </li>
-                                    <li>
-                                        <button data-target="mix" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
-                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"></path></svg>
-                                            <span class="ml-3">Mix Salty & Foods</span>
-                                        </button>
-                                    </li>
-                                    <li>
-                                        <button data-target="goals" class="nav-link flex items-center p-2 text-slate-300 rounded-lg hover:bg-slate-700 group w-full text-left">
-                                            <svg class="w-5 h-5 text-slate-400 transition duration-75 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
-                                            <span class="ml-3">Metas</span>
-                                        </button>
-                                    </li>
-                                </ul>
-                            </div>
-                        </aside>
-                        <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-40 hidden glass-effect"></div>
-                        
-                        <div id="page-transition-loader" class="fixed inset-0 bg-black/30 backdrop-blur-sm z-[9999] flex items-center justify-center transition-opacity duration-300">
-                            <div class="flex flex-col items-center">
-                                <svg class="animate-spin -ml-1 mr-3 h-10 w-10 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                <span id="loader-text" class="text-white text-lg mt-4">Processando dados...</span>
-                            </div>
-                        </div>
-
-                        <div id="content-wrapper" class="min-h-screen transition-all duration-300">
-                            <div id="main-dashboard">
-                                <div class="container mx-auto p-4 sm:p-6 lg:p-8">
-                                    <!-- Cabeçalho com gradiente escuro -->
-                                    <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                        <div class="flex items-center gap-4">
-                                            <button class="sidebar-toggle text-white focus:outline-none">
-                                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-                                            </button>
-                                            <div class="flex-1 flex flex-col sm:flex-row justify-between items-start gap-4">
-                                                <div class="text-center sm:text-left">
-                                                    <h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1>
-                                                    <p class="text-slate-300 mt-1">Dados atualizados em: ${generationDate}</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </header>
-
-                                <!-- KPIs com bordas e cores atualizadas -->
-                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                                    <div class="kpi-card border-t-4 border-indigo-500 transition transform hover:-translate-y-1 duration-200">
-                                        <h3 class="text-slate-400 font-medium uppercase text-sm">Volume Tons</h3>
-                                        <p id="total-peso" class="text-4xl font-bold text-white my-2">0,0</p>
-                                    </div>
-                                    <div class="kpi-card border-t-4 border-teal-500 transition transform hover:-translate-y-1 duration-200">
-                                        <h3 class="text-slate-400 font-medium uppercase text-sm">Faturamento R$</h3>
-                                        <p id="total-vendas" class="text-4xl font-bold text-white my-2">R$ 0,00</p>
-                                    </div>
-                                    <div class="kpi-card border-t-4 border-green-500 transition transform hover:-translate-y-1 duration-200">
-                                        <h3 class="text-slate-400 font-medium uppercase text-sm">SKU/PDV</h3>
-                                        <p id="kpi-sku-pdv" class="text-4xl font-bold text-white my-2">0,0</p>
-                                    </div>
-                                    <div class="kpi-card border-t-4 border-purple-500 transition transform hover:-translate-y-1 duration-200">
-                                        <h3 class="text-slate-400 font-medium uppercase text-sm">Cobertura PDVs</h3>
-                                        <p id="kpi-positivacao" class="text-4xl font-bold text-white my-2">0,0%</p>
-                                        <p id="kpi-positivacao-percent" class="text-sm text-slate-400 -mt-1">0 PDVs</p>
-                                    </div>
-                                </div>
-
-                                <div class="mb-6 flex flex-col sm:flex-row justify-between items-center gap-4">
-                                    <!-- Botões de Categoria (Pepsico/Multimarcas) -->
-                                    <div id="fornecedor-toggle-container" class="w-full sm:w-auto rounded-lg p-1 flex justify-center sm:justify-start gap-2">
-                                        <button data-fornecedor="PEPSICO" class="fornecedor-btn bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg flex-1 sm:flex-none">PEPSICO</button>
-                                        <button data-fornecedor="MULTIMARCAS" class="fornecedor-btn bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg flex-1 sm:flex-none">MULTIMARCAS</button>
-                                    </div>
-                                    <!-- Botões de Navegação removidos (movidos para sidebar) -->
-                                </div>
-                                
-                                <!-- Container de Filtros -->
-                                <div id="main-filters" class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
-                                    <div class="flex flex-wrap gap-4 items-end">
-                                        <!-- Filtro de Rede -->
-                                        <div id="main-rede-filter-wrapper" class="relative flex-1 min-w-[200px]">
-                                            <label class="block mb-2 text-sm font-medium text-slate-400">Rede</label>
-                                            <div id="main-rede-group-container" class="inline-flex rounded-md shadow-sm w-full" role="group">
-                                                <button type="button" data-group="" class="group-btn active py-2 px-4 text-sm font-medium text-slate-300 bg-slate-700 border border-slate-600 rounded-l-lg hover:bg-slate-600 flex-1">Todos</button>
-                                                <button type="button" data-group="com_rede" id="main-com-rede-btn" class="group-btn py-2 px-4 text-sm font-medium text-slate-300 bg-slate-700 border-t border-b border-slate-600 hover:bg-slate-600 flex items-center justify-center gap-2 flex-1">
-                                                    <span id="main-com-rede-btn-text">Com Rede</span>
-                                                    <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                                                </button>
-                                                <button type="button" data-group="sem_rede" class="group-btn py-2 px-4 text-sm font-medium text-slate-300 bg-slate-700 border border-slate-600 rounded-r-lg hover:bg-slate-600 flex-1">Sem Rede</button>
-                                            </div>
-                                            <div id="main-rede-filter-dropdown" class="hidden absolute z-20 w-full mt-1 top-full left-0 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-left text-white"></div>
-                                        </div>
-                                        <!-- Outros Filtros -->
-                                         <div class="relative flex-1 min-w-[200px]">
-                                            <label for="supervisor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label>
-                                            <button id="supervisor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
-                                                <span id="supervisor-filter-text">Todos</span>
-                                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                            </button>
-                                            <div id="supervisor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                         </div>
-                                        <div class="relative flex-1 min-w-[200px]"><label for="vendedor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Vendedor</label><button id="vendedor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="vendedor-filter-text">Todos Vendedores</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></button><div id="vendedor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
-                                        <div class="relative flex-1 min-w-[200px]"><label for="tipo-venda-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Tipo Venda</label><button id="tipo-venda-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="tipo-venda-filter-text">Todos os Tipos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button><div id="tipo-venda-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
-                                         <div class="relative flex-1 min-w-[200px]">
-                                            <label for="fornecedor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Fornecedor</label>
-                                            <button id="fornecedor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
-                                                <span id="fornecedor-filter-text">Todos</span>
-                                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                            </button>
-                                            <div id="fornecedor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                         </div>
-                                        <div class="flex-1 min-w-[200px]"><label for="codcli-filter" class="block mb-2 text-sm font-medium text-slate-400">Cód. Cliente</label><input type="text" id="codcli-filter" placeholder="Digite o código..." class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"></div>
-                                        <div class="flex-1 min-w-[200px]"><label for="posicao-filter" class="block mb-2 text-sm font-medium text-slate-400">Posição</label><select id="posicao-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="">Todas</option><option value="L">Liberado</option><option value="M">Montado</option><option value="F">Faturado</option></select></div>
-                                        <div class="flex-1 min-w-[200px]"><button id="clear-filters-btn" class="w-full bg-slate-600 hover:bg-slate-500 text-white font-bold py-2.5 px-4 rounded-lg">Limpar Filtros</button></div>
-                                    </div>
-                                </div>
-                                <main id="app-container">
-                                    <div id="chartView" class="">
-                                        <!-- Gráfico de Tendência -->
-                                        <div class="mb-6 bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
-                                            <div class="flex justify-between items-center mb-4">
-                                                <div class="w-1/3">
-                                                    <label for="main-holiday-picker-btn" class="block mb-2 text-sm font-medium text-slate-400">Feriados do Mês</label>
-                                                    <button id="main-holiday-picker-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left focus:outline-none focus:ring-2 focus:ring-teal-500">Selecionar Feriados</button>
-                                                </div>
-                                                <div class="w-1/3 text-center">
-                                                    <h2 class="text-lg font-semibold text-white">Tendência de Faturamento</h2>
-                                                </div>
-                                                <div class="w-1/3"></div>
-                                            </div>
-                                            <div id="trendChartContainer" class="relative h-80"></div>
-                                        </div>
-                                        <!-- Gráficos menores -->
-                                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 id="sales-by-person-title" class="text-lg font-semibold text-white mb-4 text-center">Vendas por Supervisor</h2><div id="salesByPersonChartContainer" class="relative h-80"></div></div>
-                                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 id="faturamentoPorFornecedorTitle" class="text-lg font-semibold text-white mb-4 text-center">Faturamento por Categoria</h2><div id="faturamentoPorFornecedorChartContainer" class="relative h-80"></div></div>
-                                        </div>
-                                        <!-- Gráfico de Produtos -->
-                                        <div class="mt-6 bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
-                                            <div class="flex justify-between items-center mb-4"><h2 class="text-lg font-semibold text-white">Vendas por Produto</h2>
-                                                <div class="bg-slate-700 rounded-lg p-1 flex">
-                                                    <button id="faturamentoBtn" class="metric-btn active px-3 py-1 text-sm rounded-md text-white">Faturamento</button>
-                                                    <button id="pesoBtn" class="metric-btn px-3 py-1 text-sm rounded-md text-slate-300">Peso Kg</button>
-                                                </div>
-                                            </div>
-                                            <div id="salesByProductBarChartContainer" class="relative h-80"></div>
-                                        </div>
-                                    </div>
-                                    <!-- Visão de Tabela (Pedidos) -->
-                                    <div id="tableView" class="hidden">
-                                        <div class="overflow-x-auto bg-[#1d2347] rounded-lg border border-slate-700 shadow-sm" style="max-height: 60vh;">
-                                            <table class="min-w-full text-sm text-left text-slate-300">
-                                                <thead class="text-xs text-slate-400 uppercase sticky-header"> <!-- Sticky header já estilizado no <style> -->
-                                                    <tr><th class="px-4 py-3">Nº Pedido</th><th class="px-4 py-3">Cód. Cliente</th><th class="px-4 py-3">Vendedor</th><th class="px-4 py-3">Fornecedor</th><th class="px-4 py-3">Data Pedido</th><th class="px-4 py-3">Data Fat.</th><th class="px-4 py-3 text-right">Peso Total</th><th class="px-4 py-3 text-right">Faturamento Total</th><th class="px-4 py-3 text-center">Posição</th></tr>
-                                                </thead>
-                                                <tbody id="report-table-body" class="divide-y divide-slate-700"></tbody>
-                                            </table>
-                                        </div>
-                                        <!-- Paginação da Tabela -->
-                                        <div id="table-pagination-controls" class="hidden mt-4 flex justify-between items-center">
-                                            <button id="prev-page-btn" class="bg-slate-700 border border-slate-600 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg disabled:opacity-50" disabled>Anterior</button>
-                                            <span id="page-info-text" class="text-slate-400">Página 1 de 1</span>
-                                            <button id="next-page-btn" class="bg-slate-700 border border-slate-600 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg disabled:opacity-50" disabled>Próxima</button>
-                                        </div>
-                                    </div>
-                                </main>
-                            </div>
-                        </div>
-                        
-                        <!-- Ecrã de Cidades -->
-                        <div id="city-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
-                            <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                <div class="flex items-center gap-4">
-                                    <button class="sidebar-toggle text-white focus:outline-none">
-                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-                                    </button>
-                                    <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Análise de Vendas por Cidade</p></div>
-                                </div>
-                            </header>
-                            <div id="city-view-content">
-                                <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
-                                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
-                                        <!-- Filtro de Rede (Cidades) -->
-                                        <div id="city-rede-filter-wrapper" class="relative">
-                                            <label class="block mb-2 text-sm font-medium text-slate-400">Rede</label>
-                                            <div id="city-rede-group-container" class="inline-flex rounded-md shadow-sm" role="group">
-                                                <button type="button" data-group="" class="group-btn active py-2 px-4 text-sm font-medium text-slate-300 bg-slate-700 border border-slate-600 rounded-l-lg hover:bg-slate-600">Todos</button>
-                                                <div class="relative">
-                                                    <button type="button" data-group="com_rede" id="city-com-rede-btn" class="group-btn py-2 px-4 text-sm font-medium text-slate-300 bg-slate-700 border-t border-b border-slate-600 hover:bg-slate-600 flex items-center justify-center gap-2">
-                                                        <span id="city-com-rede-btn-text">Com Rede</span>
-                                                        <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                                    </button>
-                                                    <div id="city-rede-filter-dropdown" class="hidden absolute z-20 w-56 mt-1 top-full left-0 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-left text-white"></div>
-                                                </div>
-                                                <button type="button" data-group="sem_rede" class="group-btn py-2 px-4 text-sm font-medium text-slate-300 bg-slate-700 border border-slate-600 rounded-r-lg hover:bg-slate-600">Sem Rede</button>
-                                            </div>
-                                        </div>
-                                        <!-- Outros Filtros (Cidades) -->
-                                        <div class="relative">
-                                            <label for="city-supervisor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label>
-                                            <button id="city-supervisor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
-                                                <span id="city-supervisor-filter-text">Todos</span>
-                                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                            </button>
-                                            <div id="city-supervisor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                        </div>
-                                        <div class="relative"><label for="city-vendedor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Vendedor</label><button id="city-vendedor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="city-vendedor-filter-text">Todos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button><div id="city-vendedor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
-                                        <div class="relative"><label for="city-name-filter" class="block mb-2 text-sm font-medium text-slate-400">Cidade</label><input type="text" id="city-name-filter" placeholder="Digite a cidade..." class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5" autocomplete="off"><div id="city-suggestions" class="absolute z-10 w-full bg-slate-800 border border-slate-600 rounded-lg mt-1 hidden max-h-48 overflow-y-auto custom-scrollbar text-white"></div></div>
-                                        <div><label for="city-codcli-filter" class="block mb-2 text-sm font-medium text-slate-400">Cód. Cliente</label><input type="text" id="city-codcli-filter" placeholder="Digite o código..." class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"></div>
-                                        <div class="relative">
-                                            <label for="city-tipo-venda-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Tipo Venda</label>
-                                            <button id="city-tipo-venda-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
-                                                <span id="city-tipo-venda-filter-text">Todos os Tipos</span>
-                                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                            </button>
-                                            <div id="city-tipo-venda-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                        </div>
-                                    </div>
-                                    <div class="mt-4 flex justify-center">
-                                        <button id="clear-city-filters-btn" class="bg-slate-600 hover:bg-slate-500 text-white font-bold py-2 px-4 rounded-lg">Limpar Filtros</button>
-                                    </div>
-                                </div>
-                                <!-- Gráficos (Cidades) -->
-                                <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                                    <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
-                                        <div class="flex justify-between items-center mb-4">
-                                            <div class="w-1/4"><span class="text-xl font-bold text-indigo-400">Top 10</span></div>
-                                            <div class="w-1/2 text-center"><h2 id="city-chart-title" class="text-lg font-semibold text-white"></h2></div>
-                                            <div class="w-1/4 text-right"><p class="text-slate-400 text-sm">Total Vendido</p><p id="total-faturamento-cidade" class="text-xl font-bold text-green-400">R$ 0,00</p></div>
-                                        </div>
-                                        <div id="salesByClientInCityChartContainer" class="relative h-96"></div>
-                                    </div>
-                                    <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
-                                        <div class="flex justify-between items-center mb-4">
-                                            <div class="w-1/4"></div>
-                                            <div class="w-1/2 text-center"><h2 class="text-lg font-semibold text-white">Status dos Clientes</h2></div>
-                                            <div class="w-1/4 text-right">
-                                                <p class="text-slate-400 text-sm">Total Clientes</p>
-                                                <p id="total-clientes-cidade" class="text-xl font-bold text-teal-400">0</p>
-                                            </div>
-                                        </div>
-                                        <div id="customerStatusChartContainer" class="relative h-96 flex items-center justify-center"></div>
-                                    </div>
-                                </div>
-                                <!-- Tabelas (Cidades) -->
-                                <div class="bg-[#1d2347] p-4 rounded-lg mt-6 border border-slate-700 shadow-sm"><div class="flex justify-between items-center mb-4 px-4"><h3 class="text-lg font-semibold text-white">Clientes Ativos no Mês</h3><button id="export-active-pdf-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg text-sm">Exportar Relatório</button></div><div class="overflow-x-auto custom-scrollbar" style="max-height: 40vh;"><table class="min-w-full text-sm text-left text-slate-300"><thead class="text-xs text-slate-400 uppercase sticky-header"><tr><th class="px-4 py-3">Código</th><th class="px-4 py-3">Nome Fantasia</th><th class="px-4 py-3 text-right">Faturamento</th><th class="px-4 py-3">Cidade</th><th class="px-4 py-3">Bairro</th><th class="px-4 py-3">RCA 1</th></tr></thead><tbody id="city-active-detail-table-body" class="divide-y divide-slate-700"></tbody></table></div></div>
-                                <div class="bg-[#1d2347] p-4 rounded-lg mt-6 border border-slate-700 shadow-sm"><div class="flex justify-between items-center mb-4 px-4"><h3 class="text-lg font-semibold text-white">Clientes S/ Vendas no Mês</h3><button id="export-inactive-pdf-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg text-sm">Exportar Relatório</button></div><div class="overflow-x-auto custom-scrollbar" style="max-height: 40vh;"><table class="min-w-full text-sm text-left text-slate-300"><thead class="text-xs text-slate-400 uppercase sticky-header"><tr><th class="px-4 py-3">Código</th><th class="px-4 py-3">Nome Fantasia</th><th class="px-4 py-3">Cidade</th><th class="px-4 py-3">Bairro</th><th class="px-4 py-3 text-center">Última Compra</th><th class="px-4 py-3">RCA 1</th></tr></thead><tbody id="city-inactive-detail-table-body" class="divide-y divide-slate-700"></tbody></table></div></div>
-                            </div>
-                        </div>
-                        
-                        <!-- Ecrã Semanal -->
-                        <div id="weekly-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
-                            <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                <div class="flex items-center gap-4">
-                                    <button class="sidebar-toggle text-white focus:outline-none">
-                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-                                    </button>
-                                    <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Acompanhamento Semanal</p></div>
-                                </div>
-                            </header>
-                            <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
-                                <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
-                                    <div id="weekly-fornecedor-toggle-container" class="w-full sm:w-auto rounded-lg p-1 flex justify-center sm:justify-start gap-2"><button data-fornecedor="PEPSICO" class="fornecedor-btn bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg flex-1 sm:flex-none">PEPSICO</button><button data-fornecedor="MULTIMARCAS" class="fornecedor-btn bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg flex-1 sm:flex-none">MULTIMARCAS</button></div>
-                                    <button id="clear-weekly-filters-btn" class="bg-slate-600 hover:bg-slate-500 text-white font-bold py-2 px-4 rounded-lg">Limpar Filtros</button>
-                                </div>
-                                <div class="mt-4"><label class="block text-sm font-medium text-slate-400 mb-2">Filtrar Supervisores</label><div id="weekly-supervisor-filter" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 text-slate-300"></div></div>
-                            </div>
-                            <div class="grid grid-cols-1 gap-6">
-                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
-                                    <div class="flex justify-between items-center mb-4"><h2 class="text-lg font-semibold text-white text-center">Faturamento Mensal por Dia da Semana</h2><div class="text-right"><p class="text-slate-400 text-sm">Total do Mês</p><p id="total-mes-semanal" class="text-xl font-bold text-green-400">R$ 0,00</p></div></div><div id="weeklySalesChartContainer" class="relative h-96"></div>
-                                    <div class="mt-6 border-t border-slate-700 pt-4"><h3 class="text-md font-semibold text-white mb-3 text-center">Resumo de Faturamento Semanal</h3><div class="overflow-x-auto"><table class="min-w-full text-sm text-left text-slate-300"><thead class="text-xs text-slate-400 uppercase"><tr><th class="px-4 py-2 bg-slate-800 rounded-l-lg">Semana</th><th class="px-4 py-2 bg-slate-800 text-right rounded-r-lg">Faturamento Total</th></tr></thead><tbody id="weekly-summary-table-body" class="divide-y divide-slate-700"></tbody></table></div></div>
-                                </div>
-                                <div class="grid grid-cols-1 gap-6"><div class="grid grid-cols-1 lg:grid-cols-2 gap-6"><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 class="text-lg font-semibold text-white mb-4 text-center">Ranking de Positivação</h2><div id="positivacaoChartContainer" class="relative h-80"></div></div><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 class="text-lg font-semibold text-white mb-4 text-center">Ranking de Mix de Produtos (Por PDV)</h2><div id="mixChartContainer" class="relative h-80"></div></div></div><div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 class="text-lg font-semibold text-white mb-4 text-center">Top 10 Vendedores (Faturamento)</h2><div id="topSellersChartContainer" class="relative h-80"></div></div></div>
-                            </div>
-                        </div>
-                        
-                        <!-- Ecrã Comparativo -->
-                        <div id="comparison-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
-                            <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                <div class="flex items-center gap-4">
-                                    <button class="sidebar-toggle text-white focus:outline-none">
-                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-                                    </button>
-                                    <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Comparativo entre Meses</p></div>
-                                </div>
-                            </header>
-                            <!-- Filtros (Comparativo) -->
-                            <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
-                                <div id="comparison-rede-filter-wrapper" class="flex flex-col sm:flex-row justify-between items-center gap-4 mb-4">
-                                    <div class="relative w-full sm:w-1/2">
-                                        <label class="block mb-2 text-sm font-medium text-slate-400">Rede</label>
-                                        <div id="comparison-rede-group-container" class="inline-flex rounded-md shadow-sm w-full" role="group">
-                                            <button type="button" data-group="" class="group-btn active py-2 px-4 text-sm font-medium text-slate-300 bg-slate-700 border border-slate-600 rounded-l-lg hover:bg-slate-600 flex-1">Todos</button>
-                                            <button type="button" data-group="com_rede" id="comparison-com-rede-btn" class="group-btn py-2 px-4 text-sm font-medium text-slate-300 bg-slate-700 border-t border-b border-slate-600 hover:bg-slate-600 flex items-center justify-center gap-2 flex-1">
-                                                <span id="comparison-com-rede-btn-text">Com Rede</span>
-                                                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                            </button>
-                                            <button type="button" data-group="sem_rede" class="group-btn py-2 px-4 text-sm font-medium text-slate-300 bg-slate-700 border border-slate-600 rounded-r-lg hover:bg-slate-600 flex-1">Sem Rede</button>
-                                        </div>
-                                        <div id="comparison-rede-filter-dropdown" class="hidden absolute z-20 w-full mt-1 top-full left-0 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-left text-white"></div>
-                                    </div>
-                                    <div class="w-full sm:w-1/2">
-                                        <label class="block mb-2 text-sm font-medium text-slate-400">Pasta</label>
-                                        <div id="comparison-fornecedor-toggle-container" class="w-full rounded-lg p-1 flex justify-center gap-2">
-                                            <button data-fornecedor="PEPSICO" class="fornecedor-btn bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg flex-1">PEPSICO</button>
-                                            <button data-fornecedor="MULTIMARCAS" class="fornecedor-btn bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg flex-1">MULTIMARCAS</button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                                    <div class="relative">
-                                        <label for="comparison-supervisor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label>
-                                        <button id="comparison-supervisor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
-                                            <span id="comparison-supervisor-filter-text">Todos</span>
-                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                        </button>
-                                        <div id="comparison-supervisor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                    </div>
-                                    <div class="relative"><label for="comparison-vendedor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Vendedor</label><button id="comparison-vendedor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="comparison-vendedor-filter-text">Todos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button><div id="comparison-vendedor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
-                                    <div class="relative"><label for="comparison-supplier-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Fornecedor</label><button id="comparison-supplier-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="comparison-supplier-filter-text">Todos Fornecedores</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button><div id="comparison-supplier-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
-                                    <div class="relative"><label for="comparison-city-filter" class="block mb-2 text-sm font-medium text-slate-400">Cidade</label><input type="text" id="comparison-city-filter" placeholder="Digite a cidade..." class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5" autocomplete="off"><div id="comparison-city-suggestions" class="absolute z-10 w-full bg-slate-800 border border-slate-600 rounded-lg mt-1 hidden max-h-48 overflow-y-auto custom-scrollbar text-white"></div></div>
-                                </div>
-                                <div class="grid grid-cols-1 mt-4">
-                                    <div class="relative">
-                                        <label for="comparison-product-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Filtrar por Produto</label>
-                                        <button id="comparison-product-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="comparison-product-filter-text">Todos os Produtos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button>
-                                        <div id="comparison-product-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg">
-                                            <div class="p-2 border-b border-slate-700"><input type="text" id="comparison-product-search-input" placeholder="Buscar produto..." class="bg-slate-600 text-xs rounded-lg block w-full p-2 border border-slate-500 placeholder-slate-400 text-white focus:outline-none focus:ring-2 focus:ring-teal-500"></div>
-                                            <div id="comparison-product-list" class="max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end border-t border-slate-700 pt-4 mt-4">
-                                    <div><label for="comparison-filial-filter" class="block mb-2 text-sm font-medium text-slate-400">Filial</label><select id="comparison-filial-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="ambas" selected>Ambas</option><option value="05">Filial 05</option><option value="08">Filial 08</option></select></div>
-                                    <div class="relative">
-                                        <label for="comparison-tipo-venda-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Tipo Venda</label>
-                                        <button id="comparison-tipo-venda-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
-                                            <span id="comparison-tipo-venda-filter-text">Todos os Tipos</span>
-                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                        </button>
-                                        <div id="comparison-tipo-venda-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                    </div>
-                                    <button id="comparison-tendency-toggle" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-2.5 px-4 rounded-lg">Calcular Tendência</button>
-                                    <div>
-                                        <label for="comparison-holiday-picker-btn" class="block mb-2 text-sm font-medium text-slate-400">Feriados do Mês</label>
-                                        <button id="comparison-holiday-picker-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left focus:outline-none focus:ring-2 focus:ring-teal-500">Selecionar Feriados</button>
-                                    </div>
-                                    <button id="clear-comparison-filters-btn" class="w-full bg-slate-600 hover:bg-slate-500 text-white font-bold py-2.5 px-4 rounded-lg">Limpar Filtros</button>
-                                </div>
-                            </div>
-                            <!-- KPIs (Comparativo) -->
-                            <div id="comparison-kpi-container" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-6">
-                                <!-- KPIs serão renderizados aqui pelo JS -->
-                            </div>
-                            <!-- Gráficos (Comparativo) -->
-                            <div class="grid grid-cols-1 gap-6">
-                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
-                                    <div class="flex justify-center items-center mb-4 relative">
-                                        <!-- Metric Toggle (Left Side) - Only visible for Monthly View -->
-                                        <div id="comparison-monthly-metric-container" class="absolute left-0 top-0 bottom-0 flex items-center hidden">
-                                            <div class="flex bg-slate-700 rounded-lg p-1">
-                                                <button id="toggle-monthly-fat-btn" class="monthly-metric-btn active px-3 py-1 text-sm rounded-md text-white">Faturamento</button>
-                                                <button id="toggle-monthly-clients-btn" class="monthly-metric-btn px-3 py-1 text-sm rounded-md text-slate-300">Clientes</button>
-                                            </div>
-                                        </div>
-
-                                        <h2 id="comparison-chart-title" class="text-lg font-semibold text-white text-center">Comparativo de Faturamento Semanal</h2>
-                                        <div class="absolute right-0 top-0 bottom-0 flex items-center">
-                                            <div id="comparison-chart-toggle" class="flex bg-slate-700 rounded-lg p-1">
-                                                <button id="toggle-weekly-btn" class="comparison-toggle-btn active px-3 py-1 text-sm rounded-md text-white">Semanal</button>
-                                                <button id="toggle-monthly-btn" class="comparison-toggle-btn px-3 py-1 text-sm rounded-md text-slate-300">Mensal</button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div id="weeklyComparisonChartContainer" class="relative h-96"></div>
-                                    <div id="monthlyComparisonChartContainer" class="relative h-96 hidden"></div>
-                                </div>
-                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
-                                    <h2 class="text-lg font-semibold text-white text-center mb-4">Faturamento por Dia da Semana</h2>
-                                    <div id="dailyWeeklyComparisonChartContainer" class="relative h-96"></div>
-                                </div>
-                                <!-- Tabela (Comparativo) -->
-                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm"><h2 class="text-lg font-semibold text-white text-center mb-4">Variação de Faturamento por Supervisor</h2><div class="overflow-x-auto custom-scrollbar" style="max-height: 40vh;"><table class="min-w-full text-sm text-left text-slate-300"><thead class="text-xs text-slate-400 uppercase sticky-header"><tr><th class="px-4 py-3">Supervisor</th><th class="px-4 py-3 text-right">Média Trim.</th><th class="px-4 py-3 text-right">Fat. Mês Atual</th><th class="px-4 py-3 text-right">Variação</th></tr></thead><tbody id="supervisorComparisonTableBody" class="divide-y divide-slate-700"></tbody></table></div></div>
-                            </div>
-                        </div>
-                        
-                        <!-- Ecrã Estoque -->
-                        <div id="stock-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
-                            <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                <div class="flex items-center gap-4">
-                                    <button class="sidebar-toggle text-white focus:outline-none">
-                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-                                    </button>
-                                    <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Análise de Estoque</p></div>
-                                </div>
-                            </header>
-                            <!-- Filtros (Estoque) -->
-                            <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
-                                <div id="stock-rede-filter-wrapper" class="flex flex-col sm:flex-row justify-between items-center gap-4 mb-4">
-                                    <div class="relative w-full sm:w-1/2">
-                                        <label class="block mb-2 text-sm font-medium text-slate-400">Rede</label>
-                                        <div id="stock-rede-group-container" class="inline-flex rounded-md shadow-sm w-full" role="group">
-                                            <button type="button" data-group="" class="group-btn active py-2 px-4 text-sm font-medium text-slate-300 bg-slate-700 border border-slate-600 rounded-l-lg hover:bg-slate-600 flex-1">Todos</button>
-                                            <button type="button" data-group="com_rede" id="stock-com-rede-btn" class="group-btn py-2 px-4 text-sm font-medium text-slate-300 bg-slate-700 border-t border-b border-slate-600 hover:bg-slate-600 flex items-center justify-center gap-2 flex-1">
-                                                <span id="stock-com-rede-btn-text">Com Rede</span>
-                                                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                            </button>
-                                            <button type="button" data-group="sem_rede" class="group-btn py-2 px-4 text-sm font-medium text-slate-300 bg-slate-700 border border-slate-600 rounded-r-lg hover:bg-slate-600 flex-1">Sem Rede</button>
-                                        </div>
-                                        <div id="stock-rede-filter-dropdown" class="hidden absolute z-20 w-full mt-1 top-full left-0 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-left text-white"></div>
-                                    </div>
-                                    <div class="w-full sm:w-1/2">
-                                        <label class="block mb-2 text-sm font-medium text-slate-400">Pasta</label>
-                                        <div id="stock-fornecedor-toggle-container" class="w-full rounded-lg p-1 flex justify-center gap-2">
-                                            <button data-fornecedor="PEPSICO" class="fornecedor-btn bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg flex-1">PEPSICO</button>
-                                            <button data-fornecedor="MULTIMARCAS" class="fornecedor-btn bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg flex-1">MULTIMARCAS</button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                                    <div class="relative">
-                                        <label for="stock-supervisor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label>
-                                        <button id="stock-supervisor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
-                                            <span id="stock-supervisor-filter-text">Todos</span>
-                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                        </button>
-                                        <div id="stock-supervisor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                    </div>
-                                    <div class="relative"><label for="stock-vendedor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Vendedor</label><button id="stock-vendedor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="stock-vendedor-filter-text">Todos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button><div id="stock-vendedor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
-                                    <div class="relative"><label for="stock-supplier-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Fornecedor</label><button id="stock-supplier-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="stock-supplier-filter-text">Todos Fornecedores</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button><div id="stock-supplier-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
-                                    <div class="relative"><label for="stock-city-filter" class="block mb-2 text-sm font-medium text-slate-400">Cidade</label><input type="text" id="stock-city-filter" placeholder="Digite a cidade..." class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5" autocomplete="off"><div id="stock-city-suggestions" class="absolute z-10 w-full bg-slate-800 border border-slate-600 rounded-lg mt-1 hidden max-h-48 overflow-y-auto custom-scrollbar text-white"></div></div>
-                                </div>
-                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
-                                    <div class="lg:col-span-2 relative">
-                                        <label for="stock-product-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Produto</label>
-                                        <button id="stock-product-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="stock-product-filter-text">Todos os Produtos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button>
-                                        <div id="stock-product-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg">
-                                            <div class="p-2 border-b border-slate-700"><input type="text" id="stock-product-search-input" placeholder="Buscar produto..." class="bg-slate-600 text-xs rounded-lg block w-full p-2 border border-slate-500 placeholder-slate-400 text-white focus:outline-none focus:ring-2 focus:ring-teal-500"></div>
-                                            <div id="stock-product-list" class="max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label for="stock-filial-filter" class="block mb-2 text-sm font-medium text-slate-400">Filial</label>
-                                        <select id="stock-filial-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5">
-                                            <option value="ambas" selected>Ambas</option>
-                                            <option value="05">Filial 05</option>
-                                            <option value="08">Filial 08</option>
-                                        </select>
-                                    </div>
-                                    <div class="relative">
-                                        <label for="stock-tipo-venda-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Tipo Venda</label>
-                                        <button id="stock-tipo-venda-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
-                                            <span id="stock-tipo-venda-filter-text">Todos os Tipos</span>
-                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                        </button>
-                                        <div id="stock-tipo-venda-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                    </div>
-                                    <button id="clear-stock-filters-btn" class="w-full bg-slate-600 hover:bg-slate-500 text-white font-bold py-2.5 px-4 rounded-lg">Limpar Filtros</button>
-                                </div>
-                            </div>
-                            <!-- Tabela Principal (Estoque) -->
-                             <div class="bg-[#1d2347] p-4 rounded-lg mb-6 border border-slate-700 shadow-sm">
-                                <div class="flex justify-between items-center mb-4">
-                                    <h2 class="text-lg font-semibold text-white">Análise de Estoque e Tendência de Saída</h2>
-                                    <div class="flex items-end gap-4">
-                                        <div>
-                                            <label for="stock-working-days-input" class="block text-xs font-medium text-slate-400 mb-1 text-center">Dias Úteis</la bel>
-                                            <div class="flex items-center justify-center gap-1">
-                                                <input type="number" id="stock-working-days-input" value="0" min="1" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg block w-20 p-1.5 text-center focus:outline-none focus:ring-2 focus:ring-teal-500">
-                                                <span id="max-working-days-label" class="text-xs text-slate-400 whitespace-nowrap">(Máx: 0)</span>
-                                            </div>
-                                        </div>
-                                        <div id="stock-trend-filter-container" class="flex items-center gap-2">
-                                            <button data-trend="all" class="stock-trend-btn active p-1 rounded-full transition-transform duration-200"><div class="w-5 h-5 rounded-full bg-gray-400"></div></button>
-                                            <button data-trend="low" class="stock-trend-btn p-1 rounded-full transition-transform duration-200"><div class="w-5 h-5 rounded-full bg-red-500"></div></button>
-                                            <button data-trend="medium" class="stock-trend-btn p-1 rounded-full transition-transform duration-200"><div class="w-5 h-5 rounded-full bg-yellow-500"></div></button>
-                                            <button data-trend="good" class="stock-trend-btn p-1 rounded-full transition-transform duration-200"><div class="w-5 h-5 rounded-full bg-green-500"></div></button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="overflow-auto custom-scrollbar" style="max-height: 60vh;">
-                                    <table class="min-w-full text-sm text-left text-slate-300">
-                                        <thead class="text-xs text-slate-400 uppercase sticky-header">
-                                            <tr>
-                                                <th class="px-4 py-3">Produto</th>
-                                                <th class="px-4 py-3">Fornecedor</th>
-                                                <th class="px-4 py-3 text-right">Estoque Atual (CX.)</th>
-                                                <th class="px-4 py-3 text-right">Venda Média Mensal (CX.)</th>
-                                                <th class="px-4 py-3 text-right">Média diária (CX.)</th>
-                                                <th class="px-4 py-3 text-right">Tendência (Dias)</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="stock-analysis-table-body" class="divide-y divide-slate-700"></tbody>
-                                    </table>
-                                </div>
-                            </div>
-                            <!-- Tabelas Secundárias (Estoque) -->
-                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
-                                    <h2 class="text-lg font-semibold text-white text-center mb-4">Produtos com Crescimento</h2>
-                                    <div class="overflow-auto custom-scrollbar" style="max-height: 40vh;">
-                                        <table class="min-w-full text-sm text-slate-300"><thead class="text-xs text-slate-400 uppercase sticky-header"><tr><th class="px-2 py-2 text-left">Produto</th><th class="px-2 py-2 text-right">Vendido (Atual)</th><th class="px-2 py-2 text-right">Média Trim.</th><th class="px-2 py-2 text-right">Variação</th><th class="px-2 py-2 text-right">Estoque</th></tr></thead><tbody id="growth-table-body" class="divide-y divide-slate-700"></tbody></table>
-                                    </div>
-                                </div>
-                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
-                                    <h2 class="text-lg font-semibold text-white text-center mb-4">Produtos com Queda</h2>
-                                    <div class="overflow-auto custom-scrollbar" style="max-height: 40vh;">
-                                        <table class="min-w-full text-sm text-slate-300"><thead class="text-xs text-slate-400 uppercase sticky-header"><tr><th class="px-2 py-2 text-left">Produto</th><th class="px-2 py-2 text-right">Vendido (Atual)</th><th class="px-2 py-2 text-right">Média Trim.</th><th class="px-2 py-2 text-right">Variação</th><th class="px-2 py-2 text-right">Estoque</th></tr></thead><tbody id="decline-table-body" class="divide-y divide-slate-700"></tbody></table>
-                                    </div>
-                                </div>
-                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
-                                    <h2 class="text-lg font-semibold text-white text-center mb-4">Novos - Vendidos este Mês</h2>
-                                    <div class="overflow-auto custom-scrollbar" style="max-height: 40vh;">
-                                        <table class="min-w-full text-sm text-slate-300"><thead class="text-xs text-slate-400 uppercase sticky-header"><tr><th class="px-2 py-2 text-left">Produto</th><th class="px-2 py-2 text-right">Vendido (Atual)</th><th class="px-2 py-2 text-right">Média Trim.</th><th class="px-2 py-2 text-right">Estoque</th></tr></thead><tbody id="new-products-table-body" class="divide-y divide-slate-700"></tbody></table>
-                                    </div>
-                                </div>
-                                <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
-                                    <h2 class="text-lg font-semibold text-white text-center mb-4">Perdidos - Não vendidos este Mês</h2>
-                                    <div class="overflow-auto custom-scrollbar" style="max-height: 40vh;">
-                                        <table class="min-w-full text-sm text-slate-300"><thead class="text-xs text-slate-400 uppercase sticky-header"><tr><th class="px-2 py-2 text-left">Produto</th><th class="px-2 py-2 text-right">Vendido (Atual)</th><th class="px-2 py-2 text-right">Média Trim.</th><th class="px-2 py-2 text-right">Estoque</th></tr></thead><tbody id="lost-products-table-body" class="divide-y divide-slate-700"></tbody></table>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Ecrã Metas (Goals) -->
-                        <div id="goals-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
-                            <!-- Header with Title and Tabs -->
-                            <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
-                                    <div class="flex items-center gap-4">
-                                        <button class="sidebar-toggle text-white focus:outline-none">
-                                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-                                        </button>
-                                        <div>
-                                            <h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1>
-                                            <p class="text-slate-300">Planejamento de Metas (GV & SV)</p>
-                                        </div>
-                                    </div>
-                                    <!-- Top Right Tabs -->
-                                    <div class="flex bg-[#161e3d] p-1 rounded-lg border border-slate-700" id="goals-tabs">
-                                        <button data-tab="gv" class="px-6 py-2 rounded-md text-sm font-bold transition-colors bg-slate-700 text-white shadow-sm border border-teal-500 text-teal-500 active" id="btn-tab-gv">Rateio Metas</button>
-                                        <button data-tab="sv" class="px-6 py-2 rounded-md text-sm font-bold text-slate-400 hover:text-white transition-colors border border-transparent" id="btn-tab-sv">Relatório</button>
-                                    </div>
-                                </div>
-                            </header>
-
-                            <!-- Tab Content: Sugestão GV -->
-                            <div id="goals-gv-content">
-                                <!-- Category Selection Toggles -->
-                                <div class="flex flex-col gap-4 mb-6">
-                                    <div class="flex gap-4">
-                                        <button id="goals-category-elmachips-btn" class="px-8 py-3 bg-[#0d9488] text-white font-bold rounded hover:bg-teal-700 transition-colors uppercase tracking-wider text-sm shadow-lg border border-teal-500/50">ELMA CHIPS</button>
-                                        <button id="goals-category-foods-btn" class="px-8 py-3 bg-[#334155] text-slate-400 font-bold rounded hover:bg-slate-700 transition-colors uppercase tracking-wider text-sm border border-slate-700">FOODS</button>
-                                         <button id="goals-category-summary-btn" class="px-8 py-3 bg-[#334155] text-slate-400 font-bold rounded hover:bg-slate-700 transition-colors uppercase tracking-wider text-sm border border-slate-700">RESUMO</button>
-                                    </div>
-                                    
-                                    <!-- Sub-tabs Container -->
-                                    <div id="goals-sub-tabs-container">
-                                        <!-- Elma Chips Sub-tabs -->
-                                        <div class="flex border-b border-slate-700 overflow-x-auto" id="goals-sub-tabs-elmachips">
-                                            <button data-supplier="ELMA_ALL" class="goals-sub-tab px-6 py-3 text-teal-400 font-bold text-sm border-b-2 border-teal-400 flex items-center gap-2 whitespace-nowrap active">
-                                                <span class="w-2 h-2 rounded-full bg-teal-400 inline-block indicator"></span> ELMA
-                                            </button>
-                                            <button data-supplier="707" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">EXTRUSADOS</button>
-                                            <button data-supplier="708" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">NÃO EXTRUSADOS</button>
-                                            <button data-supplier="752" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">TORCIDA</button>
-                                        </div>
-
-                                        <!-- Foods Sub-tabs -->
-                                        <div class="hidden flex border-b border-slate-700 overflow-x-auto" id="goals-sub-tabs-foods">
-                                            <button data-supplier="FOODS_ALL" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">FOODS</button>
-                                            <button data-supplier="1119" data-brand="TODDYNHO" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">TODDYNHO</button>
-                                            <button data-supplier="1119" data-brand="TODDY" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">TODDY</button>
-                                            <button data-supplier="1119" data-brand="QUAKER_KEROCOCO" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">QUAKER / KEROCOCO</button>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Summary Content -->
-                                <div id="goals-summary-content" class="hidden mb-6">
-                                    <!-- Independent Filters for Summary -->
-                                    <div class="mb-4 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700 flex flex-col lg:flex-row justify-between items-end gap-4">
-                                        <div class="flex flex-col sm:flex-row gap-4 w-full lg:w-auto items-end">
-                                            <div class="relative w-full sm:w-64">
-                                                <label for="goals-summary-supervisor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label>
-                                                <button id="goals-summary-supervisor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
-                                                    <span id="goals-summary-supervisor-filter-text">Todos</span>
-                                                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                                </button>
-                                                <div id="goals-summary-supervisor-filter-dropdown" class="hidden absolute z-50 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                            </div>
-                                            <button id="clear-goals-summary-filters-btn" class="w-full sm:w-auto bg-slate-600 hover:bg-slate-500 text-white font-bold py-2.5 px-4 rounded-lg">Limpar Filtros</button>
-                                        </div>
-                                        
-                                        <!-- Totals Summary -->
-                                        <div class="flex flex-wrap gap-6 bg-[#161e3d] p-3 rounded-lg border border-slate-700/50 w-full lg:w-auto justify-end">
-                                            <div class="text-right px-2">
-                                                <p class="text-[10px] uppercase text-slate-400 font-bold mb-1">Total Meta Fat.</p>
-                                                <p class="text-xl font-bold text-teal-400" id="summary-total-fat">R$ 0,00</p>
-                                            </div>
-                                            <div class="text-right px-2 border-l border-slate-700">
-                                                <p class="text-[10px] uppercase text-slate-400 font-bold mb-1">Total Meta Ton.</p>
-                                                <p class="text-xl font-bold text-orange-400" id="summary-total-vol">0,000</p>
-                                            </div>
-                                            <div class="text-right px-2 border-l border-slate-700">
-                                                <p class="text-[10px] uppercase text-slate-400 font-bold mb-1">Total Meta Pos.</p>
-                                                <p class="text-xl font-bold text-purple-400" id="summary-total-pos">0</p>
-                                            </div>
-                                            <div class="text-right px-2 border-l border-slate-700">
-                                                <p class="text-[10px] uppercase text-slate-400 font-bold mb-1">Meta Mix Salty</p>
-                                                <p class="text-xl font-bold text-teal-400" id="summary-mix-salty">0</p>
-                                            </div>
-                                            <div class="text-right px-2 border-l border-slate-700">
-                                                <p class="text-[10px] uppercase text-slate-400 font-bold mb-1">Meta Mix Foods</p>
-                                                <p class="text-xl font-bold text-yellow-400" id="summary-mix-foods">0</p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="goals-summary-grid">
-                                        <!-- Summary Cards will be injected here -->
-                                    </div>
-                                </div>
-
-                                <!-- Meta Input Cards -->
-                                <div id="goals-input-cards" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6 bg-[#161e3d] p-4 rounded-lg border border-slate-700/50">
-                                    <!-- Faturamento Card -->
-                                    <div class="bg-[#1e2a5a] border border-blue-900/50 rounded-lg p-3 relative overflow-hidden group">
-                                        <div class="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
-                                        <label class="text-[10px] font-bold text-blue-300 uppercase tracking-wider mb-1 block">META FATURAMENTO (R$)</label>
-                                        <div class="flex gap-2">
-                                            <input type="text" id="goal-global-fat" class="w-full bg-[#0f172a] border border-blue-900/50 text-white font-bold text-lg p-2 rounded focus:outline-none focus:border-blue-500" value="0,00">
-                                            <button id="btn-distribute-fat" class="bg-blue-600 hover:bg-blue-500 text-white px-3 rounded flex items-center justify-center transition-colors">
-                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
-                                            </button>
-                                        </div>
-                                        <div class="flex justify-between text-[10px] text-slate-400 mt-1">
-                                            <span>Média Trim: <span id="ref-avg-fat" class="text-white font-bold">R$ 0,00</span></span>
-                                            <span>Mês Ant: <span id="ref-prev-fat" class="text-white font-bold">R$ 0,00</span></span>
-                                        </div>
-                                    </div>
-                                    <!-- Volume Card -->
-                                    <div class="bg-[#3c2a21] border border-orange-900/50 rounded-lg p-3 relative overflow-hidden group">
-                                        <div class="absolute top-0 left-0 w-1 h-full bg-orange-500"></div>
-                                        <label class="text-[10px] font-bold text-orange-300 uppercase tracking-wider mb-1 block">META VOLUME (TON)</label>
-                                        <div class="flex gap-2">
-                                            <input type="text" id="goal-global-vol" class="w-full bg-[#0f172a] border border-orange-900/50 text-white font-bold text-lg p-2 rounded focus:outline-none focus:border-orange-500" value="0,000">
-                                            <button id="btn-distribute-vol" class="bg-orange-600 hover:bg-orange-500 text-white px-3 rounded flex items-center justify-center transition-colors">
-                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
-                                            </button>
-                                        </div>
-                                        <div class="flex justify-between text-[10px] text-slate-400 mt-1">
-                                            <span>Média Trim: <span id="ref-avg-vol" class="text-white font-bold">0,000</span></span>
-                                            <span>Mês Ant: <span id="ref-prev-vol" class="text-white font-bold">0,000</span></span>
-                                        </div>
-                                    </div>
-                                    <!-- Positivação Card -->
-                                    <div class="bg-[#3b0764] border border-purple-900/50 rounded-lg p-3 relative overflow-hidden group">
-                                        <div class="absolute top-0 left-0 w-1 h-full bg-purple-500"></div>
-                                        <label class="text-[10px] font-bold text-purple-300 uppercase tracking-wider mb-1 block">META POSITIVAÇÃO</label>
-                                        <div class="flex flex-col gap-1">
-                                            <input type="text" id="goal-global-mix" class="w-full bg-[#0f172a] border border-purple-900/50 text-white font-bold text-lg p-2 rounded focus:outline-none focus:border-purple-500" value="0" oninput="calculateGoalMixVariation(this)">
-                                            <div id="goal-mix-variation" class="text-xs font-bold text-right h-4"></div>
-                                        </div>
-                                        <div class="flex justify-between text-[10px] text-slate-400 mt-1 border-t border-purple-900/30 pt-1">
-                                            <span>Média Trim: <span id="ref-avg-clients" class="text-white font-bold">0</span></span>
-                                            <span>Mês Ant: <span id="ref-prev-clients" class="text-white font-bold">0</span></span>
-                                        </div>
-                                    </div>
-                                    <!-- Summary -->
-                                    <div class="flex flex-col justify-center items-end text-right pr-4">
-                                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">TOTAL RATEADO</p>
-                                        <p class="text-2xl font-bold text-green-400">100% Distribuído</p>
-                                    </div>
-                                </div>
-
-                                <!-- Filters -->
-                                <div class="mb-4 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
-                                    <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 items-end">
-                                        <div id="goals-gv-supervisor-filter-wrapper" class="relative">
-                                            <label for="goals-gv-supervisor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label>
-                                            <button id="goals-gv-supervisor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
-                                                <span id="goals-gv-supervisor-filter-text">Todos</span>
-                                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                            </button>
-                                            <div id="goals-gv-supervisor-filter-dropdown" class="hidden absolute z-50 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                        </div>
-                                        <div id="goals-gv-seller-filter-wrapper" class="relative">
-                                            <label for="goals-gv-seller-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Vendedor</label>
-                                            <button id="goals-gv-seller-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
-                                                <span id="goals-gv-seller-filter-text">Todos</span>
-                                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                            </button>
-                                            <div id="goals-gv-seller-filter-dropdown" class="hidden absolute z-50 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                        </div>
-                                        <div id="goals-gv-codcli-filter-wrapper">
-                                            <label for="goals-gv-codcli-filter" class="block mb-2 text-sm font-medium text-slate-400">Cód. Cliente</label>
-                                            <input type="text" id="goals-gv-codcli-filter" placeholder="Digite o código..." class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5">
-                                        </div>
-                                        <button id="clear-goals-gv-filters-btn" class="w-full bg-slate-600 hover:bg-slate-500 text-white font-bold py-2.5 px-4 rounded-lg">Limpar Filtros</button>
-                                    </div>
-                                </div>
-
-                                <!-- Main Table -->
-                                <div id="goals-table-container" class="bg-[#1d2347] border border-slate-700 shadow-sm rounded-lg overflow-hidden">
-                                    <div class="overflow-auto custom-scrollbar" style="max-height: 60vh;">
-                                        <table class="min-w-full text-sm text-left text-slate-300 border-collapse">
-                                            <thead class="text-xs uppercase sticky top-0 z-20 bg-[#0f172a] text-slate-400">
-                                                <tr>
-                                                    <th rowspan="2" class="px-2 py-2 text-center w-16 border-r border-b border-slate-700">CÓD</th>
-                                                    <th rowspan="2" class="px-3 py-2 text-left w-48 border-r border-b border-slate-700">CLIENTE</th>
-                                                    <th rowspan="2" class="px-3 py-2 text-left w-24 border-r border-b border-slate-700">VENDEDOR</th>
-                                                    <th colspan="3" class="px-2 py-1 text-center bg-blue-900/30 text-blue-400 border-r border-slate-700 border-b-0">FATURAMENTO (R$)</th>
-                                                    <th colspan="3" class="px-2 py-1 text-center bg-orange-900/30 text-orange-400 border-r border-slate-700 border-b-0">VOLUME (TON)</th>
-                                                    <th rowspan="2" class="px-2 py-2 text-center w-16 bg-purple-900/20 text-purple-300 font-bold border-b border-slate-700">META POS.</th>
-                                                </tr>
-                                                <tr>
-                                                    <!-- Fat Headers -->
-                                                    <th class="px-2 py-2 text-right w-24 bg-blue-900/20 text-blue-300 border-r border-b border-slate-700/50 text-[10px]">MÉDIA</th>
-                                                    <th class="px-2 py-2 text-center w-16 bg-blue-900/20 text-blue-300 border-r border-b border-slate-700/50 text-[10px]">% SHARE</th>
-                                                    <th class="px-2 py-2 text-right w-24 bg-blue-900/20 text-blue-100 font-bold border-r border-b border-slate-700 text-[10px]">META AUTO</th>
-                                                    <!-- Vol Headers -->
-                                                    <th class="px-2 py-2 text-right w-24 bg-orange-900/20 text-orange-300 border-r border-b border-slate-700/50 text-[10px]">MÉDIA KG</th>
-                                                    <th class="px-2 py-2 text-center w-16 bg-orange-900/20 text-orange-300 border-r border-b border-slate-700/50 text-[10px]">% SHARE</th>
-                                                    <th class="px-2 py-2 text-right w-24 bg-orange-900/20 text-orange-100 font-bold border-r border-b border-slate-700 text-[10px]">META KG</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="goals-gv-table-body" class="divide-y divide-slate-800 bg-[#151c36]">
-                                                <!-- Rows will be populated by JS -->
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                    <!-- Pagination Controls -->
-                                    <div id="goals-pagination-controls" class="hidden flex justify-between items-center p-4 bg-[#161e3d] border-t border-slate-700">
-                                        <button id="goals-prev-page-btn" class="bg-slate-700 border border-slate-600 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg disabled:opacity-50 text-xs" disabled>Anterior</button>
-                                        <span id="goals-page-info-text" class="text-slate-400 text-xs">Página 1 de 1</span>
-                                        <button id="goals-next-page-btn" class="bg-slate-700 border border-slate-600 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg disabled:opacity-50 text-xs" disabled>Próxima</button>
-                                    </div>
-                                </div>
-                            </div> <!-- End goals-gv-content -->
-
-                            <!-- Tab Content: Meta SV -->
-                            <div id="goals-sv-content" class="hidden">
-                                <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
-                                    <div class="flex flex-col md:flex-row justify-between items-end gap-4">
-                                        <div class="relative w-full md:w-64">
-                                            <label for="goals-sv-supervisor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label>
-                                            <button id="goals-sv-supervisor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
-                                                <span id="goals-sv-supervisor-filter-text">Todos</span>
-                                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                            </button>
-                                            <div id="goals-sv-supervisor-filter-dropdown" class="hidden absolute z-50 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                        </div>
-                                        <button id="goals-sv-export-xlsx-btn" class="w-full md:w-auto bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 px-6 rounded-lg flex items-center justify-center gap-2 shadow-lg transition-colors">
-                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                                            Exportar Excel
-                                        </button>
-                                    </div>
-                                </div>
-                                
-                                <!-- Consolidated Table (SV) -->
-                                <div id="goals-sv-table-container" class="bg-[#1d2347] border border-slate-700 shadow-sm rounded-lg overflow-hidden">
-                                    <div class="overflow-auto custom-scrollbar" style="max-height: 75vh;">
-                                        <table class="min-w-full text-sm text-left text-slate-300 border-collapse" id="goals-sv-main-table">
-                                            <!-- Headers populated by JS -->
-                                            <tbody id="goals-sv-table-body" class="divide-y divide-slate-800 bg-[#151c36]"></tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-
-                        <!-- Ecrã Inovações Mês -->
-                        <div id="innovations-month-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
-                             <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                <div class="flex items-center gap-4">
-                                    <button class="sidebar-toggle text-white focus:outline-none">
-                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-                                    </button>
-                                    <div class="flex-1 flex flex-col sm:flex-row justify-between items-center gap-4">
-                                        <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Gráfico de Cobertura por Categoria de Inovação</p></div>
-                                        <button id="export-innovations-month-pdf-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Exportar PDF</button>
-                                    </div>
-                                </div>
-                            </header>
-                             <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6 mb-6">
-                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p class="text-slate-400 text-sm font-medium">Clientes Ativos (Filtro)</p><p id="innovations-month-active-clients-kpi" class="text-3xl font-bold text-teal-400 my-1">0</p><p class="text-xs text-slate-500">Base para os KPIs</p></div>
-                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p class="text-slate-400 text-sm font-medium">Cobertura Mês Anterior</p><p id="innovations-month-selection-coverage-value-kpi-previous" class="text-3xl font-bold text-orange-400 my-1">0%</p><p id="innovations-month-selection-coverage-count-kpi-previous" class="text-xs text-slate-500">0 de 0 clientes</p></div>
-                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p class="text-slate-400 text-sm font-medium">Cobertura Mês Atual</p><p id="innovations-month-selection-coverage-value-kpi" class="text-3xl font-bold text-cyan-400 my-1">0%</p><p id="innovations-month-selection-coverage-count-kpi" class="text-xs text-slate-500">0 de 0 clientes</p></div>
-                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p class="text-slate-400 text-sm font-medium">Cobertura Bonificação Ant.</p><p id="innovations-month-bonus-coverage-value-kpi-previous" class="text-3xl font-bold text-orange-400 my-1">0%</p><p id="innovations-month-bonus-coverage-count-kpi-previous" class="text-xs text-slate-500">0 de 0 clientes</p></div>
-                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p class="text-slate-400 text-sm font-medium">Cobertura Bonificação Atual</p><p id="innovations-month-bonus-coverage-value-kpi" class="text-3xl font-bold text-cyan-400 my-1">0%</p><p id="innovations-month-bonus-coverage-count-kpi" class="text-xs text-slate-500">0 de 0 clientes</p></div>
-                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200"><p id="innovations-month-top-coverage-title" class="text-slate-400 text-sm font-medium">Item com Maior Cobertura</p><p id="innovations-month-top-coverage-value-kpi" class="text-3xl font-bold text-purple-400 my-1">0%</p><p id="innovations-month-top-coverage-kpi" class="text-xs text-slate-500 truncate" title="Nenhum item analisado">-</p><p id="innovations-month-top-coverage-count-kpi" class="text-xs text-slate-500">0 PDVs</p></div>
-                            </div>
-                            <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
-                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
-                                    <div class="relative">
-                                        <label for="innovations-month-supervisor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label>
-                                        <button id="innovations-month-supervisor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
-                                            <span id="innovations-month-supervisor-filter-text">Todos</span>
-                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                        </button>
-                                        <div id="innovations-month-supervisor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                    </div>
-                                    <div class="relative"><label for="innovations-month-vendedor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Vendedor</label><button id="innovations-month-vendedor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="innovations-month-vendedor-filter-text">Todos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button><div id="innovations-month-vendedor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
-                                    <div class="relative"><label for="innovations-month-city-filter" class="block mb-2 text-sm font-medium text-slate-400">Cidade</label><input type="text" id="innovations-month-city-filter" placeholder="Digite a cidade..." class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5" autocomplete="off"><div id="innovations-month-city-suggestions" class="absolute z-10 w-full bg-slate-800 border border-slate-600 rounded-lg mt-1 hidden max-h-48 overflow-y-auto custom-scrollbar text-white"></div></div>
-                                    <div><label for="innovations-month-filial-filter" class="block mb-2 text-sm font-medium text-slate-400">Filial</label><select id="innovations-month-filial-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="ambas" selected>Ambas</option><option value="05">Filial 05</option><option value="08">Filial 08</option></select></div>
-                                    <div class="relative">
-                                        <label for="innovations-month-tipo-venda-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Tipo Venda</label>
-                                        <button id="innovations-month-tipo-venda-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
-                                            <span id="innovations-month-tipo-venda-filter-text">Todos os Tipos</span>
-                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                        </button>
-                                        <div id="innovations-month-tipo-venda-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                    </div>
-                                    <button id="clear-innovations-month-filters-btn" class="w-full bg-slate-600 hover:bg-slate-500 text-white font-bold py-2.5 px-4 rounded-lg">Limpar Filtros</button>
-                                </div>
-                                <div class="mt-4 border-t border-slate-700 pt-4">
-                                    <label for="innovations-month-category-filter" class="block mb-2 text-sm font-medium text-slate-400">Filtrar por Categoria de Inovação</label>
-                                    <select id="innovations-month-category-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="">Todas as Categorias</option></select>
-                                </div>
-                            </div>
-                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm mb-6">
-                                <div id="innovations-month-chartContainer" class="relative h-96"></div>
-                            </div>
-                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm mb-6">
-                                <h2 class="text-lg font-semibold text-white mb-4 text-center">Dados do Gráfico</h2>
-                                <div class="overflow-auto custom-scrollbar" style="max-height: 60vh;">
-                                    <table class="min-w-full text-sm text-left text-slate-300">
-                                        <thead class="text-xs text-slate-400 uppercase sticky-header"><tr><th class="px-2 py-2">CATEGORIA</th><th class="px-2 py-2">PRODUTO</th><th class="px-2 py-2 text-right">ESTOQUE CAIXAS</th><th class="px-2 py-2 text-right">COBERTURA MÊS ANT.</th><th class="px-2 py-2 text-right">COBERTURA MÊS ATUAL</th><th class="px-2 py-2 text-right">VARIAÇÃO</th></tr></thead>
-                                        <tbody id="innovations-month-table-body" class="divide-y divide-slate-700"></tbody>
-                                    </table>
-                                </div>
-                            </div>
-                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
-                                <h2 class="text-lg font-semibold text-white mb-2 text-center">Inovações por cliente</h2>
-                                <div id="innovations-by-client-legend" class="text-xs text-slate-400 mb-4 p-2 bg-slate-800 rounded"></div>
-                                <div class="overflow-auto custom-scrollbar" style="max-height: 60vh;">
-                                    <table class="min-w-full text-sm text-left text-slate-300">
-                                        <thead id="innovations-by-client-table-head" class="text-xs text-slate-400 uppercase sticky-header"></thead>
-                                        <tbody id="innovations-by-client-table-body" class="divide-y divide-slate-700"></tbody>
-                                    </table>
-                                </div>
-                                <!-- Paginação da Tabela Inovações -->
-                                <div id="innovations-pagination-controls" class="hidden mt-4 flex justify-between items-center">
-                                    <button id="innovations-prev-page-btn" class="bg-slate-700 border border-slate-600 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg disabled:opacity-50" disabled>Anterior</button>
-                                    <span id="innovations-page-info-text" class="text-slate-400">Página 1 de 1</span>
-                                    <button id="innovations-next-page-btn" class="bg-slate-700 border border-slate-600 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg disabled:opacity-50" disabled>Próxima</button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Ecrã Mix (Novo) -->
-                        <div id="mix-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
-                            <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                <div class="flex items-center gap-4">
-                                    <button class="sidebar-toggle text-white focus:outline-none">
-                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-                                    </button>
-                                    <div class="flex-1 flex flex-col sm:flex-row justify-between items-center gap-4">
-                                        <div>
-                                            <h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1>
-                                            <div class="flex items-center gap-2">
-                                                <p class="text-lg text-slate-300 -mt-1">Análise de Oportunidades (Mix Salty & Foods)</p>
-                                                <div class="relative group">
-                                                    <svg class="w-5 h-5 text-slate-400 cursor-help hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                                    <div class="absolute left-0 top-full mt-2 w-72 p-4 bg-slate-800 border border-slate-600 rounded-lg shadow-xl text-xs text-slate-300 hidden group-hover:block z-50">
-                                                        <p class="font-bold text-white mb-2 border-b border-slate-600 pb-1">Requisitos de Positivação:</p>
-                                                        <ul class="list-disc list-inside mb-3 text-slate-400 space-y-1">
-                                                            <li>Venda com Quantidade > 0</li>
-                                                            <li>Respeita filtros ativos (ex: Tipo Venda)</li>
-                                                        </ul>
-                                                        <p class="font-bold text-teal-400 mb-1">Mix Salty (Marcas):</p>
-                                                        <p class="mb-2">CHEETOS, DORITOS, FANDANGOS, RUFFLES, TORCIDA</p>
-                                                        <p class="font-bold text-yellow-400 mb-1">Mix Foods (Marcas):</p>
-                                                        <p>TODDYNHO, TODDY, QUAKER, KEROCOCO</p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <button id="export-mix-pdf-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Exportar PDF</button>
-                                    </div>
-                                </div>
-                            </header>
-
-                            <!-- KPIs -->
-                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200">
-                                    <div class="grid grid-cols-3 items-center mb-1">
-                                        <div class="col-span-1"></div> <!-- Spacer -->
-                                        <div class="col-span-1 text-center">
-                                            <span id="mix-kpi-title" class="text-slate-400 text-sm font-medium">Total Clientes (Filtro)</span>
-                                        </div>
-                                        <div class="col-span-1 flex justify-end">
-                                            <label for="mix-kpi-toggle" class="flex items-center cursor-pointer" title="Alternar base de cálculo">
-                                                <div class="relative">
-                                                    <input type="checkbox" id="mix-kpi-toggle" class="sr-only peer">
-                                                    <div class="w-10 h-5 bg-slate-600 rounded-full peer-checked:bg-teal-800 transition-colors"></div>
-                                                    <div class="absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full transition-transform peer-checked:translate-x-full peer-checked:bg-teal-300"></div>
-                                                </div>
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <p id="mix-total-clients-kpi" class="text-3xl font-bold text-white my-1">0</p>
-                                    <p class="text-xs text-slate-500">Base para análise</p>
-                                </div>
-                                <div class="kpi-card border-t-4 border-teal-500 transition transform hover:-translate-y-1 duration-200">
-                                    <p class="text-slate-400 text-sm font-medium">Positivados Salty</p>
-                                    <p id="mix-salty-kpi" class="text-3xl font-bold text-teal-400 my-1">0%</p>
-                                    <p id="mix-salty-count-kpi" class="text-xs text-slate-500">0 clientes</p>
-                                </div>
-                                <div class="kpi-card border-t-4 border-yellow-500 transition transform hover:-translate-y-1 duration-200">
-                                    <p class="text-slate-400 text-sm font-medium">Positivados Foods</p>
-                                    <p id="mix-foods-kpi" class="text-3xl font-bold text-yellow-400 my-1">0%</p>
-                                    <p id="mix-foods-count-kpi" class="text-xs text-slate-500">0 clientes</p>
-                                </div>
-                                <div class="kpi-card border-t-4 border-purple-500 transition transform hover:-translate-y-1 duration-200">
-                                    <p class="text-slate-400 text-sm font-medium">Mix Ideal (Ambos)</p>
-                                    <p id="mix-both-kpi" class="text-3xl font-bold text-purple-400 my-1">0%</p>
-                                    <p id="mix-both-count-kpi" class="text-xs text-slate-500">0 clientes</p>
-                                </div>
-                            </div>
-
-                            <!-- Filtros -->
-                            <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
-                                <div id="mix-rede-filter-wrapper" class="mb-4">
-                                    <label class="block mb-2 text-sm font-medium text-slate-400">Rede</label>
-                                    <div id="mix-rede-group-container" class="inline-flex rounded-md shadow-sm" role="group">
-                                        <button type="button" data-group="" class="group-btn active py-2 px-4 text-sm font-medium text-slate-300 bg-slate-700 border border-slate-600 rounded-l-lg hover:bg-slate-600">Todos</button>
-                                        <div class="relative">
-                                            <button type="button" data-group="com_rede" id="mix-com-rede-btn" class="group-btn py-2 px-4 text-sm font-medium text-slate-300 bg-slate-700 border-t border-b border-slate-600 hover:bg-slate-600 flex items-center justify-center gap-2">
-                                                <span id="mix-com-rede-btn-text">Com Rede</span>
-                                                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                            </button>
-                                            <div id="mix-rede-filter-dropdown" class="hidden absolute z-20 w-56 mt-1 top-full left-0 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-left text-white"></div>
-                                        </div>
-                                        <button type="button" data-group="sem_rede" class="group-btn py-2 px-4 text-sm font-medium text-slate-300 bg-slate-700 border border-slate-600 rounded-r-lg hover:bg-slate-600">Sem Rede</button>
-                                    </div>
-                                </div>
-                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
-                                    <div class="relative">
-                                        <label for="mix-supervisor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label>
-                                        <button id="mix-supervisor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
-                                            <span id="mix-supervisor-filter-text">Todos</span>
-                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                        </button>
-                                        <div id="mix-supervisor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                    </div>
-                                    <div class="relative">
-                                        <label for="mix-vendedor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Vendedor</label>
-                                        <button id="mix-vendedor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
-                                            <span id="mix-vendedor-filter-text">Todos</span>
-                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                        </button>
-                                        <div id="mix-vendedor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                    </div>
-                                    <div class="relative">
-                                        <label for="mix-city-filter" class="block mb-2 text-sm font-medium text-slate-400">Cidade</label>
-                                        <input type="text" id="mix-city-filter" placeholder="Digite a cidade..." class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5" autocomplete="off">
-                                        <div id="mix-city-suggestions" class="absolute z-10 w-full bg-slate-800 border border-slate-600 rounded-lg mt-1 hidden max-h-48 overflow-y-auto custom-scrollbar text-white"></div>
-                                    </div>
-                                    <div>
-                                        <label for="mix-filial-filter" class="block mb-2 text-sm font-medium text-slate-400">Filial</label>
-                                        <select id="mix-filial-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5">
-                                            <option value="ambas" selected>Ambas</option>
-                                            <option value="05">Filial 05</option>
-                                            <option value="08">Filial 08</option>
-                                        </select>
-                                    </div>
-                                    <div class="relative">
-                                        <label for="mix-tipo-venda-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Tipo Venda</label>
-                                        <button id="mix-tipo-venda-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
-                                            <span id="mix-tipo-venda-filter-text">Todos os Tipos</span>
-                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                        </button>
-                                        <div id="mix-tipo-venda-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                    </div>
-                                </div>
-                                <div class="mt-4 flex justify-center">
-                                    <button id="clear-mix-filters-btn" class="bg-slate-600 hover:bg-slate-500 text-white font-bold py-2 px-4 rounded-lg">Limpar Filtros</button>
-                                </div>
-                            </div>
-
-                            <!-- Gráficos -->
-                            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-                                <div class="lg:col-span-1 bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
-                                    <h2 class="text-lg font-semibold text-white mb-4 text-center">Distribuição do Mix</h2>
-                                    <div id="mixDistributionChartContainer" class="relative h-64 flex items-center justify-center"></div>
-                                </div>
-                                <div class="lg:col-span-2 bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
-                                    <h2 class="text-lg font-semibold text-white mb-4 text-center">Eficiência por Vendedor (Top 10)</h2>
-                                    <div id="mixSellerChartContainer" class="relative h-64"></div>
-                                </div>
-                            </div>
-
-                            <!-- Tabela Detalhada -->
-                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
-                                <div class="flex justify-between items-center mb-4">
-                                    <h2 class="text-lg font-semibold text-white">Detalhamento de Oportunidades por Cliente</h2>
-                                </div>
-                                <div class="overflow-auto custom-scrollbar" style="max-height: 60vh;">
-                                    <table class="min-w-full text-sm text-left text-slate-300">
-                                        <thead class="text-xs text-slate-400 uppercase sticky top-0 z-20 bg-slate-800">
-                                            <tr>
-                                                <th rowspan="2" class="px-2 py-3 text-left border-b border-slate-500">Cód</th>
-                                                <th rowspan="2" class="px-2 py-3 text-left border-b border-slate-500">Cliente</th>
-                                                <th rowspan="2" class="px-2 py-3 text-left border-b border-slate-500">Cidade</th>
-                                                <th rowspan="2" class="px-2 py-3 text-left border-b border-slate-500">Vendedor</th>
-                                                <th colspan="5" class="px-1 py-2 text-center border-b-0 border-slate-500 text-teal-400">Mix Salty</th>
-                                                <th colspan="4" class="px-1 py-2 text-center border-b-0 border-slate-500 text-yellow-400">Mix Foods</th>
-                                            </tr>
-                                            <tr>
-                                                <th class="px-1 py-1 text-center border-l border-b border-slate-500 text-[10px]">CHEETOS</th>
-                                                <th class="px-1 py-1 text-center border-l border-b border-slate-500 text-[10px]">DORITOS</th>
-                                                <th class="px-1 py-1 text-center border-l border-b border-slate-500 text-[10px]">FANDANGOS</th>
-                                                <th class="px-1 py-1 text-center border-l border-b border-slate-500 text-[10px]">RUFFLES</th>
-                                                <th class="px-1 py-1 text-center border-l border-b border-slate-500 text-[10px]">TORCIDA</th>
-                                                <th class="px-1 py-1 text-center border-l border-b border-slate-500 text-[10px]">TODDYNHO</th>
-                                                <th class="px-1 py-1 text-center border-l border-b border-slate-500 text-[10px]">TODDY</th>
-                                                <th class="px-1 py-1 text-center border-l border-b border-slate-500 text-[10px]">QUAKER</th>
-                                                <th class="px-1 py-1 text-center border-l border-b border-slate-500 text-[10px]">KEROCOCO</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="mix-table-body" class="divide-y divide-slate-700"></tbody>
-                                    </table>
-                                </div>
-                                <!-- Paginação da Tabela Mix -->
-                                <div id="mix-pagination-controls" class="hidden mt-4 flex justify-between items-center">
-                                    <button id="mix-prev-page-btn" class="bg-slate-700 border border-slate-600 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg disabled:opacity-50" disabled>Anterior</button>
-                                    <span id="mix-page-info-text" class="text-slate-400">Página 1 de 1</span>
-                                    <button id="mix-next-page-btn" class="bg-slate-700 border border-slate-600 hover:bg-slate-600 text-slate-300 font-bold py-2 px-4 rounded-lg disabled:opacity-50" disabled>Próxima</button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Ecrã Cobertura (Novo) -->
-                        <div id="coverage-view" class="hidden container mx-auto p-4 sm:p-6 lg:p-8">
-                            <header class="mb-6 -mt-4 -mx-4 sm:-mt-6 sm:-mx-6 lg:-mt-8 lg:-mx-8 p-6 bg-gradient-to-r from-[#1e2a5a] to-[#0d1126] rounded-b-lg shadow-lg">
-                                <div class="flex items-center gap-4">
-                                    <button class="sidebar-toggle text-white focus:outline-none">
-                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-                                    </button>
-                                    <div class="flex-1 flex flex-col sm:flex-row justify-between items-center gap-4">
-                                        <div><h1 class="text-2xl font-bold text-white">PAINEL DE VENDAS - <span class="text-yellow-300">PRIME</span> DISTRIBUIÇÃO</h1><p class="text-lg text-slate-300 -mt-1">Análise de Cobertura (Estoque x PDVs)</p></div>
-                                        <button id="export-coverage-pdf-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Exportar PDF</button>
-                                    </div>
-                                </div>
-                            </header>
-                            <!-- KPIs (Cobertura) -->
-                             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200">
-                                    <p class="text-slate-400 text-sm font-medium">Clientes Ativos (Filtro)</p>
-                                    <p id="coverage-active-clients-kpi" class="text-3xl font-bold text-teal-400 my-1">0</p>
-                                    <p class="text-xs text-slate-500">Base para os KPIs</p>
-                                </div>
-                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200">
-                                    <p class="text-slate-400 text-sm font-medium">Cobertura Mês Anterior</p>
-                                    <p id="coverage-selection-coverage-value-kpi-previous" class="text-3xl font-bold text-orange-400 my-1">0%</p>
-                                    <p id="coverage-selection-coverage-count-kpi-previous" class="text-xs text-slate-500">0 de 0 clientes</p>
-                                </div>
-                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200">
-                                    <p class="text-slate-400 text-sm font-medium">Cobertura Mês Atual</p>
-                                    <p id="coverage-selection-coverage-value-kpi" class="text-3xl font-bold text-cyan-400 my-1">0%</p>
-                                    <p id="coverage-selection-coverage-count-kpi" class="text-xs text-slate-500">0 de 0 clientes</p>
-                                </div>
-                                <div class="kpi-card transition transform hover:-translate-y-1 duration-200">
-                                    <p class="text-slate-400 text-sm font-medium">Item com Maior Cobertura</p>
-                                    <p id="coverage-top-coverage-value-kpi" class="text-3xl font-bold text-purple-400 my-1">0%</p>
-                                    <p id="coverage-top-coverage-product-kpi" class="text-xs text-slate-500 truncate" title="Nenhum item analisado">-</p>
-                                </div>
-                            </div>
-                            <!-- Filtros (Cobertura) -->
-                            <div class="mb-6 p-4 bg-[#1d2347] rounded-lg shadow-sm border border-slate-700">
-                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
-                                    <div class="relative">
-                                        <label for="coverage-supervisor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Supervisor</label>
-                                        <button id="coverage-supervisor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
-                                            <span id="coverage-supervisor-filter-text">Todos</span>
-                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                        </button>
-                                        <div id="coverage-supervisor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                    </div>
-                                    <div class="relative"><label for="coverage-vendedor-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Vendedor</label><button id="coverage-vendedor-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="coverage-vendedor-filter-text">Todos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button><div id="coverage-vendedor-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
-                                    <div class="relative"><label for="coverage-supplier-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Fornecedor</LabeL><button id="coverage-supplier-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="coverage-supplier-filter-text">Todos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button><div id="coverage-supplier-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div></div>
-                                    <div class="relative"><label for="coverage-city-filter" class="block mb-2 text-sm font-medium text-slate-400">Cidade</label><input type="text" id="coverage-city-filter" placeholder="Digite a cidade..." class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5" autocomplete="off"><div id="coverage-city-suggestions" class="absolute z-10 w-full bg-slate-800 border border-slate-600 rounded-lg mt-1 hidden max-h-48 overflow-y-auto custom-scrollbar text-white"></div></div>
-                                    <div><label for="coverage-filial-filter" class="block mb-2 text-sm font-medium text-slate-400">Filial</label><select id="coverage-filial-filter" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5"><option value="ambas" selected>Ambas</option><option value="05">Filial 05</option><option value="08">Filial 08</option></select></div>
-                                </div>
-                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
-                                    <div class="lg:col-span-2 relative">
-                                        <label for="coverage-product-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Produto</label>
-                                        <button id="coverage-product-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500"><span id="coverage-product-filter-text">Todos os Produtos</span><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg></button>
-                                        <div id="coverage-product-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg">
-                                            <div class="p-2 border-b border-slate-700"><input type="text" id="coverage-product-search-input" placeholder="Buscar produto..." class="bg-slate-600 text-xs rounded-lg block w-full p-2 border border-slate-500 placeholder-slate-400 text-white focus:outline-none focus:ring-2 focus:ring-teal-500"></div>
-                                            <div id="coverage-product-list" class="max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                        </div>
-                                    </div>
-                                     <div class="relative">
-                                        <label for="coverage-tipo-venda-filter-btn" class="block mb-2 text-sm font-medium text-slate-400">Tipo Venda</label>
-                                        <button id="coverage-tipo-venda-filter-btn" class="w-full bg-slate-700 border border-slate-600 text-white text-sm rounded-lg p-2.5 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-teal-500">
-                                            <span id="coverage-tipo-venda-filter-text">Todos os Tipos</span>
-                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                                        </button>
-                                        <div id="coverage-tipo-venda-filter-dropdown" class="hidden absolute z-20 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
-                                    </div>
-                                    <div>
-                                        <label for="coverage-unit-price-filter" class="block mb-2 text-sm font-medium text-slate-400">Valor Unitário</label>
-                                        <input type="number" id="coverage-unit-price-filter" placeholder="Ex: 1.89" step="0.01" class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 block w-full p-2.5">
-                                    </div>
-                                    <button id="clear-coverage-filters-btn" class="w-full bg-slate-600 hover:bg-slate-500 text-white font-bold py-2.5 px-4 rounded-lg">Limpar Filtros</button>
-                                </div>
-                            </div>
-                            <div class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm mb-6">
-                                <div class="flex justify-between items-center mb-4 relative">
-                                    <div class="absolute left-0 top-0 bottom-0 flex items-center">
-                                        <div class="text-left">
-                                            <p class="text-xs text-slate-400">Total Caixas</p>
-                                            <p id="coverage-total-boxes" class="text-lg font-bold text-white">0</p>
-                                        </div>
-                                    </div>
-                                    <h2 id="coverage-chart-title" class="text-lg font-semibold text-white text-center w-full">Top 10 Cidades (Quantidade de Caixas)</h2>
-                                    <div class="absolute right-0 top-0 bottom-0 flex items-center">
-                                        <button id="coverage-chart-toggle-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-1 px-3 rounded shadow">Ver Vendedores</button>
-                                    </div>
-                                </div>
-                                <div id="coverageCityChartContainer" class="relative h-80"></div>
-                                <div id="coverageSellerChartContainer" class="relative h-80 hidden"></div>
-                            </div>
-                            <!-- Tabela (Cobertura) -->
-                            <div id="coverage-table-container" class="bg-[#1d2347] p-4 rounded-lg border border-slate-700 shadow-sm">
-                                <div class="flex justify-between items-center mb-4">
-                                    <h2 class="text-lg font-semibold text-white">Resultados da Análise</h2>
-                                </div>
-                                <div id="coverage-results" class="overflow-auto custom-scrollbar" style="max-height: 60vh;">
-                                    <table class="min-w-full text-sm text-left text-slate-300">
-                                        <thead class="text-xs text-slate-400 uppercase sticky-header">
-                                            <tr><th class="px-2 py-2">PRODUTO</th><th class="px-2 py-2 text-right">ESTOQUE (Cx)</th><th class="px-2 py-2 text-right">QTD. CAIXAS (MÊS ANT.)</th><th class="px-2 py-2 text-right">QTD. CAIXAS (MÊS)</th><th class="px-2 py-2 text-right">CAIXAS (%)</th><th class="px-2 py-2 text-right">PDVs MÊS ANT.</th><th class="px-2 py-2 text-right">PDVs MÊS ATUAL</th><th class="px-2 py-2 text-right">COBERTURA (%)</th></tr>
-                                        </thead>
-                                        <tbody id="coverage-table-body" class="divide-y divide-slate-700"></tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Modal Detalhes do Pedido -->
-                        <div id="order-details-modal" class="modal-overlay hidden">
-                            <div class="bg-slate-800 rounded-lg shadow-2xl max-w-4xl w-full m-4 border border-slate-700">
-                                <div class="p-6 border-b border-slate-700 flex justify-between items-center"><h2 class="text-xl font-bold text-white">Detalhes do Pedido <span id="modal-pedido-id"></span></h2><button id="modal-close-btn" class="text-slate-400 hover:text-white text-3xl">&times;</button></div>
-                                <div id="modal-header-info" class="p-6 text-left grid grid-cols-2 md:grid-cols-3 gap-4 text-sm text-slate-300"></div>
-                                <div class="custom-scrollbar" style="max-height: 50vh; overflow-y: auto;">
-                                    <table class="min-w-full text-sm text-left text-slate-300">
-                                        <thead class="text-xs text-slate-400 uppercase sticky-header"><tr><th class="px-4 py-3">Produto</th><th class="px-4 py-3 text-right">Quantidade</th><th class="px-4 py-3 text-right">Peso (Kg)</th><th class="px-4 py-3 text-right">Valor Unitário</th></tr></thead>
-                                        <tbody id="modal-table-body" class="divide-y divide-slate-700"></tbody>
-                                    </table>
-                                </div>
-                                <div id="modal-footer-total" class="p-6 border-t border-slate-700 flex justify-between items-center"></div>
-                            </div>
-                        </div>
-                        
-                        <!-- Modal Detalhes do Cliente -->
-                        <div id="client-details-modal" class="modal-overlay hidden">
-                            <div class="bg-slate-800 rounded-lg shadow-2xl max-w-2xl w-full m-4 border border-slate-700">
-                                <div class="p-6 border-b border-slate-700 flex justify-between items-center"><h2 class="text-xl font-bold text-white">Resumo Cadastral</h2><button id="client-modal-close-btn" class="text-slate-400 hover:text-white text-3xl">&times;</button></div>
-                                <div id="client-modal-content" class="p-6 text-slate-300"></div>
-                            </div>
-                        </div>
-                        
-                        <!-- Modal Feriados -->
-                        <div id="holiday-modal" class="modal-overlay hidden">
-                            <div class="bg-slate-800 rounded-lg shadow-2xl max-w-xs w-full m-4 text-slate-300 border border-slate-700">
-                                <div class="p-4 border-b border-slate-700 flex justify-between items-center">
-                                    <h2 class="text-lg font-bold text-white">Selecionar Feriados</h2>
-                                    <button id="holiday-modal-close-btn" class="text-slate-400 hover:text-white text-3xl">&times;</button>
-                                </div>
-                                <div class="p-4">
-                                    <div id="calendar-container"></div>
-                                </div>
-                                <div class="p-4 border-t border-slate-700 text-right">
-                                    <button id="holiday-modal-done-btn" class="bg-teal-500 hover:bg-teal-400 text-white font-bold py-2 px-4 rounded-lg">Confirmar</button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Modal Confirmação -->
-                        <div id="confirmation-modal" class="modal-overlay hidden">
-                            <div class="bg-slate-800 rounded-lg shadow-2xl max-w-md w-full m-4 text-slate-300 border border-slate-700">
-                                <div class="p-4 border-b border-slate-700">
-                                    <h2 class="text-lg font-bold text-white">Confirmar Ação</h2>
-                                </div>
-                                <div class="p-6">
-                                    <p id="confirmation-message" class="text-base"></p>
-                                </div>
-                                <div class="p-4 border-t border-slate-700 flex justify-end gap-3">
-                                    <button id="confirmation-cancel-btn" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors">Cancelar</button>
-                                    <button id="confirmation-confirm-btn" class="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white font-bold rounded-lg transition-colors">Confirmar</button>
-                                </div>
-                            </div>
-                        </div>
-                        </div> <!-- End content-wrapper -->
-                        
-                        <script id="embedded-data" type="application/json">
-                            ${jsonDataString}
-                        <\/script>
-                        <script>
-                            document.addEventListener('DOMContentLoaded', () => {
-                                // Aguarda um momento para o navegador renderizar o Loader antes de travar a thread com o JSON.parse
-                                setTimeout(() => {
-                                    initDashboard();
-                                }, 100);
-                            });
-
-                            function initDashboard() {
-                                try {
-                                    const dataElement = document.getElementById('embedded-data');
-                                    if(!dataElement) return;
-
-                                    // 1. Parse dos dados (Pesado - Bloqueia Thread)
-                                    window.embeddedData = JSON.parse(dataElement.textContent);
-
-                                    // 2. Limpeza de memória imediata
-                                    dataElement.textContent = '';
-
-                                    // 3. Execução da Lógica (Renderização)
-                                    ${scriptLogic}
-
-                                } catch(e) {
-                                    console.error("Critical Error:", e);
-                                    alert("Erro ao carregar o dashboard. Recarregue a página.");
-
-                                    // Fallback de segurança: Esconder o loader se houver erro
-                                    const loader = document.getElementById('page-transition-loader');
-                                    if(loader) {
-                                        loader.classList.add('opacity-0', 'pointer-events-none');
-                                    }
-                                }
-                            }
-                        <\/script>
-                    </body>
-                    </html>
-                `;
-                // FIM DO TEMPLATE MODIFICADO
-
-                const blob = new Blob([reportTemplate], { type: 'text/html' });
-                downloadLink.href = URL.createObjectURL(blob);
-                const today = new Date();
-                const formattedDate = today.toISOString().slice(0, 10);
-                downloadLink.download = `DASHBOARD PRIME-${formattedDate}.html`;
-            }
-        });
-    </script>
-</body>
-</html>
