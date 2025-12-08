@@ -3182,23 +3182,90 @@
             if(totalFatEl) totalFatEl.textContent = totalFat.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
             if(totalVolEl) totalVolEl.textContent = totalVol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
             
-            const totalPosCount = uniquePosClientsSet.size;
-            if(totalPosEl) totalPosEl.textContent = totalPosCount.toLocaleString('pt-BR');
+            // --- NEW LOGIC FOR TOTAL META POS (Adjusted) ---
             
-            // Calculate base for Mix Goals (Exclude Americanas / Seller 1001)
-            let mixBaseCount = 0;
-            uniquePosClientsSet.forEach(clientCode => {
-                const client = clientMapForKPIs.get(String(clientCode));
-                if (client) {
-                     const rca1 = String(client.rca1 || '').trim();
-                     if (rca1 !== '1001') {
-                         mixBaseCount++;
-                     }
+            // 1. Calculate Base System Count (Unique Active Clients in Filter)
+            const activeClientsSet = new Set();
+            filteredSummaryClients.forEach(c => {
+                const codCli = c['Código'];
+                const clientHistoryIds = optimizedData.indices.history.byClient.get(codCli);
+                let totalFat = 0;
+                if(clientHistoryIds) {
+                    for (const id of clientHistoryIds) {
+                        const s = optimizedData.historyById.get(id);
+                        if (s.TIPOVENDA === '1' || s.TIPOVENDA === '9') totalFat += s.VLVENDA;
+                    }
+                }
+                if (totalFat > 1) activeClientsSet.add(codCli);
+            });
+            const baseUniquePos = activeClientsSet.size;
+
+            // 2. Calculate Deltas for ELMA and FOODS lines
+            let deltaElma = 0;
+            let deltaFoods = 0;
+
+            filteredSummaryClients.forEach(c => {
+                const codCli = c['Código'];
+                if (globalClientGoals.has(codCli)) {
+                    const cGoals = globalClientGoals.get(codCli);
+
+                    if (cGoals.has('ELMA_ALL') && cGoals.get('ELMA_ALL').pos !== undefined) {
+                        const clientHistoryIds = optimizedData.indices.history.byClient.get(codCli);
+                        let elmaFat = 0;
+                        if(clientHistoryIds) {
+                            for(const id of clientHistoryIds) {
+                                const s = optimizedData.historyById.get(id);
+                                const codFor = String(s.CODFOR);
+                                if ((s.TIPOVENDA === '1' || s.TIPOVENDA === '9') && (codFor === '707' || codFor === '708' || codFor === '752')) {
+                                    elmaFat += s.VLVENDA;
+                                }
+                            }
+                        }
+                        const sysElma = elmaFat > 1 ? 1 : 0;
+                        deltaElma += (cGoals.get('ELMA_ALL').pos - sysElma);
+                    }
+
+                    if (cGoals.has('FOODS_ALL') && cGoals.get('FOODS_ALL').pos !== undefined) {
+                        let foodsFat = 0;
+                        const clientHistoryIds = optimizedData.indices.history.byClient.get(codCli);
+                        if(clientHistoryIds) {
+                            for(const id of clientHistoryIds) {
+                                const s = optimizedData.historyById.get(id);
+                                if ((s.TIPOVENDA === '1' || s.TIPOVENDA === '9') && String(s.CODFOR) === '1119') {
+                                    foodsFat += s.VLVENDA;
+                                }
+                            }
+                        }
+                        const sysFoods = foodsFat > 1 ? 1 : 0;
+                        deltaFoods += (cGoals.get('FOODS_ALL').pos - sysFoods);
+                    }
                 }
             });
 
-            if(mixSaltyEl) mixSaltyEl.textContent = Math.round(mixBaseCount * 0.60).toLocaleString('pt-BR');
-            if(mixFoodsEl) mixFoodsEl.textContent = Math.round(mixBaseCount * 0.30).toLocaleString('pt-BR');
+            // 3. Apply Adjustment Rule
+            let adjustment = 0;
+            if (deltaElma > 0 && deltaFoods > 0) {
+                adjustment = Math.round((deltaElma + deltaFoods) / 2);
+            } else {
+                adjustment = deltaElma + deltaFoods;
+            }
+
+            const finalTotalPos = baseUniquePos + adjustment;
+
+            if(totalPosEl) totalPosEl.textContent = finalTotalPos.toLocaleString('pt-BR');
+
+            // Mix Goals (Base for Mix is the Final Total Pos excluding Americanas if present)
+            let americanasCount = 0;
+            // Count Americanas in the Base Set
+            activeClientsSet.forEach(c => {
+                const client = clientMapForKPIs.get(String(c));
+                if(client && String(client.rca1) === '1001') americanasCount++;
+            });
+            // We assume adjustments typically don't involve Americanas (fixed), so we just subtract the base Americanas count
+            const adjustedBaseForMix = Math.max(0, finalTotalPos - americanasCount);
+
+            if(mixSaltyEl) mixSaltyEl.textContent = Math.round(adjustedBaseForMix * 0.60).toLocaleString('pt-BR');
+            if(mixFoodsEl) mixFoodsEl.textContent = Math.round(adjustedBaseForMix * 0.30).toLocaleString('pt-BR');
         }
 
         function calculateDistributedGoals(filteredClients, currentGoalsSupplier, currentGoalsBrand, goalFat, goalVol) {
@@ -3335,10 +3402,15 @@
                 // Retrieve Stored Goal
                 let metaFat = 0;
                 let metaVol = 0;
-                
-                if (currentGoalsSupplier === 'ELMA_ALL' || currentGoalsSupplier === 'FOODS_ALL') {
-                    if (globalClientGoals.has(codCli)) {
-                        const cGoals = globalClientGoals.get(codCli);
+                let metaPos = sumFat > 1 ? 1 : 0; // Default System Logic
+
+                const effectiveKey = currentGoalsSupplier === 'ELMA_ALL' || currentGoalsSupplier === 'FOODS_ALL' ? currentGoalsSupplier : cacheKey;
+
+                if (globalClientGoals.has(codCli)) {
+                    const cGoals = globalClientGoals.get(codCli);
+
+                    // Faturamento/Volume: Sum sub-keys if aggregate
+                    if (currentGoalsSupplier === 'ELMA_ALL' || currentGoalsSupplier === 'FOODS_ALL') {
                         const keysToSum = currentGoalsSupplier === 'ELMA_ALL' 
                             ? ['707', '708', '752'] 
                             : ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
@@ -3350,19 +3422,20 @@
                                 metaVol += g.vol;
                             }
                         });
-                    }
-                } else {
-                    if (globalClientGoals.has(codCli)) {
-                        const cGoals = globalClientGoals.get(codCli);
+                    } else {
                         if (cGoals.has(cacheKey)) {
                             const g = cGoals.get(cacheKey);
                             metaFat = g.fat;
                             metaVol = g.vol;
                         }
                     }
-                }
 
-                const metaPos = sumFat > 1 ? 1 : 0; // Positivado se venda > 1 (threshold padrão)
+                    // Meta Positivação: Check for direct override on the CURRENT tab key
+                    if (cGoals.has(effectiveKey)) {
+                        const g = cGoals.get(effectiveKey);
+                        if (g.pos !== undefined) metaPos = g.pos;
+                    }
+                }
 
                 clientMetrics.push({
                     cod: codCli,
@@ -3498,7 +3571,7 @@
             updateGoalsView();
         }
 
-        function showConfirmationModal(message, onConfirm) {
+        function showConfirmationModal(message, onConfirm, onCancel) {
             const modal = document.getElementById('confirmation-modal');
             const msgEl = document.getElementById('confirmation-message');
             const confirmBtn = document.getElementById('confirmation-confirm-btn');
@@ -3515,11 +3588,38 @@
             
             newConfirmBtn.addEventListener('click', () => {
                 modal.classList.add('hidden');
-                onConfirm();
+                if (onConfirm) onConfirm();
             });
             
             newCancelBtn.addEventListener('click', () => {
                 modal.classList.add('hidden');
+                if (onCancel) onCancel();
+            });
+        }
+
+        function handleGoalPosChange(input) {
+            const newVal = parseInt(input.value);
+            const originalVal = parseInt(input.dataset.original);
+            const codCli = input.dataset.cod;
+            const supplierKey = input.dataset.supplier;
+
+            if (isNaN(newVal)) {
+                input.value = originalVal;
+                return;
+            }
+
+            showConfirmationModal(`Confirmar alteração da Meta de Positivação para ${newVal}?`, () => {
+                if (!globalClientGoals.has(codCli)) globalClientGoals.set(codCli, new Map());
+                const cGoals = globalClientGoals.get(codCli);
+
+                if (!cGoals.has(supplierKey)) cGoals.set(supplierKey, { fat: 0, vol: 0 });
+                const g = cGoals.get(supplierKey);
+                g.pos = newVal;
+
+                input.dataset.original = newVal;
+                updateGoalsView();
+            }, () => {
+                input.value = originalVal;
             });
         }
 
@@ -3750,7 +3850,16 @@
                 } else {
                     const rows = pageData.map(item => {
                         const monthCells = quarterMonths.map(m => `<td class="px-2 py-2 text-right text-slate-400 border-r border-slate-800/50 text-[10px] bg-blue-900/5">${(item.monthlyValues[m.key] || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`).join('');
-                        return `<tr class="hover:bg-slate-800 group transition-colors border-b border-slate-800"><td class="px-2 py-2 text-center border-r border-slate-800 bg-[#151c36] text-xs text-slate-300">${item.cod}</td><td class="px-2 py-2 text-left border-r border-slate-800 bg-[#151c36] text-xs font-bold text-white truncate max-w-[200px]" title="${item.name}">${item.name.substring(0, 30)}</td><td class="px-2 py-2 text-left border-r border-slate-800 bg-[#151c36] text-[10px] text-slate-400 uppercase">${getFirstName(item.seller)}</td>${monthCells}<td class="px-2 py-2 text-right text-slate-300 font-medium bg-blue-900/10 border-r border-slate-800/50 text-xs">${item.avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-2 py-2 text-center text-blue-400 text-xs bg-blue-900/10 border-r border-slate-800/50">${(item.shareFat * 100).toFixed(2)}%</td><td class="px-2 py-2 text-right font-bold text-blue-200 bg-blue-900/20 border-r border-slate-800 text-xs">${item.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-2 py-2 text-right text-slate-300 font-medium bg-orange-900/10 border-r border-slate-800/50 text-xs">${item.avgVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td><td class="px-2 py-2 text-center text-orange-400 text-xs bg-orange-900/10 border-r border-slate-800/50">${(item.shareVol * 100).toFixed(2)}%</td><td class="px-2 py-2 text-right font-bold text-orange-200 bg-orange-900/20 border-r border-slate-800 text-xs">${item.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td><td class="px-2 py-2 text-center font-bold text-purple-300 bg-purple-900/10 text-xs">${item.metaPos}</td></tr>`;
+
+                        let metaPosCell;
+                        if (selectedGoalsGvSellers.length === 1) {
+                            const effectiveKey = currentGoalsSupplier === 'ELMA_ALL' || currentGoalsSupplier === 'FOODS_ALL' ? currentGoalsSupplier : cacheKey;
+                            metaPosCell = `<td class="px-1 py-1 text-center bg-purple-900/10 border-slate-800 text-xs"><div class="relative"><input type="number" class="w-full bg-[#1e293b] text-center text-purple-300 font-bold border border-slate-600 rounded focus:outline-none focus:border-purple-500 py-1" value="${item.metaPos}" onchange="handleGoalPosChange(this)" data-cod="${item.cod}" data-supplier="${effectiveKey}" data-original="${item.metaPos}"></div></td>`;
+                        } else {
+                            metaPosCell = `<td class="px-2 py-2 text-center font-bold text-purple-300 bg-purple-900/10 text-xs">${item.metaPos}</td>`;
+                        }
+
+                        return `<tr class="hover:bg-slate-800 group transition-colors border-b border-slate-800"><td class="px-2 py-2 text-center border-r border-slate-800 bg-[#151c36] text-xs text-slate-300">${item.cod}</td><td class="px-2 py-2 text-left border-r border-slate-800 bg-[#151c36] text-xs font-bold text-white truncate max-w-[200px]" title="${item.name}">${item.name.substring(0, 30)}</td><td class="px-2 py-2 text-left border-r border-slate-800 bg-[#151c36] text-[10px] text-slate-400 uppercase">${getFirstName(item.seller)}</td>${monthCells}<td class="px-2 py-2 text-right text-slate-300 font-medium bg-blue-900/10 border-r border-slate-800/50 text-xs">${item.avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-2 py-2 text-center text-blue-400 text-xs bg-blue-900/10 border-r border-slate-800/50">${(item.shareFat * 100).toFixed(2)}%</td><td class="px-2 py-2 text-right font-bold text-blue-200 bg-blue-900/20 border-r border-slate-800 text-xs">${item.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-2 py-2 text-right text-slate-300 font-medium bg-orange-900/10 border-r border-slate-800/50 text-xs">${item.avgVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td><td class="px-2 py-2 text-center text-orange-400 text-xs bg-orange-900/10 border-r border-slate-800/50">${(item.shareVol * 100).toFixed(2)}%</td><td class="px-2 py-2 text-right font-bold text-orange-200 bg-orange-900/20 border-r border-slate-800 text-xs">${item.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>${metaPosCell}</tr>`;
                     }).join('');
                     goalsGvTableBody.innerHTML = rows;
                     if (paginationControls) {
