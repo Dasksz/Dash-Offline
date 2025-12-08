@@ -1723,6 +1723,7 @@
         };
         let globalGoalsMetrics = {};
         let globalGoalsTotalsCache = {};
+        let globalSellerGoals = {};
         let globalClientGoals = new Map(); // Map<CodCli, Map<Key, {fat: 0, vol: 0}>>
         let quarterMonths = [];
 
@@ -3033,15 +3034,10 @@
             const container = document.getElementById('goals-summary-grid');
             if (!container) return;
 
-            // Use the independent summary filter
             const displayMetrics = getMetricsForSupervisors(selectedGoalsSummarySupervisors);
 
-            // Calculate Target Sums for Filtered Subset
             // 1. Identify clients matching the summary filter
-            let filteredSummaryClients = allClientsData;
-            
-            // Apply "Active" Filter logic (Consistent with other Goal Views)
-            filteredSummaryClients = filteredSummaryClients.filter(c => {
+            let filteredSummaryClients = allClientsData.filter(c => {
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 if (isAmericanas) return true;
@@ -3058,7 +3054,7 @@
                 filteredSummaryClients = filteredSummaryClients.filter(c => c.rcas.some(r => rcasSet.has(r)));
             }
 
-            // 2. Sum up goals for these clients
+            // 2. Sum up FINANCIAL goals (unchanged)
             const summaryGoalsSums = {
                 '707': { fat: 0, vol: 0 },
                 '708': { fat: 0, vol: 0 },
@@ -3081,6 +3077,91 @@
                 }
             });
 
+            // 3. Calculate EFFECTIVE POSITIVATION GOALS (Natural + Overrides)
+            const targetKeys = ['707', '708', '752', '1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO', 'ELMA_ALL', 'FOODS_ALL'];
+            const sellerNaturalCounts = new Map(); // Map<SellerName, Map<Key, Count>>
+            const activeSellers = new Set();
+
+            // Helper to normalize strings
+            const norm = (str) => str ? str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase() : '';
+
+            // Build Natural Baselines from Filtered Clients
+            filteredSummaryClients.forEach(c => {
+                const rcaCode = c.rcas[0];
+                const sellerName = optimizedData.rcaNameByCode.get(rcaCode) || rcaCode;
+                activeSellers.add(sellerName);
+
+                if (!sellerNaturalCounts.has(sellerName)) sellerNaturalCounts.set(sellerName, new Map());
+                const sellerCounts = sellerNaturalCounts.get(sellerName);
+
+                const hIds = optimizedData.indices.history.byClient.get(c['Código']);
+                if(hIds) {
+                    const clientSums = {};
+                    hIds.forEach(id => {
+                        const s = optimizedData.historyById.get(id);
+                        if (s.TIPOVENDA === '1' || s.TIPOVENDA === '9') {
+                            const codFor = String(s.CODFOR);
+                            const desc = norm(s.DESCRICAO || '');
+                            const keysToAdd = [];
+
+                            if (codFor === '707') { keysToAdd.push('707'); keysToAdd.push('ELMA_ALL'); }
+                            else if (codFor === '708') { keysToAdd.push('708'); keysToAdd.push('ELMA_ALL'); }
+                            else if (codFor === '752') { keysToAdd.push('752'); keysToAdd.push('ELMA_ALL'); }
+                            else if (codFor === '1119') {
+                                keysToAdd.push('FOODS_ALL');
+                                if (desc.includes('TODDYNHO')) keysToAdd.push('1119_TODDYNHO');
+                                else if (desc.includes('TODDY')) keysToAdd.push('1119_TODDY');
+                                else if (desc.includes('QUAKER') || desc.includes('KEROCOCO')) keysToAdd.push('1119_QUAKER_KEROCOCO');
+                            }
+
+                            keysToAdd.forEach(k => {
+                                clientSums[k] = (clientSums[k] || 0) + s.VLVENDA;
+                            });
+                        }
+                    });
+
+                    for (const k in clientSums) {
+                        if (clientSums[k] > 1) {
+                            sellerCounts.set(k, (sellerCounts.get(k) || 0) + 1);
+                        }
+                    }
+                }
+            });
+
+            // Include Sellers with Overrides (even if no natural clients in filter)
+            const isSellerAllowed = (name) => {
+                if (selectedGoalsSummarySupervisors.length === 0) return true;
+                let code = optimizedData.rcaCodeByName.get(name);
+                // Find which supervisor owns this code
+                for (const [supName, rcas] of optimizedData.rcasBySupervisor) {
+                     if (selectedGoalsSummarySupervisors.includes(supName) && rcas.includes(code)) return true;
+                }
+                return false;
+            };
+
+            for (const sellerName in globalSellerGoals) {
+                if (!activeSellers.has(sellerName) && isSellerAllowed(sellerName)) {
+                    activeSellers.add(sellerName);
+                }
+            }
+
+            // Aggregate Effective Totals
+            const effectiveTotals = {};
+            targetKeys.forEach(k => effectiveTotals[k] = 0);
+
+            activeSellers.forEach(sellerName => {
+                const naturalCounts = sellerNaturalCounts.get(sellerName) || new Map();
+                const overrides = globalSellerGoals[sellerName] || {};
+
+                targetKeys.forEach(key => {
+                    let val = naturalCounts.get(key) || 0;
+                    if (overrides[key]) {
+                        val = overrides[key].pos;
+                    }
+                    effectiveTotals[key] += val;
+                });
+            });
+
             const summaryItems = [
                 { title: 'Extrusados', supplier: '707', brand: null, color: 'teal' },
                 { title: 'Não Extrusados', supplier: '708', brand: null, color: 'blue' },
@@ -3092,14 +3173,9 @@
 
             let totalFat = 0;
             let totalVol = 0;
-            const uniquePosClientsSet = new Set();
 
             const cardsHTML = summaryItems.map(item => {
                 const key = item.supplier + (item.brand ? `_${item.brand}` : '');
-                
-                // Use calculated sums if filter is active, otherwise global targets? 
-                // Actually, if no filter is active, filteredSummaryClients = All Active, so the sum matches the global target.
-                // So we can always use summaryGoalsSums.
                 
                 const target = summaryGoalsSums[key] || { fat: 0, vol: 0 };
                 const metrics = displayMetrics[key] || { avgFat: 0, prevFat: 0 };
@@ -3107,11 +3183,6 @@
                 totalFat += target.fat;
                 totalVol += target.vol;
                 
-                if (metrics.quarterlyPosClientsSet) {
-                    metrics.quarterlyPosClientsSet.forEach(clientCode => uniquePosClientsSet.add(clientCode));
-                }
-                
-                // Color mapping for classes
                 const colorMap = {
                     teal: 'border-teal-500 text-teal-400 bg-teal-900/10',
                     blue: 'border-blue-500 text-blue-400 bg-blue-900/10',
@@ -3123,6 +3194,11 @@
                 
                 const styleClass = colorMap[item.color] || colorMap.teal;
                 const textColor = styleClass.split(' ')[1];
+
+                // Use Effective Pos
+                const effectivePos = effectiveTotals[key] || 0;
+                // Use Natural for comparison display
+                const naturalPos = metrics.quarterlyPos || 0;
 
                 return `
                     <div class="bg-[#1e2a5a] border-l-4 ${styleClass.split(' ')[0]} rounded-r-lg p-4 shadow-md transition hover:-translate-y-1">
@@ -3159,10 +3235,10 @@
                                     <p class="text-xs text-slate-400 uppercase font-semibold">Meta Pos. (Clientes)</p>
                                 </div>
                                 <p class="text-xl font-bold ${textColor} mb-2">
-                                    ${(metrics.quarterlyPos || 0).toLocaleString('pt-BR')}
+                                    ${effectivePos.toLocaleString('pt-BR')}
                                 </p>
                                 <div class="flex justify-between text-[10px] text-slate-400 border-t border-slate-700/50 pt-1">
-                                    <span>Ativos no Trimestre</span>
+                                    <span>Ativos no Trimestre (Nat: ${naturalPos})</span>
                                 </div>
                             </div>
                         </div>
@@ -3172,7 +3248,6 @@
 
             container.innerHTML = cardsHTML;
 
-            // Update Totals
             const totalFatEl = document.getElementById('summary-total-fat');
             const totalVolEl = document.getElementById('summary-total-vol');
             const totalPosEl = document.getElementById('summary-total-pos');
@@ -3182,23 +3257,30 @@
             if(totalFatEl) totalFatEl.textContent = totalFat.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
             if(totalVolEl) totalVolEl.textContent = totalVol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
             
-            const totalPosCount = uniquePosClientsSet.size;
+            // Total Meta Pos = Sum of ELMA + FOODS effective goals
+            const totalPosCount = (effectiveTotals['ELMA_ALL'] || 0) + (effectiveTotals['FOODS_ALL'] || 0);
             if(totalPosEl) totalPosEl.textContent = totalPosCount.toLocaleString('pt-BR');
             
-            // Calculate base for Mix Goals (Exclude Americanas / Seller 1001)
-            let mixBaseCount = 0;
-            uniquePosClientsSet.forEach(clientCode => {
-                const client = clientMapForKPIs.get(String(clientCode));
-                if (client) {
-                     const rca1 = String(client.rca1 || '').trim();
-                     if (rca1 !== '1001') {
-                         mixBaseCount++;
-                     }
+            // Mix Base (Exclude Americanas)
+            let mixBase = 0;
+            activeSellers.forEach(sellerName => {
+                const code = optimizedData.rcaCodeByName.get(sellerName) || '';
+                if (code !== '1001') {
+                     const overrides = globalSellerGoals[sellerName] || {};
+                     const naturalCounts = sellerNaturalCounts.get(sellerName) || new Map();
+
+                     let elma = naturalCounts.get('ELMA_ALL') || 0;
+                     if (overrides['ELMA_ALL']) elma = overrides['ELMA_ALL'].pos;
+
+                     let foods = naturalCounts.get('FOODS_ALL') || 0;
+                     if (overrides['FOODS_ALL']) foods = overrides['FOODS_ALL'].pos;
+
+                     mixBase += (elma + foods);
                 }
             });
 
-            if(mixSaltyEl) mixSaltyEl.textContent = Math.round(mixBaseCount * 0.60).toLocaleString('pt-BR');
-            if(mixFoodsEl) mixFoodsEl.textContent = Math.round(mixBaseCount * 0.30).toLocaleString('pt-BR');
+            if(mixSaltyEl) mixSaltyEl.textContent = Math.round(mixBase * 0.60).toLocaleString('pt-BR');
+            if(mixFoodsEl) mixFoodsEl.textContent = Math.round(mixBase * 0.30).toLocaleString('pt-BR');
         }
 
         function calculateDistributedGoals(filteredClients, currentGoalsSupplier, currentGoalsBrand, goalFat, goalVol) {
@@ -3523,7 +3605,34 @@
             });
         }
 
-        function getFilterDescription() {
+
+        function calculateGoalMixVariation(input) {
+            const val = parseFloat(input.value.replace(/\./g, '').replace(',', '.')) || 0;
+            const original = parseFloat(input.dataset.originalValue) || 0;
+            const variationEl = document.getElementById('goal-mix-variation');
+
+            if (!variationEl) return;
+
+            if (original === 0) {
+                variationEl.textContent = '';
+                return;
+            }
+
+            const diff = val - original;
+            const pct = (diff / original) * 100;
+
+            if (diff > 0) {
+                variationEl.textContent = `+${pct.toFixed(1)}%`;
+                variationEl.className = 'text-xs font-bold text-right h-4 text-green-400';
+            } else if (diff < 0) {
+                variationEl.textContent = `${pct.toFixed(1)}%`;
+                variationEl.className = 'text-xs font-bold text-right h-4 text-red-400';
+            } else {
+                variationEl.textContent = '';
+            }
+        }
+
+function getFilterDescription() {
             if (selectedGoalsGvSupervisors.length > 0) {
                 return selectedGoalsGvSupervisors.length === 1 ? `Supervisor "${selectedGoalsGvSupervisors[0]}"` : "Supervisores selecionados";
             }
@@ -3541,6 +3650,28 @@
             if (currentGoalsBrand) return currentGoalsBrand;
             
             return 'filtro atual';
+        }
+
+
+        function distributePositivacao() {
+            if (selectedGoalsGvSellers.length !== 1) {
+                alert("Selecione apenas um vendedor para definir a meta de positivação.");
+                return;
+            }
+
+            const sellerName = selectedGoalsGvSellers[0];
+            const inputVal = parseInputMoney('goal-global-mix');
+
+            // INDEPENDENT LOGIC: Only update the specific target key. No propagation.
+
+            if (!globalSellerGoals[sellerName]) globalSellerGoals[sellerName] = {};
+
+            const currentKey = currentGoalsSupplier + (currentGoalsBrand ? '_' + currentGoalsBrand : '');
+
+            if (!globalSellerGoals[sellerName][currentKey]) globalSellerGoals[sellerName][currentKey] = { pos: 0 };
+            globalSellerGoals[sellerName][currentKey].pos = inputVal;
+
+            updateGoalsView();
         }
 
         function updateGoalsView() {
@@ -3723,12 +3854,60 @@
 
                 clientMetrics.sort((a, b) => b.metaFat - a.metaFat);
 
+
                 const goalMixInput = document.getElementById('goal-global-mix');
-                const totalMetaPos = clientMetrics.reduce((sum, item) => sum + item.metaPos, 0);
+
+                // Calculate Total Meta Pos (Aggregating Effective Goals per Seller)
+                let totalMetaPos = 0;
+
+                // 1. Group natural counts by seller from the current filtered metrics
+                const sellerNaturalCounts = new Map();
+                clientMetrics.forEach(c => {
+                    // Use seller name as key (consistent with globalSellerGoals)
+                    const sName = c.seller;
+                    sellerNaturalCounts.set(sName, (sellerNaturalCounts.get(sName) || 0) + c.metaPos);
+                });
+
+                // 2. Sum effective goals
+                const currentKey = currentGoalsSupplier + (currentGoalsBrand ? '_' + currentGoalsBrand : '');
+
+                sellerNaturalCounts.forEach((naturalCount, sellerName) => {
+                    let effective = naturalCount;
+                    if (globalSellerGoals[sellerName] && globalSellerGoals[sellerName][currentKey]) {
+                        effective = globalSellerGoals[sellerName][currentKey].pos;
+                    }
+                    totalMetaPos += effective;
+                });
+
                 if (goalMixInput) {
                     goalMixInput.value = totalMetaPos.toLocaleString('pt-BR');
-                    if (isAggregatedTab) goalMixInput.classList.add('opacity-50', 'cursor-not-allowed');
-                    else goalMixInput.classList.remove('opacity-50', 'cursor-not-allowed');
+                    goalMixInput.dataset.originalValue = totalMetaPos;
+
+                    let btnDiv = document.getElementById('goal-mix-btn-container');
+                    if (!btnDiv) {
+                        btnDiv = document.createElement('div');
+                        btnDiv.id = 'goal-mix-btn-container';
+                        btnDiv.className = 'mt-1 flex justify-end';
+                        btnDiv.innerHTML = '<button id="btn-distribute-mix" class="bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded text-[10px] uppercase font-bold transition-colors">Definir</button>';
+                        goalMixInput.parentNode.appendChild(btnDiv);
+                        document.getElementById('btn-distribute-mix').addEventListener('click', () => {
+                             const val = document.getElementById('goal-global-mix').value;
+                             showConfirmationModal(`Deseja definir a Meta de Positivação para ${val}?`, distributePositivacao);
+                        });
+                    }
+
+                    if (selectedGoalsGvSellers.length === 1) {
+                        goalMixInput.readOnly = false;
+                        goalMixInput.classList.remove('opacity-50', 'cursor-not-allowed');
+                        btnDiv.classList.remove('hidden');
+                    } else {
+                        goalMixInput.readOnly = true;
+                        goalMixInput.classList.add('opacity-50', 'cursor-not-allowed');
+                        btnDiv.classList.add('hidden');
+                    }
+
+                    const variationEl = document.getElementById('goal-mix-variation');
+                    if(variationEl) variationEl.textContent = '';
                 }
 
                 goalsTableState.filteredData = clientMetrics;
@@ -4064,6 +4243,29 @@
 
                 // 1. Calculate Aggregates (Mix, Geral, etc.)
                 sellerMap.forEach(sellerObj => {
+                    // Override Meta Pos with Global Goals if set
+                    if (globalSellerGoals[sellerObj.name]) {
+                        Object.keys(sellerObj.data).forEach(catId => {
+                            let lookupKey = catId;
+                            // Match keys used in globalSellerGoals (distributePositivacao)
+                            // The keys there are: '707', '708', '752', '1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'
+                            // AND aggregated keys: 'ELMA_ALL', 'FOODS_ALL'
+
+                            // For base categories, direct match
+                            // For aggregated columns in the View (total_elma, total_foods), we map them
+
+                            if (globalSellerGoals[sellerObj.name][catId]) {
+                                sellerObj.data[catId].metaPos = globalSellerGoals[sellerObj.name][catId].pos;
+                            }
+                        });
+
+                        // Handle Aggregated Columns explicitly if they are not in sellerObj.data yet or need override
+                        // Note: Aggregates like 'total_elma' are computed below.
+                        // We should override AFTER computation or inject the value into a temp property to use during aggregation.
+                        // Actually, 'distributePositivacao' sets goals for 'ELMA_ALL' and 'FOODS_ALL'.
+                        // We should use those to override the SUM or COUNT logic for the Total Columns.
+                    }
+
                     // Component Aggregates
                     svColumns.filter(c => c.isAgg && c.type !== 'mix' && c.type !== 'geral' && c.type !== 'pedev').forEach(aggCol => {
                         let sumFat = 0, sumVol = 0, sumPos = 0, sumAvgVol = 0, sumAvgFat = 0;
@@ -4077,9 +4279,20 @@
                             }
                         });
                         
-                        // Use calculated unique client count for Total Elma/Foods
+                        // Use calculated unique client count for Total Elma/Foods DEFAULT
                         if (aggCol.id === 'total_elma') sumPos = sellerObj.elmaPos || 0;
                         else if (aggCol.id === 'total_foods') sumPos = sellerObj.foodsPos || 0;
+
+                        // OVERRIDE Aggregated Positivation if manually set
+                        if (globalSellerGoals[sellerObj.name]) {
+                            let lookupKey = null;
+                            if (aggCol.id === 'total_elma') lookupKey = 'ELMA_ALL';
+                            else if (aggCol.id === 'total_foods') lookupKey = 'FOODS_ALL';
+
+                            if (lookupKey && globalSellerGoals[sellerObj.name][lookupKey]) {
+                                sumPos = globalSellerGoals[sellerObj.name][lookupKey].pos;
+                            }
+                        }
 
                         sellerObj.data[aggCol.id] = { metaFat: sumFat, metaVol: sumVol, metaPos: sumPos, avgVol: sumAvgVol, avgFat: sumAvgFat, monthlyValues: monthlySum };
                     });
@@ -4088,30 +4301,27 @@
                     const historyIds = optimizedData.indices.history.byRca.get(sellerObj.name) || [];
                     let activeClientsCount = 0;
 
-                    // Logic for Active Clients (Positivados Geral > 1)
-                    // We need to check if ANY sale > 1 for this client in history
-                    // Optimized: Reuse indices
-                    // We iterate filteredClients to find active ones for this seller?
-                    // No, "Meta Pos Total" is defined as unique active clients for the seller in the filtered list.
-                    // We can re-iterate filteredClients? No, slow.
-                    // We can aggregate during the main loop.
-                    // Let's do it simply:
+                    // Active Clients Count (Unique for this seller)
+                    // If ELMA_ALL Pos or FOODS_ALL Pos is set manually, does it affect "Active Clients"?
+                    // Usually "Meta Pos" for Geral is the sum of Unique Active Clients.
+                    // If we override sub-goals, the Total Active Clients for the seller might be targetted too?
+                    // Currently 'distributePositivacao' distributes to specific categories.
+                    // For the 'Geral' column, we usually just count unique clients who bought anything > 1.
+                    // Let's keep the Natural Count for Geral Meta Pos unless we want a specific 'GERAL' override (not requested).
+
                     const sellerClients = filteredClients.filter(c => {
                         const code = c.rcas[0];
                         const name = optimizedData.rcaNameByCode.get(code) || code;
                         return name === sellerObj.name;
                     });
                     sellerClients.forEach(c => {
-                        // Check if active (Total Fat > 1 in history)
                         const hIds = optimizedData.indices.history.byClient.get(c['Código']);
                         let totalFat = 0;
                         if(hIds) { for (const id of hIds) totalFat += optimizedData.historyById.get(id).VLVENDA; }
                         if (totalFat > 1) activeClientsCount++;
                     });
 
-                    // Mix Calc (re-implement or optimize?)
-                    // Mix calculation requires detailed product analysis per client.
-                    // For speed, let's assume we can do it sync here for 1 seller's history (smaller dataset).
+                    // Mix Calc
                     const monthlyData = new Map();
                     historyIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
@@ -4151,12 +4361,20 @@
                     // Geral & Pedev
                     const totalElma = sellerObj.data['total_elma'];
                     const totalFoods = sellerObj.data['total_foods'];
+
+                    // Logic for GERAL Meta Pos:
+                    // If we have manual overrides, simply summing them might double count if same client is targetted in both.
+                    // However, we don't have a "Geral Override".
+                    // Let's use the Natural Active Client count as the base.
+
                     sellerObj.data['geral'] = {
                         avgFat: (totalElma.avgFat || 0) + (totalFoods.avgFat || 0),
                         metaFat: totalElma.metaFat + totalFoods.metaFat,
                         metaVol: totalElma.metaVol + totalFoods.metaVol,
                         metaPos: activeClientsCount
                     };
+
+                    // Pedev is 90% of Total Elma Pos (which might be overridden)
                     sellerObj.data['pedev'] = { metaPos: Math.round(totalElma.metaPos * 0.9) };
                 });
 
@@ -4282,7 +4500,6 @@
                 bodyHTML += `</tr></tbody>`;
                 mainTable.innerHTML = headerHTML + bodyHTML;
             }, () => currentRenderId !== goalsSvRenderId);
-        }
 
         function handleGoalsFilterChange() {
             // Update Dropdown Lists based on available data? 
@@ -11011,10 +11228,11 @@
                                     <div class="bg-[#3b0764] border border-purple-900/50 rounded-lg p-3 relative overflow-hidden group">
                                         <div class="absolute top-0 left-0 w-1 h-full bg-purple-500"></div>
                                         <label class="text-[10px] font-bold text-purple-300 uppercase tracking-wider mb-1 block">META POSITIVAÇÃO</label>
-                                        <div class="flex gap-2">
-                                            <input type="text" id="goal-global-mix" class="w-full bg-[#0f172a] border border-purple-900/50 text-white font-bold text-lg p-2 rounded focus:outline-none focus:border-purple-500" value="0" readonly>
+                                        <div class="flex flex-col gap-1">
+                                            <input type="text" id="goal-global-mix" class="w-full bg-[#0f172a] border border-purple-900/50 text-white font-bold text-lg p-2 rounded focus:outline-none focus:border-purple-500" value="0" oninput="calculateGoalMixVariation(this)">
+                                            <div id="goal-mix-variation" class="text-xs font-bold text-right h-4"></div>
                                         </div>
-                                        <div class="flex justify-between text-[10px] text-slate-400 mt-1">
+                                        <div class="flex justify-between text-[10px] text-slate-400 mt-1 border-t border-purple-900/30 pt-1">
                                             <span>Média Trim: <span id="ref-avg-clients" class="text-white font-bold">0</span></span>
                                             <span>Mês Ant: <span id="ref-prev-clients" class="text-white font-bold">0</span></span>
                                         </div>
