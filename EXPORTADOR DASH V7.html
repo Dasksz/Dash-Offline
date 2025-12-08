@@ -1723,7 +1723,8 @@
         };
         let globalGoalsMetrics = {};
         let globalGoalsTotalsCache = {};
-        let globalClientGoals = new Map(); // Map<CodCli, Map<Key, {fat: 0, vol: 0}>>
+        let globalClientGoals = new Map();
+        let goalsPosAdjustments = { 'ELMA_ALL': new Map(), 'FOODS_ALL': new Map() }; // Map<CodCli, Map<Key, {fat: 0, vol: 0}>>
         let quarterMonths = [];
 
         function identifyQuarterMonths() {
@@ -3182,23 +3183,37 @@
             if(totalFatEl) totalFatEl.textContent = totalFat.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
             if(totalVolEl) totalVolEl.textContent = totalVol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
             
-            const totalPosCount = uniquePosClientsSet.size;
-            if(totalPosEl) totalPosEl.textContent = totalPosCount.toLocaleString('pt-BR');
+            // Calculate Base Total
+            const basePosCount = uniquePosClientsSet.size;
+
+            let totalAdjustment = 0;
+            if (goalsPosAdjustments['ELMA_ALL']) {
+                goalsPosAdjustments['ELMA_ALL'].forEach(val => totalAdjustment += val);
+            }
+            if (goalsPosAdjustments['FOODS_ALL']) {
+                goalsPosAdjustments['FOODS_ALL'].forEach(val => totalAdjustment += val);
+            }
+
+            const adjustedTotalPos = basePosCount + totalAdjustment;
+
+            if(totalPosEl) totalPosEl.textContent = adjustedTotalPos.toLocaleString('pt-BR');
             
             // Calculate base for Mix Goals (Exclude Americanas / Seller 1001)
-            let mixBaseCount = 0;
+            let naturalMixBaseCount = 0;
             uniquePosClientsSet.forEach(clientCode => {
                 const client = clientMapForKPIs.get(String(clientCode));
                 if (client) {
                      const rca1 = String(client.rca1 || '').trim();
                      if (rca1 !== '1001') {
-                         mixBaseCount++;
+                         naturalMixBaseCount++;
                      }
                 }
             });
 
-            if(mixSaltyEl) mixSaltyEl.textContent = Math.round(mixBaseCount * 0.60).toLocaleString('pt-BR');
-            if(mixFoodsEl) mixFoodsEl.textContent = Math.round(mixBaseCount * 0.30).toLocaleString('pt-BR');
+            const adjustedMixBase = naturalMixBaseCount + totalAdjustment;
+
+            if(mixSaltyEl) mixSaltyEl.textContent = Math.round(adjustedMixBase * 0.60).toLocaleString('pt-BR');
+            if(mixFoodsEl) mixFoodsEl.textContent = Math.round(adjustedMixBase * 0.30).toLocaleString('pt-BR');
         }
 
         function calculateDistributedGoals(filteredClients, currentGoalsSupplier, currentGoalsBrand, goalFat, goalVol) {
@@ -3724,11 +3739,69 @@
                 clientMetrics.sort((a, b) => b.metaFat - a.metaFat);
 
                 const goalMixInput = document.getElementById('goal-global-mix');
-                const totalMetaPos = clientMetrics.reduce((sum, item) => sum + item.metaPos, 0);
+                const naturalTotalPos = clientMetrics.reduce((sum, item) => sum + item.metaPos, 0);
+
                 if (goalMixInput) {
-                    goalMixInput.value = totalMetaPos.toLocaleString('pt-BR');
-                    if (isAggregatedTab) goalMixInput.classList.add('opacity-50', 'cursor-not-allowed');
-                    else goalMixInput.classList.remove('opacity-50', 'cursor-not-allowed');
+                    const newMixInput = goalMixInput.cloneNode(true);
+                    goalMixInput.parentNode.replaceChild(newMixInput, goalMixInput);
+
+                    // Calculate Total Adjustment for Current View Context
+                    let contextAdjustment = 0;
+                    const adjustmentMap = goalsPosAdjustments[currentGoalsSupplier];
+
+                    if (adjustmentMap) {
+                        if (selectedGoalsGvSellers.length === 1) {
+                            // Specific Seller Context
+                            contextAdjustment = adjustmentMap.get(selectedGoalsGvSellers[0]) || 0;
+                        } else {
+                            // Global/Multi Context: Sum ALL adjustments for this supplier tab
+                            // (Adjustments are additive to the natural total of the visible rows?)
+                            // Wait. If I filter by Supervisor, the natural total is X.
+                            // The adjustments made for sellers UNDER this supervisor should act as deltas to X.
+                            // However, filtering by Supervisor might exclude some sellers.
+                            // Ideally, we sum adjustments only for sellers present in the current filtered data?
+                            // But 'clientMetrics' are filtered clients.
+                            // If I have an adjustment for Seller A, and Seller A is in the view, I should include it.
+                            // Simplification: Iterate unique sellers in clientMetrics and sum their adjustments.
+
+                            const visibleSellers = new Set(clientMetrics.map(c => c.seller));
+                            adjustmentMap.forEach((val, seller) => {
+                                // Map keys are Seller Names (from selectedGoalsGvSellers)
+                                // We need to match names.
+                                // Note: selectedGoalsGvSellers stores Names.
+                                if (visibleSellers.has(seller)) {
+                                    contextAdjustment += val;
+                                }
+                            });
+                        }
+                    }
+
+                    const displayPos = naturalTotalPos + contextAdjustment;
+                    newMixInput.value = displayPos.toLocaleString('pt-BR');
+
+                    const isSingleSeller = selectedGoalsGvSellers.length === 1;
+
+                    if (isAggregatedTab && isSingleSeller) {
+                        newMixInput.readOnly = false;
+                        newMixInput.classList.remove('opacity-50', 'cursor-not-allowed');
+                        newMixInput.classList.add('bg-yellow-900/20', 'text-yellow-200'); // Visual cue
+
+                        newMixInput.addEventListener('change', (e) => {
+                            const val = parseFloat(e.target.value.replace(/\./g, '').replace(',', '.')) || 0;
+                            // Delta = NewInput - Natural
+                            const newAdjustment = val - naturalTotalPos;
+
+                            if (adjustmentMap) {
+                                adjustmentMap.set(selectedGoalsGvSellers[0], newAdjustment);
+                            }
+
+                            // No re-render needed, value stays. Summary updates on switch.
+                        });
+                    } else {
+                        newMixInput.readOnly = true;
+                        newMixInput.classList.add('opacity-50', 'cursor-not-allowed');
+                        newMixInput.classList.remove('bg-yellow-900/20', 'text-yellow-200');
+                    }
                 }
 
                 goalsTableState.filteredData = clientMetrics;
