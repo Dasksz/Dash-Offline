@@ -1723,7 +1723,8 @@
         };
         let globalGoalsMetrics = {};
         let globalGoalsTotalsCache = {};
-        let globalClientGoals = new Map(); // Map<CodCli, Map<Key, {fat: 0, vol: 0}>>
+        let globalClientGoals = new Map();
+        let goalsPosAdjustments = { 'ELMA_ALL': new Map(), 'FOODS_ALL': new Map() }; // Map<CodCli, Map<Key, {fat: 0, vol: 0}>>
         let quarterMonths = [];
 
         function identifyQuarterMonths() {
@@ -3182,23 +3183,37 @@
             if(totalFatEl) totalFatEl.textContent = totalFat.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
             if(totalVolEl) totalVolEl.textContent = totalVol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
             
-            const totalPosCount = uniquePosClientsSet.size;
-            if(totalPosEl) totalPosEl.textContent = totalPosCount.toLocaleString('pt-BR');
+            // Calculate Base Total
+            const basePosCount = uniquePosClientsSet.size;
+            
+            let totalAdjustment = 0;
+            if (goalsPosAdjustments['ELMA_ALL']) {
+                goalsPosAdjustments['ELMA_ALL'].forEach(val => totalAdjustment += val);
+            }
+            if (goalsPosAdjustments['FOODS_ALL']) {
+                goalsPosAdjustments['FOODS_ALL'].forEach(val => totalAdjustment += val);
+            }
+            
+            const adjustedTotalPos = basePosCount + totalAdjustment;
+            
+            if(totalPosEl) totalPosEl.textContent = adjustedTotalPos.toLocaleString('pt-BR');
             
             // Calculate base for Mix Goals (Exclude Americanas / Seller 1001)
-            let mixBaseCount = 0;
+            let naturalMixBaseCount = 0;
             uniquePosClientsSet.forEach(clientCode => {
                 const client = clientMapForKPIs.get(String(clientCode));
                 if (client) {
                      const rca1 = String(client.rca1 || '').trim();
                      if (rca1 !== '1001') {
-                         mixBaseCount++;
+                         naturalMixBaseCount++;
                      }
                 }
             });
+            
+            const adjustedMixBase = naturalMixBaseCount + totalAdjustment;
 
-            if(mixSaltyEl) mixSaltyEl.textContent = Math.round(mixBaseCount * 0.60).toLocaleString('pt-BR');
-            if(mixFoodsEl) mixFoodsEl.textContent = Math.round(mixBaseCount * 0.30).toLocaleString('pt-BR');
+            if(mixSaltyEl) mixSaltyEl.textContent = Math.round(adjustedMixBase * 0.60).toLocaleString('pt-BR');
+            if(mixFoodsEl) mixFoodsEl.textContent = Math.round(adjustedMixBase * 0.30).toLocaleString('pt-BR');
         }
 
         function calculateDistributedGoals(filteredClients, currentGoalsSupplier, currentGoalsBrand, goalFat, goalVol) {
@@ -3724,11 +3739,55 @@
                 clientMetrics.sort((a, b) => b.metaFat - a.metaFat);
 
                 const goalMixInput = document.getElementById('goal-global-mix');
-                const totalMetaPos = clientMetrics.reduce((sum, item) => sum + item.metaPos, 0);
+                const btnDistributeMix = document.getElementById('btn-distribute-mix');
+                const naturalTotalPos = clientMetrics.reduce((sum, item) => sum + item.metaPos, 0);
+                
                 if (goalMixInput) {
-                    goalMixInput.value = totalMetaPos.toLocaleString('pt-BR');
-                    if (isAggregatedTab) goalMixInput.classList.add('opacity-50', 'cursor-not-allowed');
-                    else goalMixInput.classList.remove('opacity-50', 'cursor-not-allowed');
+                    const newMixInput = goalMixInput.cloneNode(true);
+                    goalMixInput.parentNode.replaceChild(newMixInput, goalMixInput);
+                    
+                    // Calculate Total Adjustment for Current View Context
+                    let contextAdjustment = 0;
+                    const adjustmentMap = goalsPosAdjustments[currentGoalsSupplier];
+                    
+                    if (adjustmentMap) {
+                        if (selectedGoalsGvSellers.length === 1) {
+                            // Specific Seller Context
+                            contextAdjustment = adjustmentMap.get(selectedGoalsGvSellers[0]) || 0;
+                        } else {
+                            const visibleSellers = new Set(clientMetrics.map(c => c.seller));
+                            adjustmentMap.forEach((val, seller) => {
+                                if (visibleSellers.has(seller)) {
+                                    contextAdjustment += val;
+                                }
+                            });
+                        }
+                    }
+
+                    const displayPos = naturalTotalPos + contextAdjustment;
+                    newMixInput.value = displayPos.toLocaleString('pt-BR');
+                    
+                    const isSingleSeller = selectedGoalsGvSellers.length === 1;
+                    
+                    if (isAggregatedTab && isSingleSeller) {
+                        newMixInput.readOnly = false;
+                        newMixInput.classList.remove('opacity-50', 'cursor-not-allowed');
+                        if(btnDistributeMix) btnDistributeMix.style.display = '';
+                        
+                        newMixInput.addEventListener('change', (e) => {
+                            const val = parseFloat(e.target.value.replace(/\./g, '').replace(',', '.')) || 0;
+                            // Delta = NewInput - Natural
+                            const newAdjustment = val - naturalTotalPos;
+                            
+                            if (adjustmentMap) {
+                                adjustmentMap.set(selectedGoalsGvSellers[0], newAdjustment);
+                            }
+                        });
+                    } else {
+                        newMixInput.readOnly = true;
+                        newMixInput.classList.add('opacity-50', 'cursor-not-allowed');
+                        if(btnDistributeMix) btnDistributeMix.style.display = 'none';
+                    }
                 }
 
                 goalsTableState.filteredData = clientMetrics;
@@ -9680,6 +9739,18 @@
                 });
             }
 
+            const btnDistributeMix = document.getElementById('btn-distribute-mix');
+            if (btnDistributeMix) {
+                btnDistributeMix.addEventListener('click', () => {
+                    const filterDesc = getFilterDescription();
+                    const val = document.getElementById('goal-global-mix').value;
+                    showConfirmationModal(`Confirmar ajuste de Meta Positivação para ${val} (Cliente: ${filterDesc})?`, () => {
+                        const input = document.getElementById('goal-global-mix');
+                        if(input) input.dispatchEvent(new Event('change'));
+                    });
+                });
+            }
+
             // Add Input Listeners for Real-time State Updates
             const fatInput = document.getElementById('goal-global-fat');
             const volInput = document.getElementById('goal-global-vol');
@@ -11013,6 +11084,9 @@
                                         <label class="text-[10px] font-bold text-purple-300 uppercase tracking-wider mb-1 block">META POSITIVAÇÃO</label>
                                         <div class="flex gap-2">
                                             <input type="text" id="goal-global-mix" class="w-full bg-[#0f172a] border border-purple-900/50 text-white font-bold text-lg p-2 rounded focus:outline-none focus:border-purple-500" value="0" readonly>
+                                            <button id="btn-distribute-mix" class="bg-purple-600 hover:bg-purple-500 text-white px-3 rounded flex items-center justify-center transition-colors" style="display: none;">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
+                                            </button>
                                         </div>
                                         <div class="flex justify-between text-[10px] text-slate-400 mt-1">
                                             <span>Média Trim: <span id="ref-avg-clients" class="text-white font-bold">0</span></span>
