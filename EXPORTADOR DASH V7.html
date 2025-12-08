@@ -3194,7 +3194,7 @@
                 goalsPosAdjustments['FOODS_ALL'].forEach(val => totalAdjustment += val);
             }
             
-            const adjustedTotalPos = basePosCount + totalAdjustment;
+            const adjustedTotalPos = basePosCount;
             
             if(totalPosEl) totalPosEl.textContent = adjustedTotalPos.toLocaleString('pt-BR');
             
@@ -3210,7 +3210,7 @@
                 }
             });
             
-            const adjustedMixBase = naturalMixBaseCount + totalAdjustment;
+            const adjustedMixBase = naturalMixBaseCount;
 
             if(mixSaltyEl) mixSaltyEl.textContent = Math.round(adjustedMixBase * 0.60).toLocaleString('pt-BR');
             if(mixFoodsEl) mixFoodsEl.textContent = Math.round(adjustedMixBase * 0.30).toLocaleString('pt-BR');
