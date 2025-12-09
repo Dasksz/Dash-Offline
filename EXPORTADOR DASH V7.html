@@ -3191,12 +3191,7 @@
             const basePosCount = uniquePosClientsSet.size;
             
             let totalAdjustment = 0;
-            if (goalsPosAdjustments['ELMA_ALL']) {
-                goalsPosAdjustments['ELMA_ALL'].forEach(val => totalAdjustment += val);
-            }
-            if (goalsPosAdjustments['FOODS_ALL']) {
-                goalsPosAdjustments['FOODS_ALL'].forEach(val => totalAdjustment += val);
-            }
+            // Only PEPSICO adjustments affect the Global/Summary Total Pos
             if (goalsPosAdjustments['PEPSICO_ALL']) {
                 goalsPosAdjustments['PEPSICO_ALL'].forEach(val => totalAdjustment += val);
             }
