@@ -1269,7 +1269,7 @@
 
                     if (sale.CODCLI !== americanasCodCli) {
                         // EXCEPTION: Do not remap if Client 9569, RCA 53, and Type 1/9 (Preserve Balcão)
-                        const isException = (sale.CODCLI === '9569' && String(sale.CODUSUR) === '53' && (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9'));
+                        const isException = (String(sale.CODCLI).trim() === '9569' && (String(sale.CODUSUR).trim() === '53' || String(sale.CODUSUR).trim() === '053') && (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9'));
                         
                         if (!isException) {
                             const currentSellerCode = clientToCurrentSellerMap.get(sale.CODCLI);
@@ -1810,7 +1810,7 @@
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
                         // EXCEPTION: Exclude Balcão (53) sales for Client 9569 from Summary Metrics
-                        if (codCli === '9569' && String(sale.CODUSUR) === '53') return;
+                        if (String(codCli).trim() === '9569' && (String(sale.CODUSUR).trim() === '53' || String(sale.CODUSUR).trim() === '053')) return;
                         
                         let key = null;
                         const codFor = String(sale.CODFOR);
@@ -2960,7 +2960,7 @@
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
                         // EXCEPTION: Exclude Balcão (53) sales for Client 9569 from Summary Metrics
-                        if (codCli === '9569' && String(sale.CODUSUR) === '53') return;
+                        if (String(codCli).trim() === '9569' && (String(sale.CODUSUR).trim() === '53' || String(sale.CODUSUR).trim() === '053')) return;
                         
                         let key = null;
                         const codFor = String(sale.CODFOR);
@@ -3312,7 +3312,7 @@
                         clientHistoryIds.forEach(id => {
                             const sale = optimizedData.historyById.get(id);
                             // EXCEPTION: Exclude Balcão (53) sales for Client 9569 from Global Portfolio Totals
-                            if (codCli === '9569' && String(sale.CODUSUR) === '53') return;
+                            if (String(codCli).trim() === '9569' && (String(sale.CODUSUR).trim() === '53' || String(sale.CODUSUR).trim() === '053')) return;
 
                             if (shouldIncludeSale(sale, currentGoalsSupplier, currentGoalsBrand)) {
                                 if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
@@ -3349,7 +3349,7 @@
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
                         // EXCEPTION: Exclude Balcão (53) sales for Client 9569 from Portfolio Average
-                        if (codCli === '9569' && String(sale.CODUSUR) === '53') return;
+                        if (String(codCli).trim() === '9569' && (String(sale.CODUSUR).trim() === '53' || String(sale.CODUSUR).trim() === '053')) return;
 
                         if (shouldIncludeSale(sale, currentGoalsSupplier, currentGoalsBrand)) {
                             if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
@@ -3732,7 +3732,7 @@
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
                         // EXCEPTION: Exclude Balcão (53) sales for Client 9569 from Portfolio Average
-                        if (codCli === '9569' && String(sale.CODUSUR) === '53') return;
+                        if (String(codCli).trim() === '9569' && (String(sale.CODUSUR).trim() === '53' || String(sale.CODUSUR).trim() === '053')) return;
 
                         if (shouldIncludeSale(sale, currentGoalsSupplier, currentGoalsBrand)) {
                             if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
@@ -4217,7 +4217,7 @@
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
                         // EXCEPTION: Exclude Balcão (53) sales for Client 9569 from Portfolio Analysis
-                        if (codCli === '9569' && String(sale.CODUSUR) === '53') return;
+                        if (String(codCli).trim() === '9569' && (String(sale.CODUSUR).trim() === '53' || String(sale.CODUSUR).trim() === '053')) return;
 
                         const isRev = (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9');
                         if (!isRev) return;
