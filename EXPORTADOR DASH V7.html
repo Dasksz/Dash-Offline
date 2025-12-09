@@ -1248,18 +1248,22 @@
                 if (client.rca1) clientToCurrentSellerMap.set(codCli, String(client.rca1));
                 clientRamoMap.set(codCli, client.ramo || 'N/A');
                 
+
+                if (codCli === '9569' && client.rcas) {
+                     // Robustly remove 53 from the client object so it persists for all filters
+                     client.rcas = client.rcas.filter(r => String(r).trim() !== '53' && String(r).trim() !== '053');
+                }
+
                 if (client.rcas) {
                     for (let j = 0; j < client.rcas.length; j++) {
                         const rca = client.rcas[j];
                         if (rca) {
-                            // SAFETY: Ensure 9569 never appears under 53/053 in main thread logic
-                            if (codCli === '9569' && (String(rca).trim() === '53' || String(rca).trim() === '053')) continue;
-
                             if (!optimizedData.clientsByRca.has(rca)) optimizedData.clientsByRca.set(rca, []);
                             optimizedData.clientsByRca.get(rca).push(client);
                         }
                     }
                 }
+
                 optimizedData.searchIndices.clients[i] = { code: codCli, nameLower: (client.nomeCliente || '').toLowerCase(), cityLower: (client.cidade || '').toLowerCase() };
             }
 
@@ -1813,7 +1817,7 @@
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 if (isAmericanas) return true;
-                if (rca1 === '53') return false;
+                if (rca1 === '53' && String(c['Código']).trim() !== '9569-53') return false;
                 return true;
             });
 
@@ -2886,7 +2890,7 @@
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 if (isAmericanas) return true;
-                if (rca1 === '53') return false;
+                if (rca1 === '53' && String(c['Código']).trim() !== '9569-53') return false;
                 return true;
             });
 
@@ -2953,7 +2957,7 @@
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 if (isAmericanas) return true;
-                if (rca1 === '53') return false;
+                if (rca1 === '53' && String(c['Código']).trim() !== '9569-53') return false;
                 return true;
             });
 
@@ -3086,7 +3090,7 @@
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 if (isAmericanas) return true;
-                if (rca1 === '53') return false;
+                if (rca1 === '53' && String(c['Código']).trim() !== '9569-53') return false;
                 return true;
             });
 
@@ -3317,7 +3321,7 @@
                     const rca1 = String(c.rca1 || '').trim();
                     const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                     if (isAmericanas) return true;
-                    if (rca1 === '53') return false;
+                    if (rca1 === '53' && String(c['Código']).trim() !== '9569-53') return false;
                     return true;
                 });
 
@@ -4020,7 +4024,7 @@
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 if (isAmericanas) return true;
-                if (rca1 === '53') return false;
+                if (rca1 === '53' && String(c['Código']).trim() !== '9569-53') return false;
                 return true;
             });
 
