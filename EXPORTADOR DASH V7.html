@@ -379,7 +379,11 @@
                 }
 
                 // 3. Regra de Prioridade 2: Se NÃO for Americanas, usa a nova lógica
-                if (!isAmericanas) {
+                // EXCEÇÃO: Vendas do Cliente 9569 para RCA 53 (Balcão) com Tipo 1 ou 9 devem permanecer no RCA 53
+                const codUsurVendaCheck = String(rawRow['CODUSUR'] || '').trim();
+                const tipoVendaCheck = String(rawRow['TIPOVENDA'] || 'N/A').trim();
+
+                if (!isAmericanas && !(codCliStr === '9569' && codUsurVendaCheck === '53' && (tipoVendaCheck === '1' || tipoVendaCheck === '9'))) {
                     const rca1Cliente = (clientInfo.rca1 || '').trim();
                     const codUsurVenda = codUsur; // Guarda o CODUSUR original da linha de venda
                     
@@ -1264,13 +1268,18 @@
                     if (sale.DTSAIDA && !(sale.DTSAIDA instanceof Date)) sale.DTSAIDA = new Date(sale.DTSAIDA);
 
                     if (sale.CODCLI !== americanasCodCli) {
-                        const currentSellerCode = clientToCurrentSellerMap.get(sale.CODCLI);
-                        if (currentSellerCode) {
-                            const sellerDetails = sellerDetailsMap.get(currentSellerCode);
-                            if (sellerDetails) {
-                                sale.CODUSUR = currentSellerCode;
-                                sale.NOME = sellerDetails.name;
-                                sale.SUPERV = sellerDetails.supervisor;
+                        // EXCEPTION: Do not remap if Client 9569, RCA 53, and Type 1/9 (Preserve Balcão)
+                        const isException = (sale.CODCLI === '9569' && String(sale.CODUSUR) === '53' && (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9'));
+                        
+                        if (!isException) {
+                            const currentSellerCode = clientToCurrentSellerMap.get(sale.CODCLI);
+                            if (currentSellerCode) {
+                                const sellerDetails = sellerDetailsMap.get(currentSellerCode);
+                                if (sellerDetails) {
+                                    sale.CODUSUR = currentSellerCode;
+                                    sale.NOME = sellerDetails.name;
+                                    sale.SUPERV = sellerDetails.supervisor;
+                                }
                             }
                         }
                     }
@@ -1800,6 +1809,8 @@
                 if (clientHistoryIds) {
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
+                        // EXCEPTION: Exclude Balcão (53) sales for Client 9569 from Summary Metrics
+                        if (codCli === '9569' && String(sale.CODUSUR) === '53') return;
                         
                         let key = null;
                         const codFor = String(sale.CODFOR);
@@ -2948,6 +2959,8 @@
                 if (clientHistoryIds) {
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
+                        // EXCEPTION: Exclude Balcão (53) sales for Client 9569 from Summary Metrics
+                        if (codCli === '9569' && String(sale.CODUSUR) === '53') return;
                         
                         let key = null;
                         const codFor = String(sale.CODFOR);
@@ -3298,6 +3311,9 @@
                         let sumVol = 0;
                         clientHistoryIds.forEach(id => {
                             const sale = optimizedData.historyById.get(id);
+                            // EXCEPTION: Exclude Balcão (53) sales for Client 9569 from Global Portfolio Totals
+                            if (codCli === '9569' && String(sale.CODUSUR) === '53') return;
+
                             if (shouldIncludeSale(sale, currentGoalsSupplier, currentGoalsBrand)) {
                                 if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
                                     sumFat += sale.VLVENDA;
@@ -3332,6 +3348,9 @@
                 if (clientHistoryIds) {
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
+                        // EXCEPTION: Exclude Balcão (53) sales for Client 9569 from Portfolio Average
+                        if (codCli === '9569' && String(sale.CODUSUR) === '53') return;
+
                         if (shouldIncludeSale(sale, currentGoalsSupplier, currentGoalsBrand)) {
                             if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
                                 sumFat += sale.VLVENDA;
@@ -3712,6 +3731,9 @@
                 if (clientHistoryIds) {
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
+                        // EXCEPTION: Exclude Balcão (53) sales for Client 9569 from Portfolio Average
+                        if (codCli === '9569' && String(sale.CODUSUR) === '53') return;
+
                         if (shouldIncludeSale(sale, currentGoalsSupplier, currentGoalsBrand)) {
                             if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
                                 cSumFat += sale.VLVENDA;
@@ -4194,6 +4216,9 @@
                 if (clientHistoryIds) {
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
+                        // EXCEPTION: Exclude Balcão (53) sales for Client 9569 from Portfolio Analysis
+                        if (codCli === '9569' && String(sale.CODUSUR) === '53') return;
+
                         const isRev = (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9');
                         if (!isRev) return;
 
@@ -7264,7 +7289,11 @@
                     metrics.charts.weeklyHistory = metrics.charts.weeklyHistory.map(v => v / QUARTERLY_DIVISOR);
                     Object.values(metrics.charts.supervisorData).forEach(d => d.history /= QUARTERLY_DIVISOR);
 
-                    const sortedMonths = Array.from(historyMonths.keys()).sort().slice(-3);
+                    const sortedMonths = Array.from(historyMonths.keys()).sort((a, b) => {
+                        const [y1, m1] = a.split('-').map(Number);
+                        const [y2, m2] = b.split('-').map(Number);
+                        return (y1 * 12 + m1) - (y2 * 12 + m2);
+                    }).slice(-3);
                     let sumClients = 0; let sumMixPep = 0; let sumPosSalty = 0; let sumPosFoods = 0;
 
                     sortedMonths.forEach(mKey => {
