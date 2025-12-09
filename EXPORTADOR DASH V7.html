@@ -2910,7 +2910,8 @@
                 '752': createMetric(),
                 '1119_TODDYNHO': createMetric(),
                 '1119_TODDY': createMetric(),
-                '1119_QUAKER_KEROCOCO': createMetric()
+                '1119_QUAKER_KEROCOCO': createMetric(),
+                'PEPSICO_ALL': createMetric()
             };
 
             const currentDate = lastSaleDate;
@@ -2961,32 +2962,36 @@
                             else if (desc.includes('QUAKER') || desc.includes('KEROCOCO')) key = '1119_QUAKER_KEROCOCO';
                         }
 
-                        if (key && metricsMap[key]) {
+                        const keysToProcess = [];
+                        if (key && metricsMap[key]) keysToProcess.push(key);
+                        if (['707', '708', '752', '1119'].includes(codFor)) keysToProcess.push('PEPSICO_ALL');
+
+                        keysToProcess.forEach(procKey => {
                             const d = parseDate(sale.DTPED);
                             const isPrevMonth = d && d.getUTCMonth() === prevMonthIndex && d.getUTCFullYear() === prevMonthYear;
 
                             // 1. Revenue/Volume metrics (Types 1 & 9) - Global Sums
                             if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
-                                metricsMap[key].fat += sale.VLVENDA;
-                                metricsMap[key].vol += sale.TOTPESOLIQ;
+                                metricsMap[procKey].fat += sale.VLVENDA;
+                                metricsMap[procKey].vol += sale.TOTPESOLIQ;
 
                                 if (isPrevMonth) {
-                                    metricsMap[key].prevFat += sale.VLVENDA;
-                                    metricsMap[key].prevVol += sale.TOTPESOLIQ;
+                                    metricsMap[procKey].prevFat += sale.VLVENDA;
+                                    metricsMap[procKey].prevVol += sale.TOTPESOLIQ;
                                 }
 
                                 // 2. Accumulate for Client Count Check (Balance per period)
                                 if (d) {
-                                if (!clientTotals[key]) clientTotals[key] = { prevFat: 0, monthlyFat: new Map() };
-                                
-                                if (isPrevMonth) clientTotals[key].prevFat += sale.VLVENDA;
-                                
-                                const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
-                                const currentMVal = clientTotals[key].monthlyFat.get(monthKey) || 0;
-                                clientTotals[key].monthlyFat.set(monthKey, currentMVal + sale.VLVENDA);
+                                    if (!clientTotals[procKey]) clientTotals[procKey] = { prevFat: 0, monthlyFat: new Map() };
+
+                                    if (isPrevMonth) clientTotals[procKey].prevFat += sale.VLVENDA;
+
+                                    const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
+                                    const currentMVal = clientTotals[procKey].monthlyFat.get(monthKey) || 0;
+                                    clientTotals[procKey].monthlyFat.set(monthKey, currentMVal + sale.VLVENDA);
                                 }
                             }
-                        }
+                        });
                     });
                 }
 
@@ -3187,8 +3192,8 @@
             if(totalFatEl) totalFatEl.textContent = totalFat.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
             if(totalVolEl) totalVolEl.textContent = totalVol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
             
-            // Calculate Base Total
-            const basePosCount = uniquePosClientsSet.size;
+            // Calculate Base Total (Use PEPSICO_ALL metric instead of Union)
+            const basePosCount = (displayMetrics['PEPSICO_ALL'] && displayMetrics['PEPSICO_ALL'].quarterlyPos) ? displayMetrics['PEPSICO_ALL'].quarterlyPos : uniquePosClientsSet.size;
             
             let totalAdjustment = 0;
             // Only PEPSICO adjustments affect the Global/Summary Total Pos
