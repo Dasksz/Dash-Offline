@@ -1702,7 +1702,7 @@
         let mixTableDataForExport = [];
         let mixKpiMode = 'total'; // 'total' ou 'atendidos'
 
-        let currentGoalsSupplier = 'ELMA_ALL';
+        let currentGoalsSupplier = 'PEPSICO_ALL';
         let currentGoalsBrand = null;
         let currentGoalsSvSupplier = '707';
         let currentGoalsSvBrand = null;
@@ -3197,9 +3197,11 @@
             if (goalsPosAdjustments['FOODS_ALL']) {
                 goalsPosAdjustments['FOODS_ALL'].forEach(val => totalAdjustment += val);
             }
+            if (goalsPosAdjustments['PEPSICO_ALL']) {
+                goalsPosAdjustments['PEPSICO_ALL'].forEach(val => totalAdjustment += val);
+            }
             
-            // NOTE: User requested removal of manual adjustments from Summary Total Pos
-            const adjustedTotalPos = basePosCount; 
+            const adjustedTotalPos = basePosCount + totalAdjustment;
             
             if(totalPosEl) totalPosEl.textContent = adjustedTotalPos.toLocaleString('pt-BR');
             
@@ -3217,8 +3219,21 @@
             
             const adjustedMixBase = naturalMixBaseCount + totalAdjustment;
 
-            if(mixSaltyEl) mixSaltyEl.textContent = Math.round(adjustedMixBase * 0.60).toLocaleString('pt-BR');
-            if(mixFoodsEl) mixFoodsEl.textContent = Math.round(adjustedMixBase * 0.30).toLocaleString('pt-BR');
+            let mixSaltyAdjustment = 0;
+            if (goalsMixSaltyAdjustments['PEPSICO_ALL']) {
+                 goalsMixSaltyAdjustments['PEPSICO_ALL'].forEach(val => mixSaltyAdjustment += val);
+            }
+
+            let mixFoodsAdjustment = 0;
+            if (goalsMixFoodsAdjustments['PEPSICO_ALL']) {
+                 goalsMixFoodsAdjustments['PEPSICO_ALL'].forEach(val => mixFoodsAdjustment += val);
+            }
+
+            const standardSaltyTarget = Math.round(adjustedMixBase * 0.60);
+            const standardFoodsTarget = Math.round(adjustedMixBase * 0.30);
+
+            if(mixSaltyEl) mixSaltyEl.textContent = (standardSaltyTarget + mixSaltyAdjustment).toLocaleString('pt-BR');
+            if(mixFoodsEl) mixFoodsEl.textContent = (standardFoodsTarget + mixFoodsAdjustment).toLocaleString('pt-BR');
         }
 
         function calculateDistributedGoals(filteredClients, currentGoalsSupplier, currentGoalsBrand, goalFat, goalVol) {
@@ -11142,8 +11157,8 @@
                                 <!-- Category Selection Toggles -->
                                 <div class="flex flex-col gap-4 mb-6">
                                     <div class="flex gap-4">
-                                        <button id="goals-category-pepsico-btn" class="px-8 py-3 bg-[#334155] text-slate-400 font-bold rounded hover:bg-slate-700 transition-colors uppercase tracking-wider text-sm border border-slate-700">PEPSICO</button>
-                                        <button id="goals-category-elmachips-btn" class="px-8 py-3 bg-[#0d9488] text-white font-bold rounded hover:bg-teal-700 transition-colors uppercase tracking-wider text-sm shadow-lg border border-teal-500/50">ELMA CHIPS</button>
+                                        <button id="goals-category-pepsico-btn" class="px-8 py-3 bg-[#0d9488] text-white font-bold rounded hover:bg-teal-700 transition-colors uppercase tracking-wider text-sm shadow-lg border border-teal-500/50">PEPSICO</button>
+                                        <button id="goals-category-elmachips-btn" class="px-8 py-3 bg-[#334155] text-slate-400 font-bold rounded hover:bg-slate-700 transition-colors uppercase tracking-wider text-sm border border-slate-700">ELMA CHIPS</button>
                                         <button id="goals-category-foods-btn" class="px-8 py-3 bg-[#334155] text-slate-400 font-bold rounded hover:bg-slate-700 transition-colors uppercase tracking-wider text-sm border border-slate-700">FOODS</button>
                                          <button id="goals-category-summary-btn" class="px-8 py-3 bg-[#334155] text-slate-400 font-bold rounded hover:bg-slate-700 transition-colors uppercase tracking-wider text-sm border border-slate-700">RESUMO</button>
                                     </div>
@@ -11151,14 +11166,16 @@
                                     <!-- Sub-tabs Container -->
                                     <div id="goals-sub-tabs-container">
                                         <!-- PEPSICO Sub-tabs -->
-                                        <div class="hidden flex border-b border-slate-700 overflow-x-auto" id="goals-sub-tabs-pepsico">
-                                            <button data-supplier="PEPSICO_ALL" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">PEPSICO</button>
+                                        <div class="flex border-b border-slate-700 overflow-x-auto" id="goals-sub-tabs-pepsico">
+                                            <button data-supplier="PEPSICO_ALL" class="goals-sub-tab px-6 py-3 text-teal-400 font-bold text-sm border-b-2 border-teal-400 flex items-center gap-2 whitespace-nowrap active">
+                                                <span class="w-2 h-2 rounded-full bg-teal-400 inline-block indicator"></span> PEPSICO
+                                            </button>
                                         </div>
 
                                         <!-- Elma Chips Sub-tabs -->
-                                        <div class="flex border-b border-slate-700 overflow-x-auto" id="goals-sub-tabs-elmachips">
-                                            <button data-supplier="ELMA_ALL" class="goals-sub-tab px-6 py-3 text-teal-400 font-bold text-sm border-b-2 border-teal-400 flex items-center gap-2 whitespace-nowrap active">
-                                                <span class="w-2 h-2 rounded-full bg-teal-400 inline-block indicator"></span> ELMA
+                                        <div class="hidden flex border-b border-slate-700 overflow-x-auto" id="goals-sub-tabs-elmachips">
+                                            <button data-supplier="ELMA_ALL" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">
+                                                ELMA
                                             </button>
                                             <button data-supplier="707" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">EXTRUSADOS</button>
                                             <button data-supplier="708" class="goals-sub-tab px-6 py-3 text-slate-400 font-medium text-sm hover:text-white transition-colors whitespace-nowrap">NÃO EXTRUSADOS</button>
