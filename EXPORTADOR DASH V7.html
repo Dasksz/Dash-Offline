@@ -3199,7 +3199,7 @@
             }
             
             // NOTE: User requested removal of manual adjustments from Summary Total Pos
-            const adjustedTotalPos = basePosCount;
+            const adjustedTotalPos = basePosCount; 
             
             if(totalPosEl) totalPosEl.textContent = adjustedTotalPos.toLocaleString('pt-BR');
             
@@ -3359,12 +3359,13 @@
                 let metaFat = 0;
                 let metaVol = 0;
                 
-                if (currentGoalsSupplier === 'ELMA_ALL' || currentGoalsSupplier === 'FOODS_ALL') {
+                if (currentGoalsSupplier === 'ELMA_ALL' || currentGoalsSupplier === 'FOODS_ALL' || currentGoalsSupplier === 'PEPSICO_ALL') {
                     if (globalClientGoals.has(codCli)) {
                         const cGoals = globalClientGoals.get(codCli);
-                        const keysToSum = currentGoalsSupplier === 'ELMA_ALL' 
-                            ? ['707', '708', '752'] 
-                            : ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
+                        let keysToSum = [];
+                        if (currentGoalsSupplier === 'ELMA_ALL') keysToSum = ['707', '708', '752'];
+                        else if (currentGoalsSupplier === 'FOODS_ALL') keysToSum = ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
+                        else if (currentGoalsSupplier === 'PEPSICO_ALL') keysToSum = ['707', '708', '752', '1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
                         
                         keysToSum.forEach(k => {
                             if (cGoals.has(k)) {
@@ -3433,7 +3434,9 @@
             if (filteredClients.length === 0) return;
 
             let keysToProcess = [];
-            if (currentGoalsSupplier === 'ELMA_ALL') {
+            if (currentGoalsSupplier === 'PEPSICO_ALL') {
+                keysToProcess = ['707', '708', '752', '1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
+            } else if (currentGoalsSupplier === 'ELMA_ALL') {
                 keysToProcess = ['707', '708', '752'];
             } else if (currentGoalsSupplier === 'FOODS_ALL') {
                 keysToProcess = ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
@@ -3570,26 +3573,26 @@
             // Find natural base for this seller
             // We can iterate the 'filteredClients' from 'updateGoalsView' context if we had it, or re-filter.
             // Since we are in a helper, we re-filter for safety and accuracy.
-
+            
             // Re-use logic for Active Clients counting
             const sellerClients = allClientsData.filter(c => {
                 const rca1 = String(c.rca1 || '').trim();
                 // Check if this client belongs to the seller
                 const sellerCode = optimizedData.rcaCodeByName.get(sellerName);
                 if (!sellerCode) return false;
-
+                
                 // Is client active check (Same as others)
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 if (!isAmericanas && rca1 === '53') return false;
-
+                
                 // Does client belong to seller?
                 // Check current assignment (rca1 or rcas list?)
-                // Dashboard logic uses 'rca1' primarily for current view assignment in lists,
+                // Dashboard logic uses 'rca1' primarily for current view assignment in lists, 
                 // but filters check 'rcas' array.
                 // Let's use 'rcas' includes code.
                 return c.rcas.includes(sellerCode);
             });
-
+            
             let naturalCount = 0;
             // Count "Meta Pos" (Revenue > 1 in PEPSICO_ALL) for these clients
             sellerClients.forEach(c => {
@@ -3606,11 +3609,11 @@
                 }
                 if (sumFat > 1) naturalCount++;
             });
-
+            
             // Apply 60% / 30% rule
             const base = type === 'salty' ? Math.round(naturalCount * 0.60) : Math.round(naturalCount * 0.30);
             const adjustment = value - base;
-
+            
             if (type === 'salty') {
                 if (!goalsMixSaltyAdjustments['PEPSICO_ALL']) goalsMixSaltyAdjustments['PEPSICO_ALL'] = new Map();
                 goalsMixSaltyAdjustments['PEPSICO_ALL'].set(sellerName, adjustment);
@@ -3618,7 +3621,7 @@
                 if (!goalsMixFoodsAdjustments['PEPSICO_ALL']) goalsMixFoodsAdjustments['PEPSICO_ALL'] = new Map();
                 goalsMixFoodsAdjustments['PEPSICO_ALL'].set(sellerName, adjustment);
             }
-
+            
             updateGoalsView();
         }
 
@@ -3725,10 +3728,14 @@
 
                 // Retrieve Stored Goal
                 let metaFat = 0; let metaVol = 0;
-                if (currentGoalsSupplier === 'ELMA_ALL' || currentGoalsSupplier === 'FOODS_ALL') {
+                if (currentGoalsSupplier === 'ELMA_ALL' || currentGoalsSupplier === 'FOODS_ALL' || currentGoalsSupplier === 'PEPSICO_ALL') {
                     if (globalClientGoals.has(codCli)) {
                         const cGoals = globalClientGoals.get(codCli);
-                        const keysToSum = currentGoalsSupplier === 'ELMA_ALL' ? ['707', '708', '752'] : ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
+                        let keysToSum = [];
+                        if (currentGoalsSupplier === 'ELMA_ALL') keysToSum = ['707', '708', '752'];
+                        else if (currentGoalsSupplier === 'FOODS_ALL') keysToSum = ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
+                        else if (currentGoalsSupplier === 'PEPSICO_ALL') keysToSum = ['707', '708', '752', '1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
+                        
                         keysToSum.forEach(k => { if (cGoals.has(k)) { const g = cGoals.get(k); metaFat += g.fat; metaVol += g.vol; } });
                     }
                 } else {
@@ -3769,11 +3776,17 @@
                 const isAggregatedTab = currentGoalsSupplier === 'ELMA_ALL' || currentGoalsSupplier === 'FOODS_ALL' || currentGoalsSupplier === 'PEPSICO_ALL';
 
                 if (fatInput) {
-                    if (document.activeElement !== fatInput) fatInput.value = sumFat.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    if (document.activeElement !== fatInput) {
+                        const displayFat = (sumFat === 0 && totalPrevFat > 0) ? totalPrevFat : sumFat;
+                        fatInput.value = displayFat.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    }
                     fatInput.readOnly = false; fatInput.classList.remove('opacity-50', 'cursor-not-allowed');
                 }
                 if (volInput) {
-                    if (document.activeElement !== volInput) volInput.value = sumVol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+                    if (document.activeElement !== volInput) {
+                        const displayVol = (sumVol === 0 && totalPrevVol > 0) ? totalPrevVol : sumVol;
+                        volInput.value = displayVol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+                    }
                     volInput.readOnly = false; volInput.classList.remove('opacity-50', 'cursor-not-allowed');
                 }
                 if (btnDistributeFat) btnDistributeFat.style.display = '';
@@ -3851,11 +3864,11 @@
                 // --- MIX SALTY & FOODS CARDS LOGIC (PEPSICO ONLY) ---
                 const cardMixSalty = document.getElementById('card-mix-salty');
                 const cardMixFoods = document.getElementById('card-mix-foods');
-
+                
                 if (currentGoalsSupplier === 'PEPSICO_ALL') {
                     if(cardMixSalty) cardMixSalty.classList.remove('hidden');
                     if(cardMixFoods) cardMixFoods.classList.remove('hidden');
-
+                    
                     // Logic to populate values and handle edit
                     let naturalMixBase = 0;
                     clientMetrics.forEach(c => {
@@ -3865,10 +3878,10 @@
                             if (c.metaPos > 0) naturalMixBase++; // Count positivations in PEPSICO_ALL (Total Pos)
                         }
                     });
-
+                    
                     const naturalSaltyTarget = Math.round(naturalMixBase * 0.60);
                     const naturalFoodsTarget = Math.round(naturalMixBase * 0.30);
-
+                    
                     const handleMixCard = (type, naturalTarget, adjustmentsMap, inputId, btnId) => {
                         let adj = 0;
                         if (isSingleSeller) {
@@ -3879,14 +3892,14 @@
                                 if (visibleSellers.has(seller)) adj += val;
                             });
                         }
-
+                        
                         const displayVal = naturalTarget + adj;
                         const input = document.getElementById(inputId);
                         const btn = document.getElementById(btnId);
-
+                        
                         if(input) {
                             input.value = displayVal.toLocaleString('pt-BR');
-
+                            
                             if (isSingleSeller) {
                                 input.readOnly = false;
                                 input.classList.remove('opacity-50', 'cursor-not-allowed');
@@ -3898,7 +3911,7 @@
                             }
                         }
                     };
-
+                    
                     if (goalsMixSaltyAdjustments['PEPSICO_ALL']) {
                         handleMixCard('Salty', naturalSaltyTarget, goalsMixSaltyAdjustments['PEPSICO_ALL'], 'goal-global-mix-salty', 'btn-distribute-mix-salty');
                     }
@@ -9870,24 +9883,24 @@
             if (btnDistributeMixSalty) {
                 btnDistributeMixSalty.addEventListener('click', () => {
                     const sellerName = selectedGoalsGvSellers[0];
-                    if (!sellerName) return;
+                    if (!sellerName) return; 
                     const valStr = document.getElementById('goal-global-mix-salty').value;
                     showConfirmationModal(`Confirmar ajuste de Meta Mix Salty para ${valStr} (Vendedor: ${getFirstName(sellerName)})?`, () => {
                         const val = parseFloat(valStr.replace(/\./g, '').replace(',', '.')) || 0;
-
+                        
                         // Calculate Natural Base again to store Delta
                         // We need the natural base for THIS seller to calculate delta (Input - Natural)
-                        // It's cleaner if updateGoalsView handles this logic directly in the listener,
+                        // It's cleaner if updateGoalsView handles this logic directly in the listener, 
                         // OR we store the natural base somewhere.
                         // For simplicity, let's just trigger a custom event or call a handler that has access to context.
                         // Actually, since we need "Natural" value which varies by filter context, it's safer to handle this
                         // inside updateGoalsView where metrics are available, OR make this listener smart enough.
-
-                        // Let's use the adjustment map directly.
+                        
+                        // Let's use the adjustment map directly. 
                         // But we don't know the natural value here easily without recalculating.
                         // Solution: The input value IS the target. We want to store the adjustment.
                         // Adjustment = Target - Natural.
-
+                        
                         // Let's implement a specific helper function "saveMixAdjustment" that recalculates natural base for single seller.
                         saveMixAdjustment('salty', val, sellerName);
                     });
@@ -11209,7 +11222,7 @@
                                 </div>
 
                                 <!-- Meta Input Cards -->
-                                <div id="goals-input-cards" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6 bg-[#161e3d] p-4 rounded-lg border border-slate-700/50">
+                                <div id="goals-input-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-6 bg-[#161e3d] p-4 rounded-lg border border-slate-700/50">
                                     <!-- Faturamento Card -->
                                     <div class="bg-[#1e2a5a] border border-blue-900/50 rounded-lg p-3 relative overflow-hidden group">
                                         <div class="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
