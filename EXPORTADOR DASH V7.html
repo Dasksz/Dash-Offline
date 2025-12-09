@@ -379,7 +379,11 @@
                 }
 
                 // 3. Regra de Prioridade 2: Se NÃO for Americanas, usa a nova lógica
-                if (!isAmericanas) {
+                // EXCEÇÃO: Vendas do Cliente 9569 para RCA 53 (Balcão) com Tipo 1 ou 9 devem permanecer no RCA 53
+                const codUsurVendaCheck = String(rawRow['CODUSUR'] || '').trim();
+                const tipoVendaCheck = String(rawRow['TIPOVENDA'] || 'N/A').trim();
+
+                if (!isAmericanas && !(codCliStr === '9569' && codUsurVendaCheck === '53' && (tipoVendaCheck === '1' || tipoVendaCheck === '9'))) {
                     const rca1Cliente = (clientInfo.rca1 || '').trim();
                     const codUsurVenda = codUsur; // Guarda o CODUSUR original da linha de venda
                     
@@ -7264,7 +7268,11 @@
                     metrics.charts.weeklyHistory = metrics.charts.weeklyHistory.map(v => v / QUARTERLY_DIVISOR);
                     Object.values(metrics.charts.supervisorData).forEach(d => d.history /= QUARTERLY_DIVISOR);
 
-                    const sortedMonths = Array.from(historyMonths.keys()).sort().slice(-3);
+                    const sortedMonths = Array.from(historyMonths.keys()).sort((a, b) => {
+                        const [y1, m1] = a.split('-').map(Number);
+                        const [y2, m2] = b.split('-').map(Number);
+                        return (y1 * 12 + m1) - (y2 * 12 + m2);
+                    }).slice(-3);
                     let sumClients = 0; let sumMixPep = 0; let sumPosSalty = 0; let sumPosFoods = 0;
 
                     sortedMonths.forEach(mKey => {
