@@ -383,7 +383,7 @@
                 const codUsurVendaCheck = String(rawRow['CODUSUR'] || '').trim();
                 const tipoVendaCheck = String(rawRow['TIPOVENDA'] || 'N/A').trim();
 
-                if (!isAmericanas && !(codCliStr === '9569' && codUsurVendaCheck === '53' && (tipoVendaCheck === '1' || tipoVendaCheck === '9'))) {
+                if (!isAmericanas && !(codCliStr === '9569' && (codUsurVendaCheck === '53' || codUsurVendaCheck === '053') && (tipoVendaCheck === '1' || tipoVendaCheck === '9'))) {
                     const rca1Cliente = (clientInfo.rca1 || '').trim();
                     const codUsurVenda = codUsur; // Guarda o CODUSUR original da linha de venda
                     
