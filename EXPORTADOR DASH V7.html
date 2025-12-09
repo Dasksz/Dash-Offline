@@ -662,6 +662,9 @@
                     if (clientRcaOverrides.has(codCli)) clientData.rcas.unshift(clientRcaOverrides.get(codCli));
                     clientMap.set(codCli, clientData);
                     if (codCli === '9569') {
+                        // Remove 53 from the main client's RCA list so it doesn't appear under Balcao filter
+                        clientData.rcas = clientData.rcas.filter(r => r !== '53' && r !== '053');
+
                         const shadowClient = { ...clientData };
                         shadowClient['Código'] = '9569-53';
                         shadowClient.rca1 = '53';
