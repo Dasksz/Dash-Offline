@@ -1835,10 +1835,9 @@
                                     g.fat += sale.VLVENDA;
                                     g.vol += (sale.TOTPESOLIQ / 1000); // Tons
                                 }
-                            }
 
-                            // 2. Accumulate for Client Count Check (Balance per period)
-                            if (d) {
+                                // 2. Accumulate for Client Count Check (Balance per period)
+                                if (d) {
                                 if (!clientTotals[key]) clientTotals[key] = { prevFat: 0, monthlyFat: new Map() };
                                 
                                 if (isPrevMonth) clientTotals[key].prevFat += sale.VLVENDA;
@@ -1846,6 +1845,7 @@
                                 const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
                                 const currentMVal = clientTotals[key].monthlyFat.get(monthKey) || 0;
                                 clientTotals[key].monthlyFat.set(monthKey, currentMVal + sale.VLVENDA);
+                                }
                             }
                         }
                     });
@@ -2974,10 +2974,9 @@
                                     metricsMap[key].prevFat += sale.VLVENDA;
                                     metricsMap[key].prevVol += sale.TOTPESOLIQ;
                                 }
-                            }
 
-                            // 2. Accumulate for Client Count Check (Balance per period)
-                            if (d) {
+                                // 2. Accumulate for Client Count Check (Balance per period)
+                                if (d) {
                                 if (!clientTotals[key]) clientTotals[key] = { prevFat: 0, monthlyFat: new Map() };
                                 
                                 if (isPrevMonth) clientTotals[key].prevFat += sale.VLVENDA;
@@ -2985,6 +2984,7 @@
                                 const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
                                 const currentMVal = clientTotals[key].monthlyFat.get(monthKey) || 0;
                                 clientTotals[key].monthlyFat.set(monthKey, currentMVal + sale.VLVENDA);
+                                }
                             }
                         }
                     });
