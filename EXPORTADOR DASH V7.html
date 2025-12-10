@@ -1254,6 +1254,9 @@
                     client.rca1 = '1001';
                     client.rcas = ['1001'];
                     americanasCodCli = codCli;
+                } else if (!client.rca1 || String(client.rca1).trim() === '') {
+                    client.rca1 = 'INATIVOS';
+                    client.rcas = ['INATIVOS'];
                 }
                 
                 if (client.rca1) clientToCurrentSellerMap.set(codCli, String(client.rca1));
@@ -1821,7 +1824,7 @@
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 if (isAmericanas) return true;
-                if (rca1 === '53' || rca1 === '') return false;
+                if (rca1 === '53' || rca1 === '' || rca1 === 'INATIVOS') return false;
                 return true;
             });
 
@@ -2896,7 +2899,7 @@
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 if (isAmericanas) return true;
-                if (rca1 === '53' || rca1 === '') return false;
+                if (rca1 === '53' || rca1 === '' || rca1 === 'INATIVOS') return false;
                 return true;
             });
 
@@ -2963,7 +2966,7 @@
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 if (isAmericanas) return true;
-                if (rca1 === '53' || rca1 === '') return false;
+                if (rca1 === '53' || rca1 === '' || rca1 === 'INATIVOS') return false;
                 return true;
             });
 
