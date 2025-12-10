@@ -3340,6 +3340,7 @@
                     if (clientHistoryIds) {
                         let sumFat = 0;
                         let sumVol = 0;
+                        const monthlySums = {};
                         clientHistoryIds.forEach(id => {
                             const sale = optimizedData.historyById.get(id);
                             // EXCEPTION: Exclude Balcão (53) sales for Client 9569 from Global Portfolio Totals
@@ -3349,11 +3350,22 @@
                                 if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
                                     sumFat += sale.VLVENDA;
                                     sumVol += sale.TOTPESOLIQ;
+
+                                    const d = parseDate(sale.DTPED);
+                                    if(d) {
+                                        const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
+                                        monthlySums[monthKey] = (monthlySums[monthKey] || 0) + sale.VLVENDA;
+                                    }
                                 }
                             }
                         });
-                        globalTotalAvgFat += (sumFat / QUARTERLY_DIVISOR);
-                        globalTotalAvgVol += ((sumVol / 1000) / QUARTERLY_DIVISOR);
+
+                        let activeMonthsCount = 0;
+                        for(let k in monthlySums) { if(monthlySums[k] > 1) activeMonthsCount++; }
+                        const divisor = activeMonthsCount > 0 ? activeMonthsCount : 1;
+
+                        globalTotalAvgFat += (sumFat / divisor);
+                        globalTotalAvgVol += ((sumVol / 1000) / divisor);
                     }
                 });
                 
@@ -3691,6 +3703,106 @@
             updateGoalsView();
         }
 
+
+        function exportGoalsCurrentTabXLSX() {
+            const data = goalsTableState.filteredData;
+            if (!data || data.length === 0) {
+                alert('Sem dados para exportar.');
+                return;
+            }
+
+            const wb = XLSX.utils.book_new();
+
+            // 1. Headers
+            const monthLabels = quarterMonths.map(m => m.label);
+            const flatHeaders = [
+                'CÓD', 'CLIENTE', 'VENDEDOR',
+                ...monthLabels.map(m => `${m} (FAT)`),
+                'MÉDIA FAT', '% SHARE FAT', 'META FAT',
+                'MÉDIA VOL (TON)', '% SHARE VOL', 'META VOL (TON)', 'META POS'
+            ];
+
+            const ws_data_flat = [flatHeaders];
+             data.forEach(item => {
+                const row = [
+                    parseInt(item.cod),
+                    item.name,
+                    getFirstName(item.seller),
+                    ...quarterMonths.map(m => item.monthlyValues[m.key] || 0),
+                    item.avgFat,
+                    item.shareFat,
+                    item.metaFat,
+                    item.avgVol,
+                    item.shareVol,
+                    item.metaVol,
+                    item.metaPos
+                ];
+                ws_data_flat.push(row);
+            });
+
+            const ws_flat = XLSX.utils.aoa_to_sheet(ws_data_flat);
+
+             // Style Header
+            if (ws_flat['!ref']) {
+                const range = XLSX.utils.decode_range(ws_flat['!ref']);
+                for (let C = range.s.c; C <= range.e.c; ++C) {
+                    const addr = XLSX.utils.encode_cell({ r: 0, c: C });
+                    if (!ws_flat[addr]) continue;
+                    if (!ws_flat[addr].s) ws_flat[addr].s = {};
+                    ws_flat[addr].s.fill = { fgColor: { rgb: "1E293B" } };
+                    ws_flat[addr].s.font = { color: { rgb: "FFFFFF" }, bold: true };
+                    ws_flat[addr].s.alignment = { horizontal: "center" };
+                }
+
+                // Number formats
+                for (let R = 1; R <= range.e.r; ++R) {
+                     // Month Cols start at 3
+                     const monthStart = 3;
+                     const monthEnd = 3 + quarterMonths.length - 1;
+
+                     for (let C = monthStart; C <= range.e.c; ++C) {
+                          const addr = XLSX.utils.encode_cell({ r: R, c: C });
+                          if (!ws_flat[addr]) continue;
+                          if (!ws_flat[addr].s) ws_flat[addr].s = {};
+                          ws_flat[addr].t = 'n';
+
+                          // Percentages (Indices relative to monthEnd)
+                          // Header: [COD, CLI, VEND, M1, M2, M3, AVG, SHARE, META, AVG_V, SHARE, META_V, POS]
+                          // M3 is monthEnd.
+                          // AVG is monthEnd+1
+                          // SHARE is monthEnd+2
+                          // META is monthEnd+3
+                          // AVG_V is monthEnd+4
+                          // SHARE_V is monthEnd+5
+                          // META_V is monthEnd+6
+                          // POS is monthEnd+7
+
+                          if (C === monthEnd + 2 || C === monthEnd + 5) {
+                              ws_flat[addr].z = '0.00%';
+                          }
+                          // Volumes (TON)
+                          else if (C === monthEnd + 4 || C === monthEnd + 6) {
+                              ws_flat[addr].z = '#,##0.000';
+                          }
+                          // Currency/Values
+                          else if (C <= monthEnd + 3) {
+                              ws_flat[addr].z = '#,##0.00';
+                          }
+                     }
+                }
+
+                ws_flat['!cols'] = [
+                    { wch: 8 }, { wch: 35 }, { wch: 15 },
+                    ...quarterMonths.map(_ => ({ wch: 15 })),
+                    { wch: 15 }, { wch: 10 }, { wch: 15 },
+                    { wch: 15 }, { wch: 10 }, { wch: 15 }, { wch: 8 }
+                ];
+            }
+
+            XLSX.utils.book_append_sheet(wb, ws_flat, "Metas GV");
+            XLSX.writeFile(wb, `Metas_GV_${currentGoalsSupplier}_${new Date().toISOString().slice(0,10)}.xlsx`);
+        }
+
         function updateGoalsView() {
             goalsRenderId++;
             const currentRenderId = goalsRenderId;
@@ -3785,10 +3897,12 @@
                     });
                 }
 
-                const avgFat = cSumFat / QUARTERLY_DIVISOR;
-                const avgVol = (cSumVol / 1000) / QUARTERLY_DIVISOR;
                 let activeMonthsCount = 0;
                 monthlyActivity.forEach(val => { if(val > 1) activeMonthsCount++; });
+                const divisor = activeMonthsCount > 0 ? activeMonthsCount : 1;
+
+                const avgFat = cSumFat / divisor;
+                const avgVol = (cSumVol / 1000) / divisor;
                 const isActivePrevMonth = cPrevFat > 1 ? 1 : 0;
 
                 let sellerName = 'N/A';
@@ -4017,6 +4131,21 @@
                     goalsGvTableBody.innerHTML = rows;
                     if (paginationControls) {
                         paginationControls.classList.remove('hidden');
+
+                        let exportBtn = document.getElementById('btn-export-goals-gv');
+                        if (!exportBtn) {
+                             const btnContainer = document.createElement('div');
+                             btnContainer.className = "flex items-center ml-4";
+                             btnContainer.innerHTML = `<button id="btn-export-goals-gv" class="flex items-center space-x-1 text-xs font-bold text-green-400 hover:text-green-300 border border-green-500/30 hover:border-green-500/50 bg-green-500/10 hover:bg-green-500/20 px-3 py-1.5 rounded transition-colors" title="Exportar tabela completa (XLSX)">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    <span>XLSX</span>
+                                </button>`;
+                             pageInfo.parentNode.insertBefore(btnContainer, pageInfo.nextSibling);
+                             document.getElementById('btn-export-goals-gv').addEventListener('click', exportGoalsCurrentTabXLSX);
+                        }
+
                         pageInfo.textContent = `Página ${goalsTableState.currentPage} de ${goalsTableState.totalPages} (Total: ${clientMetrics.length})`;
                         prevBtn.disabled = goalsTableState.currentPage === 1;
                         nextBtn.disabled = goalsTableState.currentPage === goalsTableState.totalPages;
