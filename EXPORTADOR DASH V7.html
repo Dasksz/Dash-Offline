@@ -348,8 +348,8 @@
 
         const processSalesData = (rawData, clientMap, productMasterMap, newRcaSupervisorMap) => {
             return rawData.map(rawRow => {
-                const codCliStr = String(rawRow['CODCLI']).trim();
-                const clientInfo = clientMap.get(codCliStr) || {};
+                let codCliStr = String(rawRow['CODCLI']).trim();
+                                const clientInfo = clientMap.get(codCliStr) || {};
                 
                 // --- INÍCIO DA MODIFICAÇÃO: LÓGICA DE ATRIBUIÇÃO DE VENDEDOR ---
                 
@@ -383,7 +383,7 @@
                 const codUsurVendaCheck = String(rawRow['CODUSUR'] || '').trim();
                 const tipoVendaCheck = String(rawRow['TIPOVENDA'] || 'N/A').trim();
 
-                if (!isAmericanas && !(codCliStr === '9569' && codUsurVendaCheck === '53' && (tipoVendaCheck === '1' || tipoVendaCheck === '9'))) {
+                if (!isAmericanas && !(codCliStr === '9569' && (codUsurVendaCheck === '53' || codUsurVendaCheck === '053') && (tipoVendaCheck === '1' || tipoVendaCheck === '9'))) {
                     const rca1Cliente = (clientInfo.rca1 || '').trim();
                     const codUsurVenda = codUsur; // Guarda o CODUSUR original da linha de venda
                     
@@ -536,6 +536,29 @@
                     readFile(innovationsFile, 'innovations')
                 ]);
 
+                // --- INJECTED: VIRTUAL FORKING FOR CLIENT 9569 ---
+                // Goal: Physically separate RCA 53 sales from Main RCA sales for Client 9569 at the raw data level.
+                
+                // 2. Remap Sales for RCA 53 to the new Shadow Client ID
+                const remapSalesFor9569 = (dataset) => {
+                    for (let i = 0; i < dataset.length; i++) {
+                        const row = dataset[i];
+                        const codCli = String(row['CODCLI']).trim();
+                        if (codCli === '9569') {
+                            const rca = String(row['CODUSUR'] || '').trim();
+                            // Check for 53 or 053
+                            if (rca === '53' || rca === '053') {
+                                row['CODCLI'] = '7706'; // Redirect this sale to Client 7706 (Valid RCA 53 Client)
+                            }
+                        }
+                    }
+                };
+
+                remapSalesFor9569(salesDataRaw);
+                remapSalesFor9569(historyDataRaw);
+                // ------------------------------------------------
+
+
                 self.postMessage({ type: 'progress', status: 'Criando mapa mestre de supervisores...', percentage: 20 });
                 const newRcaSupervisorMap = new Map();
                 const lastSaleDateMap = new Map();
@@ -627,7 +650,7 @@
                     const codCli = String(client['Código'] || '').trim();
                     if (!codCli) return;
 
-                    const rca1 = String(client['RCA 1'] || '');
+                    const rca1 = String(client['RCA 1'] || '').trim();
                     const rcas = new Set();
                     if (rca1) rcas.add(rca1);
 
@@ -1203,25 +1226,6 @@
                 const client = getClient(i); // Hydrate object for processing
                 const codCli = String(client['Código']);
 
-                // Note: Modifying 'client' object here DOES NOT persist to Columnar Array automatically.
-                // We are using the hydrated object for Maps.
-                // Since 'allClientsData' is read-only from source essentially, we rely on local Maps for modified state
-                // OR we accept that we can't modify in place easily.
-                // However, the existing code modifies `client['Código']` string conversion.
-                // ColumnarDataset.get() returns a NEW object every time.
-                // So modification here is useless if we access allClientsData.get(i) later.
-
-                // FIX: For Clients, it's safer to keep them as hydrated objects in 'clientMapForKPIs'
-                // and use that map for lookups where modifications matter.
-                // But filter functions iterate 'allClientsData'.
-                // If we need persistent modifications (like Americanas RCA override), we need a side-store.
-                // The Americanas logic modifies `client.rca1`.
-
-                // Workaround: We'll use a `clientOverrides` map or similar,
-                // OR since Clients dataset is small (thousands), we can fully hydrate it into an Array
-                // and avoid Columnar complexity for Clients if it causes mutability issues.
-                // Let's assume for now we just use the calculated values in the Maps.
-
                 client.cidade = client.cidade || 'N/A';
 
                 if ((client.razaoSocial || '').toUpperCase().includes('AMERICANAS')) {
@@ -1242,7 +1246,8 @@
                         }
                     }
                 }
-                optimizedData.searchIndices.clients[i] = { code: codCli, nameLower: (client.nomeCliente || '').toLowerCase(), cityLower: (client.cidade || '').toLowerCase() };
+                
+            optimizedData.searchIndices.clients[i] = { code: codCli, nameLower: (client.nomeCliente || '').toLowerCase(), cityLower: (client.cidade || '').toLowerCase() };
             }
 
             optimizedData.rcasBySupervisor = new Map();
@@ -1269,9 +1274,8 @@
 
                     if (sale.CODCLI !== americanasCodCli) {
                         // EXCEPTION: Do not remap if Client 9569, RCA 53, and Type 1/9 (Preserve Balcão)
-                        const isException = (sale.CODCLI === '9569' && String(sale.CODUSUR) === '53' && (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9'));
                         
-                        if (!isException) {
+                        if (true) {
                             const currentSellerCode = clientToCurrentSellerMap.get(sale.CODCLI);
                             if (currentSellerCode) {
                                 const sellerDetails = sellerDetailsMap.get(currentSellerCode);
@@ -1810,7 +1814,7 @@
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
                         // EXCEPTION: Exclude Balcão (53) sales for Client 9569 from Summary Metrics
-                        if (codCli === '9569' && String(sale.CODUSUR) === '53') return;
+                        if (String(codCli).trim() === '9569' && (String(sale.CODUSUR).trim() === '53' || String(sale.CODUSUR).trim() === '053')) return;
                         
                         let key = null;
                         const codFor = String(sale.CODFOR);
@@ -2960,7 +2964,7 @@
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
                         // EXCEPTION: Exclude Balcão (53) sales for Client 9569 from Summary Metrics
-                        if (codCli === '9569' && String(sale.CODUSUR) === '53') return;
+                        if (String(codCli).trim() === '9569' && (String(sale.CODUSUR).trim() === '53' || String(sale.CODUSUR).trim() === '053')) return;
                         
                         let key = null;
                         const codFor = String(sale.CODFOR);
@@ -3312,7 +3316,7 @@
                         clientHistoryIds.forEach(id => {
                             const sale = optimizedData.historyById.get(id);
                             // EXCEPTION: Exclude Balcão (53) sales for Client 9569 from Global Portfolio Totals
-                            if (codCli === '9569' && String(sale.CODUSUR) === '53') return;
+                            if (String(codCli).trim() === '9569' && (String(sale.CODUSUR).trim() === '53' || String(sale.CODUSUR).trim() === '053')) return;
 
                             if (shouldIncludeSale(sale, currentGoalsSupplier, currentGoalsBrand)) {
                                 if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
@@ -3349,7 +3353,7 @@
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
                         // EXCEPTION: Exclude Balcão (53) sales for Client 9569 from Portfolio Average
-                        if (codCli === '9569' && String(sale.CODUSUR) === '53') return;
+                        if (String(codCli).trim() === '9569' && (String(sale.CODUSUR).trim() === '53' || String(sale.CODUSUR).trim() === '053')) return;
 
                         if (shouldIncludeSale(sale, currentGoalsSupplier, currentGoalsBrand)) {
                             if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
@@ -3732,7 +3736,7 @@
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
                         // EXCEPTION: Exclude Balcão (53) sales for Client 9569 from Portfolio Average
-                        if (codCli === '9569' && String(sale.CODUSUR) === '53') return;
+                        if (String(codCli).trim() === '9569' && (String(sale.CODUSUR).trim() === '53' || String(sale.CODUSUR).trim() === '053')) return;
 
                         if (shouldIncludeSale(sale, currentGoalsSupplier, currentGoalsBrand)) {
                             if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
@@ -4217,7 +4221,7 @@
                     clientHistoryIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
                         // EXCEPTION: Exclude Balcão (53) sales for Client 9569 from Portfolio Analysis
-                        if (codCli === '9569' && String(sale.CODUSUR) === '53') return;
+                        if (String(codCli).trim() === '9569' && (String(sale.CODUSUR).trim() === '53' || String(sale.CODUSUR).trim() === '053')) return;
 
                         const isRev = (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9');
                         if (!isRev) return;
@@ -5395,7 +5399,7 @@
                     } else {
                         return []; 
                     }
-                } else {
+                }
                     if (selectedMainSupervisors.length > 0) {
                         hasFilter = true;
                         const supIds = new Set();
@@ -5414,7 +5418,6 @@
                         });
                         setsToIntersect.push(sellerIds);
                     }
-                }
 
                 if (selectedTiposVenda.length > 0) {
                     hasFilter = true;
