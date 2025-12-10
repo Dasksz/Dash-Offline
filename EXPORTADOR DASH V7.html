@@ -421,6 +421,19 @@
                 }
                 // --- FIM DA MODIFICAÇÃO ---
 
+
+                // --- INICIO DA MODIFICAÇÃO: FORÇAR BALCAO E INATIVOS ---
+                // Se o código do supervisor for '8', força o nome para 'BALCAO'
+                if (codSupervisor === '8') {
+                    supervisorName = 'BALCAO';
+                }
+
+                // Se o nome do vendedor estiver vazio (órfão), define como 'INATIVOS'
+                if (!vendorName || vendorName.trim() === '') {
+                    vendorName = 'INATIVOS';
+                }
+                // --- FIM DA MODIFICAÇÃO ---
+
                 const supervisorUpper = (supervisorName || '').trim().toUpperCase();
                 if (supervisorUpper === 'BALCAO' || supervisorUpper === 'BALCÃO') supervisorName = 'BALCAO';
 
@@ -6393,7 +6406,7 @@
             return salesByMonth;
         }
 
-        function calculateUnifiedMetrics(currentSales, historySales) {
+                        function calculateUnifiedMetrics(currentSales, historySales) {
             // 1. Setup Data Structures
             const currentYear = lastSaleDate.getUTCFullYear();
             const currentMonth = lastSaleDate.getUTCMonth();
@@ -6429,6 +6442,23 @@
             // Helper to normalize strings
             const norm = (s) => s ? s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase() : '';
 
+            // --- FILTER: Foods Description Logic (Same as Metas) ---
+            const isValidFoodsProduct = (codFor, desc) => {
+                // Apply strict description check ONLY for Supplier 1119 (Foods)
+                if (codFor !== '1119') return true;
+
+                const d = norm(desc || '');
+                // Check if it matches ANY of the Foods sub-brands (Toddynho, Toddy, Quaker/Kerococo)
+                // Note: Metas logic separates them. Here we just want to know if it belongs to "Foods Group".
+                // If it contains NONE of the keywords, it is excluded from "Foods" metrics.
+                if (d.includes('TODDYNHO')) return true;
+                if (d.includes('TODDY ')) return true; // Note the space
+                if (d.includes('QUAKER')) return true;
+                if (d.includes('KEROCOCO')) return true;
+
+                return false;
+            };
+
             // --- 2. Process Current Sales (Single Pass) ---
             const currentClientProductMap = new Map(); // Client -> Product -> { val, desc, codfor }
             const currentClientsSet = new Map(); // Client -> Total Value (for Positive check)
@@ -6436,6 +6466,9 @@
             currentSales.forEach(s => {
                 // Filter: Only Type 1 and 9 count for Metrics (Fat/Peso/Charts)
                 const isValidType = (s.TIPOVENDA === '1' || s.TIPOVENDA === '9');
+
+                // Filter: Strict Foods Definition
+                if (!isValidFoodsProduct(String(s.CODFOR), s.DESCRICAO)) return;
 
                 if (isValidType) {
                     metrics.current.fat += s.VLVENDA;
@@ -6505,32 +6538,6 @@
             metrics.current.positivacaoSalty = countSalty;
             metrics.current.positivacaoFoods = countFoods;
 
-            // --- DEBUG DIAGNOSTICS FOR MIX PEPSICO ---
-            const debugMixList = [];
-            currentClientProductMap.forEach((prods, codcli) => {
-                let pepsicoCount = 0;
-                prods.forEach(pData => {
-                    if (pData.val > 1 && pepsicoCodfors.has(pData.codfor)) {
-                        pepsicoCount++;
-                    }
-                });
-                if (pepsicoCount > 0) {
-                    debugMixList.push({ cod: codcli, mix: pepsicoCount });
-                }
-            });
-            debugMixList.sort((a, b) => a.mix - b.mix);
-            
-            console.group("Diagnóstico Mix Pepsico");
-            console.log(`Total Soma Mix: ${sumMix}`);
-            console.log(`Total Clientes no Denominador: ${countMixClients}`);
-            console.log(`Média Calculada: ${metrics.current.mixPepsico}`);
-            console.log("Top 10 Clientes com MENOR Mix (Puxam a média para baixo):");
-            console.table(debugMixList.slice(0, 10));
-            console.log("Top 10 Clientes com MAIOR Mix:");
-            console.table(debugMixList.slice(-10));
-            console.groupEnd();
-            // ----------------------------------------
-
 
             // --- 3. Process History Sales (Single Pass) ---
             const historyMonths = new Map(); // MonthKey -> { fat, clientMap, weekSales: [] }
@@ -6539,6 +6546,14 @@
             const monthWeeksCache = new Map(); 
 
             historySales.forEach(s => {
+                const d = parseDate(s.DTPED);
+                if (!d) return;
+
+                const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
+
+                // Filter: Strict Foods Definition (Apply here too)
+                if (!isValidFoodsProduct(String(s.CODFOR), s.DESCRICAO)) return;
+
                 // Filter: Only Type 1 and 9 count for Metrics (Fat/Peso/Charts)
                 const isValidType = (s.TIPOVENDA === '1' || s.TIPOVENDA === '9');
 
@@ -6546,11 +6561,6 @@
                     metrics.history.fat += s.VLVENDA;
                     metrics.history.peso += s.TOTPESOLIQ;
                 }
-
-                const d = parseDate(s.DTPED);
-                if (!d) return;
-                
-                const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
                 
                 if (!historyMonths.has(monthKey)) {
                     historyMonths.set(monthKey, { 
@@ -6611,9 +6621,7 @@
             // Sort months to ensure we take the last 3 if there are more
             const sortedMonths = Array.from(historyMonths.keys()).sort();
             
-            // Apply Logic: If first month has < 20 days of data, maybe skip? 
-            // Original code: if (firstSaleInFirstMonth && firstSaleInFirstMonth.getUTCDate() > 20) sortedMonths.shift();
-            // We'll stick to simple slice(-3) for performance and consistency with requested "Last 3 months" logic.
+            // Take last 3 months
             const monthsToProcess = sortedMonths.slice(-3); 
 
             let sumClients = 0;
@@ -6663,14 +6671,17 @@
                 
                 // For Monthly Chart (Labels and Values)
                 const [y, m] = mKey.split('-');
-                const label = new Date(Date.UTC(parseInt(y), parseInt(m), 1)).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit', timeZone: 'UTC' });
+                const monthName = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"][parseInt(m)];
+
                 metrics.charts.monthlyData.push({ 
-                    label, 
+                    label: monthName,
                     fat: mData.fat, 
-                    clients: posClients 
+                    clients: posClients,
+                    key: mKey
                 });
             });
 
+            // Finish History Averages
             metrics.history.avgClients = sumClients / QUARTERLY_DIVISOR;
             metrics.history.avgMixPepsico = sumMixPep / QUARTERLY_DIVISOR;
             metrics.history.avgPositivacaoSalty = sumPosSalty / QUARTERLY_DIVISOR;
@@ -6678,6 +6689,7 @@
 
             return metrics;
         }
+
 
         function monthlyKpiAverage(dataInput, kpiFn, isGrouped = false, ...kpiArgs) {
             let salesByMonth;
