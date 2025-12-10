@@ -5585,7 +5585,18 @@
         }
 
         function updateTipoVendaFilter(dropdown, filterText, selectedArray, dataSource, skipRender = false) {
-            const tiposVendaToShow = [...new Set(dataSource.map(item => item.TIPOVENDA).filter(Boolean))].sort();
+            // Collect unique types from data source
+            const uniqueTypes = new Set(dataSource.map(item => item.TIPOVENDA).filter(Boolean));
+
+            // Ensure currently selected items are kept in the list (Safety Net)
+            selectedArray.forEach(type => uniqueTypes.add(type));
+
+            const tiposVendaToShow = [...uniqueTypes].sort((a, b) => parseInt(a) - parseInt(b));
+
+            // Re-filter selectedArray ensures we don't have stale data if we wanted strictness,
+            // but here we just ensured they are IN the list, so this line effectively does nothing
+            // except ordering or removing truly invalid ones if we didn't add them above.
+            // Since we added them above, this is redundant but harmless.
             selectedArray = selectedArray.filter(tipo => tiposVendaToShow.includes(tipo));
 
             if (!skipRender) {
@@ -7769,7 +7780,7 @@
             
             selectedInnovationsSupervisors = updateSupervisorFilter(document.getElementById('innovations-month-supervisor-filter-dropdown'), document.getElementById('innovations-month-supervisor-filter-text'), selectedInnovationsSupervisors, allSalesData);
             updateSellerFilter(selectedInnovationsSupervisors, innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
-            selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
+            selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, [...allSalesData, ...allHistoryData]);
             updateInnovationsMonthView();
         }
 
@@ -8864,7 +8875,7 @@
                         if (viewState.inovacoes.dirty) {
                             selectedInnovationsSupervisors = updateSupervisorFilter(document.getElementById('innovations-month-supervisor-filter-dropdown'), document.getElementById('innovations-month-supervisor-filter-text'), selectedInnovationsSupervisors, allSalesData);
                             updateSellerFilter(selectedInnovationsSupervisors, innovationsMonthVendedorFilterDropdown, innovationsMonthVendedorFilterText, [], allSalesData);
-                            selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
+                            selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, [...allSalesData, ...allHistoryData]);
                             updateInnovationsMonthView();
                             viewState.inovacoes.dirty = false;
                         }
@@ -9233,7 +9244,7 @@
                     } else {
                         selectedComparisonTiposVenda = selectedComparisonTiposVenda.filter(s => s !== value);
                     }
-                    selectedComparisonTiposVenda = updateTipoVendaFilter(comparisonTipoVendaFilterDropdown, comparisonTipoVendaFilterText, selectedComparisonTiposVenda, allSalesData);
+                    selectedComparisonTiposVenda = updateTipoVendaFilter(comparisonTipoVendaFilterDropdown, comparisonTipoVendaFilterText, selectedComparisonTiposVenda, [...allSalesData, ...allHistoryData]);
                     handleComparisonFilterChange();
                 }
             });
@@ -9382,7 +9393,7 @@
                     } else {
                         selectedStockTiposVenda = selectedStockTiposVenda.filter(s => s !== value);
                     }
-                    selectedStockTiposVenda = updateTipoVendaFilter(stockTipoVendaFilterDropdown, stockTipoVendaFilterText, selectedStockTiposVenda, allSalesData);
+                    selectedStockTiposVenda = updateTipoVendaFilter(stockTipoVendaFilterDropdown, stockTipoVendaFilterText, selectedStockTiposVenda, [...allSalesData, ...allHistoryData]);
                     handleStockFilterChange({ skipFilter: 'tipoVenda' });
                 }
             });
@@ -9619,7 +9630,7 @@
                     } else {
                         selectedInnovationsMonthTiposVenda = selectedInnovationsMonthTiposVenda.filter(s => s !== value);
                     }
-                    selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, allSalesData);
+                    selectedInnovationsMonthTiposVenda = updateTipoVendaFilter(innovationsMonthTipoVendaFilterDropdown, innovationsMonthTipoVendaFilterText, selectedInnovationsMonthTiposVenda, [...allSalesData, ...allHistoryData]);
                     debouncedUpdateInnovationsMonth();
                 }
             });
