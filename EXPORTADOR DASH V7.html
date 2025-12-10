@@ -427,11 +427,8 @@
                 // (Isso substitui o vendedor original da venda, pois a carteira está 'sem dono')
                 if (!isAmericanas && (!clientInfo || !clientInfo.rca1 || clientInfo.rca1.trim() === '')) {
                     vendorName = 'INATIVOS';
-                    // Opcional: Definir supervisor para 'SEM SUPERVISOR' ou similar se desejado, 
-                    // mas o usuário pediu especificamente sobre o rótulo da venda (Vendedor).
-                    // Vamos manter o supervisor original ou o que foi derivado, a menos que INATIVOS deva ter um supervisor específico.
-                    // Geralmente INATIVOS ficam sem supervisor ou num grupo separado.
-                    // Para garantir consistência no Comparativo, pode ser útil.
+                    supervisorName = 'BALCAO'; // Força o supervisor para BALCAO conforme solicitado
+                    codSupervisor = '8'; // Garante que o código do supervisor seja 8 (Padrão Balcão)
                 }
                 // --- FIM DA MODIFICAÇÃO ---
 
@@ -1813,7 +1810,7 @@
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 if (isAmericanas) return true;
-                if (rca1 === '53') return false;
+                if (rca1 === '53' || rca1 === '') return false;
                 return true;
             });
 
@@ -2886,7 +2883,7 @@
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 if (isAmericanas) return true;
-                if (rca1 === '53') return false;
+                if (rca1 === '53' || rca1 === '') return false;
                 return true;
             });
 
@@ -2953,7 +2950,7 @@
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 if (isAmericanas) return true;
-                if (rca1 === '53') return false;
+                if (rca1 === '53' || rca1 === '') return false;
                 return true;
             });
 
