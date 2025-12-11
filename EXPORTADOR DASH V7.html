@@ -3261,6 +3261,26 @@
                 }
             });
             
+            // New: Calculate Base specifically for Salty (ELMA Active Clients)
+            const elmaKeys = ['707', '708', '752'];
+            const elmaClientsSet = new Set();
+            elmaKeys.forEach(k => {
+                if (displayMetrics[k] && displayMetrics[k].quarterlyPosClientsSet) {
+                    displayMetrics[k].quarterlyPosClientsSet.forEach(c => elmaClientsSet.add(c));
+                }
+            });
+
+            let naturalSaltyBaseSummary = 0;
+            elmaClientsSet.forEach(clientCode => {
+                const client = clientMapForKPIs.get(String(clientCode));
+                if (client) {
+                     const rca1 = String(client.rca1 || '').trim();
+                     if (rca1 !== '1001') {
+                         naturalSaltyBaseSummary++;
+                     }
+                }
+            });
+
             const adjustedMixBase = naturalMixBaseCount + totalAdjustment;
 
             let mixSaltyAdjustment = 0;
@@ -3273,7 +3293,8 @@
                  goalsMixFoodsAdjustments['PEPSICO_ALL'].forEach(val => mixFoodsAdjustment += val);
             }
 
-            const standardSaltyTarget = Math.round(adjustedMixBase * 0.50);
+            // Mix Salty Target: 50% of Active ELMA Clients (Natural Base)
+            const standardSaltyTarget = Math.round(naturalSaltyBaseSummary * 0.50);
             const standardFoodsTarget = Math.round(adjustedMixBase * 0.30);
 
             if(mixSaltyEl) mixSaltyEl.textContent = (standardSaltyTarget + mixSaltyAdjustment).toLocaleString('pt-BR');
@@ -3866,6 +3887,9 @@
                 const clientHistoryIds = optimizedData.indices.history.byClient.get(codCli);
 
                 let cSumFat = 0; let cSumVol = 0; let cPrevFat = 0; let cPrevVol = 0;
+                // Accumulators for sub-bases
+                let cElmaSumFat = 0;
+
                 const monthlyActivity = new Map();
                 const monthlyValues = {};
                 quarterMonths.forEach(m => monthlyValues[m.key] = 0);
@@ -3880,6 +3904,13 @@
                             if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
                                 cSumFat += sale.VLVENDA;
                                 cSumVol += sale.TOTPESOLIQ;
+
+                                // Calculate Sub-Bases totals
+                                const codFor = String(sale.CODFOR);
+                                if (['707', '708', '752'].includes(codFor)) {
+                                    cElmaSumFat += sale.VLVENDA;
+                                }
+
                                 const d = parseDate(sale.DTPED);
                                 if (d) {
                                     if (d.getUTCMonth() === prevMonthIndex && d.getUTCFullYear() === prevMonthYear) {
@@ -3926,6 +3957,7 @@
                 }
 
                 const metaPos = cSumFat > 1 ? 1 : 0;
+                const elmaPos = cElmaSumFat > 1 ? 1 : 0;
 
                 const metric = {
                     cod: codCli, name: client.fantasia || client.razaoSocial, seller: sellerName,
@@ -3933,7 +3965,7 @@
                     activeMonthsCount, isActivePrevMonth,
                     shareFat: globalTotalAvgFat > 0 ? (avgFat / globalTotalAvgFat) : 0,
                     shareVol: globalTotalAvgVol > 0 ? (avgVol / globalTotalAvgVol) : 0,
-                    metaFat, metaVol, metaPos, monthlyValues
+                    metaFat, metaVol, metaPos, elmaPos, monthlyValues
                 };
                 clientMetrics.push(metric);
 
@@ -4051,7 +4083,9 @@
                     
                     // Logic to populate values and handle edit
                     let naturalMixBase = 0;
+                    let naturalSaltyBase = 0;
                     const visibleSellers = new Set();
+
                     clientMetrics.forEach(c => {
                         visibleSellers.add(c.seller);
                         // Check if not seller 1001 (Americanas) using robust client map lookup
@@ -4060,6 +4094,7 @@
 
                         if (rca1 !== '1001') {
                             if (c.metaPos > 0) naturalMixBase++; // Count positivations in PEPSICO_ALL (Total Pos)
+                            if (c.elmaPos > 0) naturalSaltyBase++; // Count positivations in ELMA (Salty Base)
                         }
                     });
 
@@ -4073,8 +4108,13 @@
                         });
                     }
                     const adjustedMixBase = naturalMixBase + totalPosAdjustment;
+
+                    // Mix Salty Target: 50% of Active ELMA Clients (Natural Base)
+                    // Note: User requested specifically "50% of META POSITIVAÇÃO of ELMA sub-tab"
+                    const naturalSaltyTarget = Math.round(naturalSaltyBase * 0.50);
                     
-                    const naturalSaltyTarget = Math.round(adjustedMixBase * 0.50);
+                    // Mix Foods Target: Kept as 30% of Total Pepsico Base (Consistent with previous logic unless changed)
+                    // If user wants it to be Foods base, we would need foodsPos. Sticking to current behavior for Foods as instructed.
                     const naturalFoodsTarget = Math.round(adjustedMixBase * 0.30);
                     
                     const handleMixCard = (type, naturalTarget, adjustmentsMap, inputId, btnId) => {
