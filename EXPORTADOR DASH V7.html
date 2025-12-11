@@ -1944,8 +1944,8 @@
                 const m = globalGoalsMetrics[key];
                 
                 m.avgFat = m.fat / QUARTERLY_DIVISOR;
-                m.avgVol = (m.vol / 1000) / QUARTERLY_DIVISOR; // Tons
-                m.prevVol = m.prevVol / 1000; // Tons
+                m.avgVol = m.vol / QUARTERLY_DIVISOR; // Kg (No / 1000)
+                m.prevVol = m.prevVol; // Kg (No / 1000)
                 
                 m.prevClients = m.prevClientsSet.size;
                 
@@ -2529,7 +2529,7 @@
             
             // Format Strings
             const fmtMoney = "\"R$ \"#,##0.00";
-            const fmtVol = "0.000";
+            const fmtVol = "0.00 \"Kg\"";
             const fmtInt = "0";
             const fmtDec1 = "0.0";
 
@@ -2567,13 +2567,13 @@
                 { id: '707', label: 'EXTRUSADOS', type: 'standard' },
                 { id: '708', label: 'NÃO EXTRUSADOS', type: 'standard' },
                 { id: '752', label: 'TORCIDA', type: 'standard' },
-                { id: 'tonelada_elma', label: 'TONELADA ELMA', type: 'tonnage', isAgg: true },
+                { id: 'tonelada_elma', label: 'KG ELMA', type: 'tonnage', isAgg: true },
                 { id: 'mix_salty', label: 'MIX SALTY', type: 'mix', isAgg: true },
                 { id: 'total_foods', label: 'TOTAL FOODS', type: 'standard', isAgg: true },
                 { id: '1119_TODDYNHO', label: 'TODDYNHO', type: 'standard' },
                 { id: '1119_TODDY', label: 'TODDY', type: 'standard' },
                 { id: '1119_QUAKER_KEROCOCO', label: 'QUAKER / KEROCOCO', type: 'standard' },
-                { id: 'tonelada_foods', label: 'TONELADA FOODS', type: 'tonnage', isAgg: true },
+                { id: 'tonelada_foods', label: 'KG FOODS', type: 'tonnage', isAgg: true },
                 { id: 'mix_foods', label: 'MIX FOODS', type: 'mix', isAgg: true },
                 { id: 'geral', label: 'GERAL', type: 'geral', isAgg: true },
                 { id: 'pedev', label: 'AUDITORIA PEDEV', type: 'pedev', isAgg: true }
@@ -2608,7 +2608,7 @@
                     merges.push({ s: { r: 1, c: colMap[col.id] }, e: { r: 1, c: colMap[col.id] + 1 } });
                     merges.push({ s: { r: 1, c: colMap[col.id] + 2 }, e: { r: 1, c: colMap[col.id] + 3 } });
                 } else if (col.type === 'tonnage') {
-                    row2.push(createCell("MÉDIA TRIM.", style), createCell("META TON", style), createCell("", style));
+                    row2.push(createCell("MÉDIA TRIM.", style), createCell("META KG", style), createCell("", style));
                     merges.push({ s: { r: 1, c: colMap[col.id] + 1 }, e: { r: 1, c: colMap[col.id] + 2 } });
                 } else if (col.type === 'mix') {
                     row2.push(createCell("MÉDIA TRIM.", style), createCell("META MIX", style), createCell("", style));
@@ -3070,8 +3070,8 @@
                 const m = metricsMap[key];
                 
                 m.avgFat = m.fat / QUARTERLY_DIVISOR;
-                m.avgVol = (m.vol / 1000) / QUARTERLY_DIVISOR; // Tons
-                m.prevVol = m.prevVol / 1000; // Tons
+                m.avgVol = m.vol / QUARTERLY_DIVISOR; // Kg
+                m.prevVol = m.prevVol; // Kg
                 
                 m.prevClients = m.prevClientsSet.size;
                 m.quarterlyPos = m.quarterlyPosClientsSet.size; // New Metric
@@ -3197,7 +3197,7 @@
                             
                             <div>
                                 <div class="flex justify-between items-baseline mb-1">
-                                    <p class="text-xs text-slate-400 uppercase font-semibold">Meta Volume (Ton)</p>
+                                    <p class="text-xs text-slate-400 uppercase font-semibold">Meta Volume (Kg)</p>
                                 </div>
                                 <p class="text-xl font-bold ${textColor} mb-2">
                                     ${target.vol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
@@ -3280,7 +3280,7 @@
             if(mixFoodsEl) mixFoodsEl.textContent = (standardFoodsTarget + mixFoodsAdjustment).toLocaleString('pt-BR');
         }
 
-        function calculateDistributedGoals(filteredClients, currentGoalsSupplier, currentGoalsBrand, goalFat, goalVol) {
+                function calculateDistributedGoals(filteredClients, currentGoalsSupplier, currentGoalsBrand, goalFat, goalVol) {
             const cacheKey = currentGoalsSupplier + (currentGoalsBrand ? `_${currentGoalsBrand}` : '');
             
             if (quarterMonths.length === 0) identifyQuarterMonths();
@@ -3340,7 +3340,6 @@
                     if (clientHistoryIds) {
                         let sumFat = 0;
                         let sumVol = 0;
-                        const monthlySums = {};
                         clientHistoryIds.forEach(id => {
                             const sale = optimizedData.historyById.get(id);
                             // EXCEPTION: Exclude Balcão (53) sales for Client 9569 from Global Portfolio Totals
@@ -3350,22 +3349,13 @@
                                 if (sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') {
                                     sumFat += sale.VLVENDA;
                                     sumVol += sale.TOTPESOLIQ;
-                                    
-                                    const d = parseDate(sale.DTPED);
-                                    if(d) {
-                                        const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
-                                        monthlySums[monthKey] = (monthlySums[monthKey] || 0) + sale.VLVENDA;
-                                    }
                                 }
                             }
                         });
                         
-                        let activeMonthsCount = 0;
-                        for(let k in monthlySums) { if(monthlySums[k] > 1) activeMonthsCount++; }
-                        const divisor = activeMonthsCount > 0 ? activeMonthsCount : 1;
-
-                        globalTotalAvgFat += (sumFat / divisor);
-                        globalTotalAvgVol += ((sumVol / 1000) / divisor);
+                        // NEW LOGIC: Simple Average (Sum / 3) regardless of active months
+                        globalTotalAvgFat += (sumFat / QUARTERLY_DIVISOR);
+                        globalTotalAvgVol += (sumVol / QUARTERLY_DIVISOR); // Kg (No / 1000)
                     }
                 });
                 
@@ -3420,8 +3410,9 @@
                     });
                 }
 
+                // NEW LOGIC: Simple Average (Sum / 3) regardless of active months
                 const avgFat = sumFat / QUARTERLY_DIVISOR;
-                const avgVol = (sumVol / 1000) / QUARTERLY_DIVISOR; 
+                const avgVol = sumVol / QUARTERLY_DIVISOR; // Kg (No / 1000)
                 
                 let activeMonthsCount = 0;
                 monthlyActivity.forEach(val => { if(val > 1) activeMonthsCount++; });
@@ -3471,21 +3462,28 @@
                     name: client.fantasia || client.razaoSocial,
                     seller: sellerName,
                     avgFat,
-                    avgVol,
+                    avgVol, // Now Kg
                     prevFat,
-                    prevVol: prevVol / 1000, // Convert to Tons
+                    prevVol: prevVol, // Now Kg (removed / 1000)
                     activeMonthsCount,
                     isActivePrevMonth,
                     shareFat: globalTotalAvgFat > 0 ? (avgFat / globalTotalAvgFat) : 0,
                     shareVol: globalTotalAvgVol > 0 ? (avgVol / globalTotalAvgVol) : 0,
-                    metaFat, // Use stored value
-                    metaVol,  // Use stored value
-                    metaPos,
-                    monthlyValues
+                    metaFat: metaFat,
+                    metaVol: metaVol,
+                    metaPos: metaPos,
+                    monthlyBreakdown: monthlyValues
                 });
             });
+
+            // Calculate auto distribution if goal is set but individual goals are zero (first run)
+            const totalShareFat = clientMetrics.reduce((sum, c) => sum + c.shareFat, 0);
+            const totalShareVol = clientMetrics.reduce((sum, c) => sum + c.shareVol, 0);
+
+            // If we have input goals, we can distribute them proportionally (Visual only, not saved unless clicked)
+            // But here we just return the metrics. The view uses these metrics.
             
-            return clientMetrics;
+            return { clientMetrics, globalTotalAvgFat, globalTotalAvgVol };
         }
 
         function recalculateTotalGoals() {
@@ -3719,7 +3717,7 @@
                 'CÓD', 'CLIENTE', 'VENDEDOR',
                 ...monthLabels.map(m => `${m} (FAT)`),
                 'MÉDIA FAT', '% SHARE FAT', 'META FAT',
-                'MÉDIA VOL (TON)', '% SHARE VOL', 'META VOL (TON)', 'META POS'
+                'MÉDIA VOL (KG)', '% SHARE VOL', 'META VOL (KG)', 'META POS'
             ];
             
             const ws_data_flat = [flatHeaders];
@@ -3820,7 +3818,7 @@
             if (thead) {
                 const monthHeaders = quarterMonths.map(m => `<th class="px-2 py-2 text-right w-20 bg-blue-900/10 text-blue-300 border-r border-b border-slate-700/50 text-[10px]">${m.label}</th>`).join('');
                 const monthsCount = quarterMonths.length;
-                thead.innerHTML = `<tr><th rowspan="2" class="px-2 py-2 text-center w-16 border-r border-b border-slate-700">CÓD</th><th rowspan="2" class="px-3 py-2 text-left w-48 border-r border-b border-slate-700">CLIENTE</th><th rowspan="2" class="px-3 py-2 text-left w-24 border-r border-b border-slate-700">VENDEDOR</th><th colspan="${3 + monthsCount}" class="px-2 py-1 text-center bg-blue-900/30 text-blue-400 border-r border-slate-700 border-b-0">FATURAMENTO (R$)</th><th colspan="3" class="px-2 py-1 text-center bg-orange-900/30 text-orange-400 border-r border-slate-700 border-b-0">VOLUME (TON)</th><th rowspan="2" class="px-2 py-2 text-center w-16 bg-purple-900/20 text-purple-300 font-bold border-b border-slate-700">META POS.</th></tr><tr>${monthHeaders}<th class="px-2 py-2 text-right w-24 bg-blue-900/20 text-blue-300 border-r border-b border-slate-700/50 text-[10px]">MÉDIA</th><th class="px-2 py-2 text-center w-16 bg-blue-900/20 text-blue-300 border-r border-b border-slate-700/50 text-[10px]">% SHARE</th><th class="px-2 py-2 text-right w-24 bg-blue-900/20 text-blue-100 font-bold border-r border-b border-slate-700 text-[10px]">META AUTO</th><th class="px-2 py-2 text-right w-24 bg-orange-900/20 text-orange-300 border-r border-b border-slate-700/50 text-[10px]">MÉDIA KG</th><th class="px-2 py-2 text-center w-16 bg-orange-900/20 text-orange-300 border-r border-b border-slate-700/50 text-[10px]">% SHARE</th><th class="px-2 py-2 text-right w-24 bg-orange-900/20 text-orange-100 font-bold border-r border-b border-slate-700 text-[10px]">META KG</th></tr>`;
+                thead.innerHTML = `<tr><th rowspan="2" class="px-2 py-2 text-center w-16 border-r border-b border-slate-700">CÓD</th><th rowspan="2" class="px-3 py-2 text-left w-48 border-r border-b border-slate-700">CLIENTE</th><th rowspan="2" class="px-3 py-2 text-left w-24 border-r border-b border-slate-700">VENDEDOR</th><th colspan="${3 + monthsCount}" class="px-2 py-1 text-center bg-blue-900/30 text-blue-400 border-r border-slate-700 border-b-0">FATURAMENTO (R$)</th><th colspan="3" class="px-2 py-1 text-center bg-orange-900/30 text-orange-400 border-r border-slate-700 border-b-0">VOLUME (KG)</th><th rowspan="2" class="px-2 py-2 text-center w-16 bg-purple-900/20 text-purple-300 font-bold border-b border-slate-700">META POS.</th></tr><tr>${monthHeaders}<th class="px-2 py-2 text-right w-24 bg-blue-900/20 text-blue-300 border-r border-b border-slate-700/50 text-[10px]">MÉDIA</th><th class="px-2 py-2 text-center w-16 bg-blue-900/20 text-blue-300 border-r border-b border-slate-700/50 text-[10px]">% SHARE</th><th class="px-2 py-2 text-right w-24 bg-blue-900/20 text-blue-100 font-bold border-r border-b border-slate-700 text-[10px]">META AUTO</th><th class="px-2 py-2 text-right w-24 bg-orange-900/20 text-orange-300 border-r border-b border-slate-700/50 text-[10px]">MÉDIA KG</th><th class="px-2 py-2 text-center w-16 bg-orange-900/20 text-orange-300 border-r border-b border-slate-700/50 text-[10px]">% SHARE</th><th class="px-2 py-2 text-right w-24 bg-orange-900/20 text-orange-100 font-bold border-r border-b border-slate-700 text-[10px]">META KG</th></tr>`;
             }
 
             const filteredClients = getGoalsFilteredData();
@@ -3899,10 +3897,9 @@
 
                 let activeMonthsCount = 0;
                 monthlyActivity.forEach(val => { if(val > 1) activeMonthsCount++; });
-                const divisor = activeMonthsCount > 0 ? activeMonthsCount : 1;
-
+                const divisor = QUARTERLY_DIVISOR;
                 const avgFat = cSumFat / divisor;
-                const avgVol = (cSumVol / 1000) / divisor;
+                const avgVol = cSumVol / divisor;
                 const isActivePrevMonth = cPrevFat > 1 ? 1 : 0;
 
                 let sellerName = 'N/A';
@@ -3932,7 +3929,7 @@
 
                 const metric = {
                     cod: codCli, name: client.fantasia || client.razaoSocial, seller: sellerName,
-                    avgFat, avgVol, prevFat: cPrevFat, prevVol: cPrevVol / 1000,
+                    avgFat, avgVol, prevFat: cPrevFat, prevVol: cPrevVol,
                     activeMonthsCount, isActivePrevMonth,
                     shareFat: globalTotalAvgFat > 0 ? (avgFat / globalTotalAvgFat) : 0,
                     shareVol: globalTotalAvgVol > 0 ? (avgVol / globalTotalAvgVol) : 0,
@@ -3943,7 +3940,7 @@
                 // Accumulate totals
                 sumFat += metaFat; sumVol += metaVol;
                 totalAvgFat += avgFat; totalPrevFat += cPrevFat;
-                totalAvgVol += avgVol; totalPrevVol += (cPrevVol / 1000);
+                totalAvgVol += avgVol; totalPrevVol += cPrevVol;
                 sumActiveMonths += activeMonthsCount; totalPrevClients += isActivePrevMonth;
 
             }, () => {
@@ -3978,8 +3975,8 @@
                 // KPIs
                 const refAvgFat = document.getElementById('ref-avg-fat'); if(refAvgFat) refAvgFat.textContent = totalAvgFat.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                 const refPrevFat = document.getElementById('ref-prev-fat'); if(refPrevFat) refPrevFat.textContent = totalPrevFat.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                const refAvgVol = document.getElementById('ref-avg-vol'); if(refAvgVol) refAvgVol.textContent = totalAvgVol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + ' Ton';
-                const refPrevVol = document.getElementById('ref-prev-vol'); if(refPrevVol) refPrevVol.textContent = totalPrevVol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + ' Ton';
+                const refAvgVol = document.getElementById('ref-avg-vol'); if(refAvgVol) refAvgVol.textContent = totalAvgVol.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Kg';
+                const refPrevVol = document.getElementById('ref-prev-vol'); if(refPrevVol) refPrevVol.textContent = totalPrevVol.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Kg';
                 const refAvgClients = document.getElementById('ref-avg-clients'); if(refAvgClients) refAvgClients.textContent = totalAvgClients.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
                 const refPrevClients = document.getElementById('ref-prev-clients'); if(refPrevClients) refPrevClients.textContent = totalPrevClients.toLocaleString('pt-BR');
 
@@ -4126,7 +4123,7 @@
                 } else {
                     const rows = pageData.map(item => {
                         const monthCells = quarterMonths.map(m => `<td class="px-2 py-2 text-right text-slate-400 border-r border-slate-800/50 text-[10px] bg-blue-900/5">${(item.monthlyValues[m.key] || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`).join('');
-                        return `<tr class="hover:bg-slate-800 group transition-colors border-b border-slate-800"><td class="px-2 py-2 text-center border-r border-slate-800 bg-[#151c36] text-xs text-slate-300">${item.cod}</td><td class="px-2 py-2 text-left border-r border-slate-800 bg-[#151c36] text-xs font-bold text-white truncate max-w-[200px]" title="${item.name}">${item.name.substring(0, 30)}</td><td class="px-2 py-2 text-left border-r border-slate-800 bg-[#151c36] text-[10px] text-slate-400 uppercase">${getFirstName(item.seller)}</td>${monthCells}<td class="px-2 py-2 text-right text-slate-300 font-medium bg-blue-900/10 border-r border-slate-800/50 text-xs">${item.avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-2 py-2 text-center text-blue-400 text-xs bg-blue-900/10 border-r border-slate-800/50">${(item.shareFat * 100).toFixed(2)}%</td><td class="px-2 py-2 text-right font-bold text-blue-200 bg-blue-900/20 border-r border-slate-800 text-xs">${item.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-2 py-2 text-right text-slate-300 font-medium bg-orange-900/10 border-r border-slate-800/50 text-xs">${item.avgVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})} Ton</td><td class="px-2 py-2 text-center text-orange-400 text-xs bg-orange-900/10 border-r border-slate-800/50">${(item.shareVol * 100).toFixed(2)}%</td><td class="px-2 py-2 text-right font-bold text-orange-200 bg-orange-900/20 border-r border-slate-800 text-xs">${item.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})} Ton</td><td class="px-2 py-2 text-center font-bold text-purple-300 bg-purple-900/10 text-xs">${item.metaPos}</td></tr>`;
+                        return `<tr class="hover:bg-slate-800 group transition-colors border-b border-slate-800"><td class="px-2 py-2 text-center border-r border-slate-800 bg-[#151c36] text-xs text-slate-300">${item.cod}</td><td class="px-2 py-2 text-left border-r border-slate-800 bg-[#151c36] text-xs font-bold text-white truncate max-w-[200px]" title="${item.name}">${item.name.substring(0, 30)}</td><td class="px-2 py-2 text-left border-r border-slate-800 bg-[#151c36] text-[10px] text-slate-400 uppercase">${getFirstName(item.seller)}</td>${monthCells}<td class="px-2 py-2 text-right text-slate-300 font-medium bg-blue-900/10 border-r border-slate-800/50 text-xs">${item.avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-2 py-2 text-center text-blue-400 text-xs bg-blue-900/10 border-r border-slate-800/50">${(item.shareFat * 100).toFixed(2)}%</td><td class="px-2 py-2 text-right font-bold text-blue-200 bg-blue-900/20 border-r border-slate-800 text-xs">${item.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-2 py-2 text-right text-slate-300 font-medium bg-orange-900/10 border-r border-slate-800/50 text-xs">${item.avgVol.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} Kg</td><td class="px-2 py-2 text-center text-orange-400 text-xs bg-orange-900/10 border-r border-slate-800/50">${(item.shareVol * 100).toFixed(2)}%</td><td class="px-2 py-2 text-right font-bold text-orange-200 bg-orange-900/20 border-r border-slate-800 text-xs">${item.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} Kg</td><td class="px-2 py-2 text-center font-bold text-purple-300 bg-purple-900/10 text-xs">${item.metaPos}</td></tr>`;
                     }).join('');
                     goalsGvTableBody.innerHTML = rows;
                     if (paginationControls) {
@@ -4313,13 +4310,13 @@
                 { id: '707', label: 'EXTRUSADOS', type: 'standard', supplier: '707', brand: null, colorClass: 'text-slate-300' },
                 { id: '708', label: 'NÃO EXTRUSADOS', type: 'standard', supplier: '708', brand: null, colorClass: 'text-slate-300' },
                 { id: '752', label: 'TORCIDA', type: 'standard', supplier: '752', brand: null, colorClass: 'text-slate-300' },
-                { id: 'tonelada_elma', label: 'TONELADA ELMA', type: 'tonnage', isAgg: true, colorClass: 'text-orange-400', components: ['707', '708', '752'] },
+                { id: 'tonelada_elma', label: 'KG ELMA', type: 'tonnage', isAgg: true, colorClass: 'text-orange-400', components: ['707', '708', '752'] },
                 { id: 'mix_salty', label: 'MIX SALTY', type: 'mix', isAgg: true, colorClass: 'text-teal-400', components: [] },
                 { id: 'total_foods', label: 'TOTAL FOODS', type: 'standard', isAgg: true, colorClass: 'text-yellow-400', components: ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'] },
                 { id: '1119_TODDYNHO', label: 'TODDYNHO', type: 'standard', supplier: '1119', brand: 'TODDYNHO', colorClass: 'text-slate-300' },
                 { id: '1119_TODDY', label: 'TODDY', type: 'standard', supplier: '1119', brand: 'TODDY', colorClass: 'text-slate-300' },
                 { id: '1119_QUAKER_KEROCOCO', label: 'QUAKER / KEROCOCO', type: 'standard', supplier: '1119', brand: 'QUAKER_KEROCOCO', colorClass: 'text-slate-300' },
-                { id: 'tonelada_foods', label: 'TONELADA FOODS', type: 'tonnage', isAgg: true, colorClass: 'text-orange-400', components: ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'] },
+                { id: 'tonelada_foods', label: 'KG FOODS', type: 'tonnage', isAgg: true, colorClass: 'text-orange-400', components: ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'] },
                 { id: 'mix_foods', label: 'MIX FOODS', type: 'mix', isAgg: true, colorClass: 'text-yellow-400', components: [] },
                 { id: 'geral', label: 'GERAL', type: 'geral', isAgg: true, colorClass: 'text-white', components: ['total_elma', 'total_foods'] },
                 { id: 'pedev', label: 'AUDITORIA PEDEV', type: 'pedev', isAgg: true, colorClass: 'text-pink-400', components: ['total_elma'] }
@@ -4421,7 +4418,7 @@
                     const sData = sellerObj.data[cat.id];
 
                     const avgFat = t.fat / QUARTERLY_DIVISOR;
-                    const avgVol = (t.vol / 1000) / QUARTERLY_DIVISOR;
+                    const avgVol = t.vol / QUARTERLY_DIVISOR;
                     const metaPos = t.fat > 1 ? 1 : 0;
 
                     // Fetch Stored Goal
@@ -4595,9 +4592,9 @@
                 headerHTML += `</tr><tr>`;
                 svColumns.forEach(col => {
                     if (col.type === 'standard') headerHTML += `<th colspan="${monthsCount + 1}" class="px-1 py-1 text-center border-r border-slate-700/50 bg-slate-800/50">HISTÓRICO FAT.</th><th colspan="2" class="px-1 py-1 text-center border-r border-slate-700/50 bg-slate-800/50">FATURAMENTO</th><th colspan="2" class="px-1 py-1 text-center border-r border-slate-700 bg-slate-800/50">POSITIVAÇÃO</th>`;
-                    else if (col.type === 'tonnage') headerHTML += `<th class="px-1 py-1 text-right border-r border-slate-700/50 bg-slate-800/50">MÉDIA TRIM.</th><th colspan="2" class="px-1 py-1 text-center border-r border-slate-700 bg-slate-800/50">META TON</th>`;
+                    else if (col.type === 'tonnage') headerHTML += `<th class="px-1 py-1 text-right border-r border-slate-700/50 bg-slate-800/50">MÉDIA TRIM.</th><th colspan="2" class="px-1 py-1 text-center border-r border-slate-700 bg-slate-800/50">META KG</th>`;
                     else if (col.type === 'mix') headerHTML += `<th class="px-1 py-1 text-right border-r border-slate-700/50 bg-slate-800/50">MÉDIA TRIM.</th><th colspan="2" class="px-1 py-1 text-center border-r border-slate-700 bg-slate-800/50">META MIX</th>`;
-                    else if (col.type === 'geral') headerHTML += `<th colspan="2" class="px-1 py-1 text-center border-r border-slate-700/50 bg-slate-800/50">FATURAMENTO</th><th class="px-1 py-1 text-center border-r border-slate-700/50 bg-slate-800/50">TONELADA</th><th class="px-1 py-1 text-center border-r border-slate-700 bg-slate-800/50">POSITIVAÇÃO</th>`;
+                    else if (col.type === 'geral') headerHTML += `<th colspan="2" class="px-1 py-1 text-center border-r border-slate-700/50 bg-slate-800/50">FATURAMENTO</th><th class="px-1 py-1 text-center border-r border-slate-700/50 bg-slate-800/50">KG</th><th class="px-1 py-1 text-center border-r border-slate-700 bg-slate-800/50">POSITIVAÇÃO</th>`;
                     else if (col.type === 'pedev') headerHTML += `<th class="px-1 py-1 text-center border-r border-slate-700/50 bg-slate-800/50">META</th>`;
                 });
                 headerHTML += `</tr><tr>`;
@@ -4636,11 +4633,11 @@
                                 quarterMonths.forEach(m => bodyHTML += `<td class="px-1 py-1 text-right text-slate-400 border-r border-slate-800/50 text-[10px] bg-blue-900/5">${(d.monthlyValues[m.key] || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`);
                                 bodyHTML += `<td class="px-1 py-1 text-right text-slate-300 border-r border-slate-800/50 bg-blue-900/10 font-medium">${d.avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-1 text-right ${col.colorClass} border-r border-slate-800/50 text-xs font-mono">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-1 ${cellBg} border-r border-slate-800/50"><input type="text" value="${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}" class="goals-sv-input bg-transparent text-right w-full outline-none ${inputClass} text-xs font-mono" data-sup-id="${sup.id}" data-col-id="${col.id}" data-seller-id="${seller.id || seller.name.replace(/\s+/g,'_')}" data-field="fat" oninput="recalculateGoalsSvTotals(this)" ${readonlyAttr}></td><td class="px-1 py-1 text-center text-slate-300 border-r border-slate-800/50">${d.metaPos}</td><td class="px-1 py-1 ${cellBg} border-r border-slate-800/50"><input type="text" value="${d.metaPos}" class="goals-sv-input bg-transparent text-center w-full outline-none ${inputClass} text-xs font-mono" data-sup-id="${sup.id}" data-col-id="${col.id}" data-seller-id="${seller.id || seller.name.replace(/\s+/g,'_')}" data-field="pos" oninput="recalculateGoalsSvTotals(this)" ${readonlyAttr}></td>`;
                             } else if (col.type === 'tonnage') {
-                                bodyHTML += `<td class="px-1 py-1 text-right text-slate-300 border-r border-slate-800/50 font-mono text-xs">${d.avgVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})} Ton</td><td class="px-1 py-1 text-right text-slate-300 border-r border-slate-800/50 font-bold font-mono text-xs">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})} Ton</td><td class="px-1 py-1 bg-[#1e293b] border-r border-slate-800/50"><input type="text" value="${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}" class="goals-sv-input bg-transparent text-right w-full outline-none text-yellow-300 text-xs font-mono" data-sup-id="${sup.id}" data-col-id="${col.id}" data-field="vol" oninput="recalculateGoalsSvTotals(this)"></td>`;
+                                bodyHTML += `<td class="px-1 py-1 text-right text-slate-300 border-r border-slate-800/50 font-mono text-xs">${d.avgVol.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} Kg</td><td class="px-1 py-1 text-right text-slate-300 border-r border-slate-800/50 font-bold font-mono text-xs">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} Kg</td><td class="px-1 py-1 bg-[#1e293b] border-r border-slate-800/50"><input type="text" value="${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}" class="goals-sv-input bg-transparent text-right w-full outline-none text-yellow-300 text-xs font-mono" data-sup-id="${sup.id}" data-col-id="${col.id}" data-field="vol" oninput="recalculateGoalsSvTotals(this)"></td>`;
                             } else if (col.type === 'mix') {
                                 bodyHTML += `<td class="px-1 py-1 text-right text-slate-300 border-r border-slate-800/50">${d.avgMix.toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1})}</td><td class="px-1 py-1 text-right text-slate-300 border-r border-slate-800/50 font-bold">${d.metaMix}</td><td class="px-1 py-1 bg-[#1e293b] border-r border-slate-800/50"><input type="text" value="${d.metaMix}" class="goals-sv-input bg-transparent text-right w-full outline-none text-yellow-300 text-xs font-mono" data-sup-id="${sup.id}" data-col-id="${col.id}" data-field="mix" oninput="recalculateGoalsSvTotals(this)"></td>`;
                             } else if (col.type === 'geral') {
-                                bodyHTML += `<td class="px-1 py-1 text-right text-slate-400 border-r border-slate-800/50 font-mono text-xs">${d.avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-1 text-right text-white font-bold border-r border-slate-800/50 font-mono text-xs goals-sv-text" data-sup-id="${sup.id}" data-col-id="geral" data-field="fat" id="geral-${seller.id || seller.name.replace(/\s+/g,'_')}-fat">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-1 text-right text-white font-bold border-r border-slate-800/50 font-mono text-xs goals-sv-text" data-sup-id="${sup.id}" data-col-id="geral" data-field="ton" id="geral-${seller.id || seller.name.replace(/\s+/g,'_')}-ton">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})} Ton</td><td class="px-1 py-1 text-center text-white font-bold border-r border-slate-800/50 font-mono text-xs goals-sv-text" data-sup-id="${sup.id}" data-col-id="geral" data-field="pos" id="geral-${seller.id || seller.name.replace(/\s+/g,'_')}-pos">${d.metaPos}</td>`;
+                                bodyHTML += `<td class="px-1 py-1 text-right text-slate-400 border-r border-slate-800/50 font-mono text-xs">${d.avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-1 text-right text-white font-bold border-r border-slate-800/50 font-mono text-xs goals-sv-text" data-sup-id="${sup.id}" data-col-id="geral" data-field="fat" id="geral-${seller.id || seller.name.replace(/\s+/g,'_')}-fat">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-1 text-right text-white font-bold border-r border-slate-800/50 font-mono text-xs goals-sv-text" data-sup-id="${sup.id}" data-col-id="geral" data-field="ton" id="geral-${seller.id || seller.name.replace(/\s+/g,'_')}-ton">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} Kg</td><td class="px-1 py-1 text-center text-white font-bold border-r border-slate-800/50 font-mono text-xs goals-sv-text" data-sup-id="${sup.id}" data-col-id="geral" data-field="pos" id="geral-${seller.id || seller.name.replace(/\s+/g,'_')}-pos">${d.metaPos}</td>`;
                             } else if (col.type === 'pedev') {
                                 bodyHTML += `<td class="px-1 py-1 text-center text-pink-400 font-bold border-r border-slate-800/50 font-mono text-xs goals-sv-text" data-sup-id="${sup.id}" data-col-id="pedev" data-field="pos" id="pedev-${seller.id || seller.name.replace(/\s+/g,'_')}-pos">${d.metaPos}</td>`;
                             }
@@ -4654,9 +4651,9 @@
                         if (col.type === 'standard') {
                             quarterMonths.forEach(m => bodyHTML += `<td class="px-1 py-1 text-right text-slate-400 border-r border-slate-700 text-[10px] bg-blue-900/5">${(d.monthlyValues[m.key] || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`);
                             bodyHTML += `<td class="px-1 py-1 text-right text-slate-300 border-r border-slate-700 bg-blue-900/10 font-medium">${d.avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-1 text-right ${color} border-r border-slate-700">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-1 text-right text-yellow-500/70 border-r border-slate-700" id="total-sup-${sup.id}-${col.id}-fat">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-1 text-center ${color} border-r border-slate-700">${d.metaPos}</td><td class="px-1 py-1 text-center text-yellow-500/70 border-r border-slate-700" id="total-sup-${sup.id}-${col.id}-pos">${d.metaPos}</td>`;
-                        } else if (col.type === 'tonnage') bodyHTML += `<td class="px-1 py-1 text-right text-slate-300 border-r border-slate-700">${d.avgVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})} Ton</td><td class="px-1 py-1 text-right ${color} border-r border-slate-700">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})} Ton</td><td class="px-1 py-1 text-right text-yellow-500/70 border-r border-slate-700" id="total-sup-${sup.id}-${col.id}-vol">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})} Ton</td>`;
+                        } else if (col.type === 'tonnage') bodyHTML += `<td class="px-1 py-1 text-right text-slate-300 border-r border-slate-700">${d.avgVol.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} Kg</td><td class="px-1 py-1 text-right ${color} border-r border-slate-700">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} Kg</td><td class="px-1 py-1 text-right text-yellow-500/70 border-r border-slate-700" id="total-sup-${sup.id}-${col.id}-vol">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} Kg</td>`;
                         else if (col.type === 'mix') bodyHTML += `<td class="px-1 py-1 text-right text-slate-300 border-r border-slate-700">${d.avgMix.toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1})}</td><td class="px-1 py-1 text-right ${color} border-r border-slate-700">${d.metaMix}</td><td class="px-1 py-1 text-right text-yellow-500/70 border-r border-slate-700" id="total-sup-${sup.id}-${col.id}-mix">${d.metaMix}</td>`;
-                        else if (col.type === 'geral') bodyHTML += `<td class="px-1 py-1 text-right text-slate-400 border-r border-slate-700">${d.avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-1 text-right text-white border-r border-slate-700" id="total-sup-${sup.id}-geral-fat">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-1 text-right text-white border-r border-slate-700" id="total-sup-${sup.id}-geral-ton">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})} Ton</td><td class="px-1 py-1 text-center text-white border-r border-slate-700" id="total-sup-${sup.id}-geral-pos">${d.metaPos}</td>`;
+                        else if (col.type === 'geral') bodyHTML += `<td class="px-1 py-1 text-right text-slate-400 border-r border-slate-700">${d.avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-1 text-right text-white border-r border-slate-700" id="total-sup-${sup.id}-geral-fat">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-1 text-right text-white border-r border-slate-700" id="total-sup-${sup.id}-geral-ton">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} Kg</td><td class="px-1 py-1 text-center text-white border-r border-slate-700" id="total-sup-${sup.id}-geral-pos">${d.metaPos}</td>`;
                         else if (col.type === 'pedev') bodyHTML += `<td class="px-1 py-1 text-center text-pink-400 border-r border-slate-700" id="total-sup-${sup.id}-pedev-pos">${Math.round(sup.totals['total_elma']?.metaPos * 0.9)}</td>`;
                     });
                     bodyHTML += `</tr>`;
@@ -4669,9 +4666,9 @@
                     if (col.type === 'standard') {
                         quarterMonths.forEach(m => bodyHTML += `<td class="px-1 py-2 text-right text-slate-400 border-r border-slate-700 text-[10px] bg-blue-900/5">${(d.monthlyValues[m.key] || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`);
                         bodyHTML += `<td class="px-1 py-2 text-right text-teal-400 border-r border-slate-700 bg-blue-900/10">${d.avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-right text-teal-400 border-r border-slate-700">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-right text-teal-600/70 border-r border-slate-700" id="total-grand-${col.id}-fat">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-center text-purple-400 border-r border-slate-700">${d.metaPos}</td><td class="px-1 py-2 text-center text-purple-600/70 border-r border-slate-700" id="total-grand-${col.id}-pos">${d.metaPos}</td>`;
-                    } else if (col.type === 'tonnage') bodyHTML += `<td class="px-1 py-2 text-right text-slate-400 border-r border-slate-700">${d.avgVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td><td class="px-1 py-2 text-right text-orange-400 border-r border-slate-700">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td><td class="px-1 py-2 text-right text-orange-600/70 border-r border-slate-700" id="total-grand-${col.id}-vol">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td>`;
+                    } else if (col.type === 'tonnage') bodyHTML += `<td class="px-1 py-2 text-right text-slate-400 border-r border-slate-700">${d.avgVol.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-right text-orange-400 border-r border-slate-700">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-right text-orange-600/70 border-r border-slate-700" id="total-grand-${col.id}-vol">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
                     else if (col.type === 'mix') bodyHTML += `<td class="px-1 py-2 text-right text-slate-400 border-r border-slate-700">${d.avgMix.toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1})}</td><td class="px-1 py-2 text-right text-cyan-400 border-r border-slate-700">${d.metaMix}</td><td class="px-1 py-2 text-right text-cyan-600/70 border-r border-slate-700" id="total-grand-${col.id}-mix">${d.metaMix}</td>`;
-                    else if (col.type === 'geral') bodyHTML += `<td class="px-1 py-2 text-right text-slate-500 border-r border-slate-700">${d.avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-right text-white border-r border-slate-700" id="total-grand-geral-fat">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-right text-white border-r border-slate-700" id="total-grand-geral-ton">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</td><td class="px-1 py-2 text-center text-white border-r border-slate-700" id="total-grand-geral-pos">${d.metaPos}</td>`;
+                    else if (col.type === 'geral') bodyHTML += `<td class="px-1 py-2 text-right text-slate-500 border-r border-slate-700">${d.avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-right text-white border-r border-slate-700" id="total-grand-geral-fat">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-right text-white border-r border-slate-700" id="total-grand-geral-ton">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-center text-white border-r border-slate-700" id="total-grand-geral-pos">${d.metaPos}</td>`;
                     else if (col.type === 'pedev') bodyHTML += `<td class="px-1 py-2 text-center text-pink-400 border-r border-slate-700" id="total-grand-pedev-pos">${Math.round(grandTotals['total_elma']?.metaPos * 0.9)}</td>`;
                 });
                 bodyHTML += `</tr></tbody>`;
@@ -10854,7 +10851,7 @@
                                 <!-- KPIs com bordas e cores atualizadas -->
                                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
                                     <div class="kpi-card border-t-4 border-indigo-500 transition transform hover:-translate-y-1 duration-200">
-                                        <h3 class="text-slate-400 font-medium uppercase text-sm">Volume Tons</h3>
+                                        <h3 class="text-slate-400 font-medium uppercase text-sm">Volume Kg</h3>
                                         <p id="total-peso" class="text-4xl font-bold text-white my-2">0,0</p>
                                     </div>
                                     <div class="kpi-card border-t-4 border-teal-500 transition transform hover:-translate-y-1 duration-200">
@@ -11415,7 +11412,7 @@
                                                 <p class="text-xl font-bold text-teal-400" id="summary-total-fat">R$ 0,00</p>
                                             </div>
                                             <div class="text-right px-2 border-l border-slate-700">
-                                                <p class="text-[10px] uppercase text-slate-400 font-bold mb-1">Total Meta Ton.</p>
+                                                <p class="text-[10px] uppercase text-slate-400 font-bold mb-1">Total Meta Kg</p>
                                                 <p class="text-xl font-bold text-orange-400" id="summary-total-vol">0,000</p>
                                             </div>
                                             <div class="text-right px-2 border-l border-slate-700">
@@ -11458,7 +11455,7 @@
                                     <!-- Volume Card -->
                                     <div class="bg-[#3c2a21] border border-orange-900/50 rounded-lg p-3 relative overflow-hidden group">
                                         <div class="absolute top-0 left-0 w-1 h-full bg-orange-500"></div>
-                                        <label class="text-[10px] font-bold text-orange-300 uppercase tracking-wider mb-1 block">META VOLUME (TON)</label>
+                                        <label class="text-[10px] font-bold text-orange-300 uppercase tracking-wider mb-1 block">META VOLUME (KG)</label>
                                         <div class="flex gap-2">
                                             <input type="text" id="goal-global-vol" class="w-full bg-[#0f172a] border border-orange-900/50 text-white font-bold text-lg p-2 rounded focus:outline-none focus:border-orange-500" value="0,000">
                                             <button id="btn-distribute-vol" class="bg-orange-600 hover:bg-orange-500 text-white px-3 rounded flex items-center justify-center transition-colors">
@@ -11558,7 +11555,7 @@
                                                     <th rowspan="2" class="px-3 py-2 text-left w-48 border-r border-b border-slate-700">CLIENTE</th>
                                                     <th rowspan="2" class="px-3 py-2 text-left w-24 border-r border-b border-slate-700">VENDEDOR</th>
                                                     <th colspan="3" class="px-2 py-1 text-center bg-blue-900/30 text-blue-400 border-r border-slate-700 border-b-0">FATURAMENTO (R$)</th>
-                                                    <th colspan="3" class="px-2 py-1 text-center bg-orange-900/30 text-orange-400 border-r border-slate-700 border-b-0">VOLUME (TON)</th>
+                                                    <th colspan="3" class="px-2 py-1 text-center bg-orange-900/30 text-orange-400 border-r border-slate-700 border-b-0">VOLUME (KG)</th>
                                                     <th rowspan="2" class="px-2 py-2 text-center w-16 bg-purple-900/20 text-purple-300 font-bold border-b border-slate-700">META POS.</th>
                                                 </tr>
                                                 <tr>
