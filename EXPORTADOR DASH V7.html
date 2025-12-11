@@ -4051,16 +4051,29 @@
                     
                     // Logic to populate values and handle edit
                     let naturalMixBase = 0;
+                    const visibleSellers = new Set();
                     clientMetrics.forEach(c => {
+                        visibleSellers.add(c.seller);
                         // Check if not seller 1001 (Americanas)
                         const sellerCode = optimizedData.rcaCodeByName.get(c.seller) || '';
                         if (sellerCode !== '1001') {
                             if (c.metaPos > 0) naturalMixBase++; // Count positivations in PEPSICO_ALL (Total Pos)
                         }
                     });
+
+                    // Incorporate Positivação Adjustments to Base
+                    let totalPosAdjustment = 0;
+                    if (goalsPosAdjustments['PEPSICO_ALL']) {
+                        goalsPosAdjustments['PEPSICO_ALL'].forEach((val, sellerName) => {
+                            if (visibleSellers.has(sellerName)) {
+                                totalPosAdjustment += val;
+                            }
+                        });
+                    }
+                    const adjustedMixBase = naturalMixBase + totalPosAdjustment;
                     
-                    const naturalSaltyTarget = Math.round(naturalMixBase * 0.50);
-                    const naturalFoodsTarget = Math.round(naturalMixBase * 0.30);
+                    const naturalSaltyTarget = Math.round(adjustedMixBase * 0.50);
+                    const naturalFoodsTarget = Math.round(adjustedMixBase * 0.30);
                     
                     const handleMixCard = (type, naturalTarget, adjustmentsMap, inputId, btnId) => {
                         let adj = 0;
