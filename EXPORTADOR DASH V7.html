@@ -1406,6 +1406,37 @@
             }, 0);
         }
 
+        // --- DEBUG FUNCTION ADDED TEMPORARILY ---
+        window.debugMixDiff = function() {
+             console.clear();
+             console.log("%c=== DEBUG MIX SALTY DIFFERENCE ===", "color: cyan; font-weight: bold; font-size: 14px;");
+             const resumoEl = document.getElementById('summary-mix-salty');
+             const resumoVal = resumoEl ? parseFloat(resumoEl.textContent.replace(/\./g,'').replace(',','.')) || 0 : 0;
+             const pepsicoEl = document.getElementById('goal-global-mix-salty');
+             const pepsicoVal = pepsicoEl ? parseFloat(pepsicoEl.value.replace(/\./g,'').replace(',','.')) || 0 : 0;
+
+             let internalSum = 0;
+             const details = [];
+             if (typeof goalsMixSaltyAdjustments !== 'undefined' && goalsMixSaltyAdjustments['PEPSICO_ALL']) {
+                 goalsMixSaltyAdjustments['PEPSICO_ALL'].forEach((val, key) => {
+                     internalSum += val;
+                     details.push({ seller: key, val: val });
+                 });
+             }
+
+             console.log(`RESUMO Display: ${resumoVal}`);
+             console.log(`PEPSICO Card Input: ${pepsicoVal}`);
+             console.log(`INTERNAL Sum: ${internalSum}`);
+             console.table(details);
+
+             let msg = `Resumo: ${resumoVal}\nPepsico Page: ${pepsicoVal}\nInternal Sum: ${internalSum}\n\n`;
+             if (Math.abs(resumoVal - internalSum) < 0.1) msg += "✅ Resumo matches Internal Sum.";
+             else msg += "❌ Resumo does NOT match Internal Sum.";
+
+             alert(msg + "\n(Detalhes no Console)");
+        };
+        // ----------------------------------------
+
         aggregatedOrders.sort((a, b) => {
             const dateA = parseDate(a.DTPED);
             const dateB = parseDate(b.DTPED);
@@ -11403,6 +11434,7 @@
                                                 <div id="goals-summary-supervisor-filter-dropdown" class="hidden absolute z-50 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar text-white"></div>
                                             </div>
                                             <button id="clear-goals-summary-filters-btn" class="w-full sm:w-auto bg-slate-600 hover:bg-slate-500 text-white font-bold py-2.5 px-4 rounded-lg">Limpar Filtros</button>
+                                            <button onclick="window.debugMixDiff()" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2.5 px-4 rounded-lg shadow-lg">DEBUG MIX</button>
                                         </div>
                                         
                                         <!-- Totals Summary -->
