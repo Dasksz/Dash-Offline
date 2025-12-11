@@ -1873,7 +1873,7 @@
                                     if (!cGoals.has(key)) cGoals.set(key, { fat: 0, vol: 0 });
                                     const g = cGoals.get(key);
                                     g.fat += sale.VLVENDA;
-                                    g.vol += (sale.TOTPESOLIQ / 1000); // Tons
+                                    g.vol += sale.TOTPESOLIQ; // Kg
                                 }
 
                                 // 2. Accumulate for Client Count Check (Balance per period)
