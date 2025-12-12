@@ -3135,6 +3135,10 @@
                 }
             });
 
+
+            const filteredSummaryClientCodes = new Set();
+            filteredSummaryClients.forEach(c => filteredSummaryClientCodes.add(c['Código']));
+
             const summaryItems = [
                 { title: 'Extrusados', supplier: '707', brand: null, color: 'teal' },
                 { title: 'Não Extrusados', supplier: '708', brand: null, color: 'blue' },
@@ -3157,6 +3161,15 @@
                 
                 const target = summaryGoalsSums[key] || { fat: 0, vol: 0 };
                 const metrics = displayMetrics[key] || { avgFat: 0, prevFat: 0 };
+
+                let subCategoryAdjustment = 0;
+                if (goalsPosAdjustments[key]) {
+                    goalsPosAdjustments[key].forEach((adjVal, clientCode) => {
+                        if (filteredSummaryClientCodes.has(clientCode)) {
+                            subCategoryAdjustment += adjVal;
+                        }
+                    });
+                }
 
                 totalFat += target.fat;
                 totalVol += target.vol;
@@ -3213,7 +3226,7 @@
                                     <p class="text-xs text-slate-400 uppercase font-semibold">Meta Pos. (Clientes)</p>
                                 </div>
                                 <p class="text-xl font-bold ${textColor} mb-2">
-                                    ${(metrics.quarterlyPos || 0).toLocaleString('pt-BR')}
+                                    ${((metrics.quarterlyPos || 0) + subCategoryAdjustment).toLocaleString('pt-BR')}
                                 </p>
                                 <div class="flex justify-between text-[10px] text-slate-400 border-t border-slate-700/50 pt-1">
                                     <span>Ativos no Trimestre</span>
@@ -3467,8 +3480,8 @@
                     prevVol: prevVol, // Now Kg (removed / 1000)
                     activeMonthsCount,
                     isActivePrevMonth,
-                    shareFat: globalTotalAvgFat > 0 ? (avgFat / globalTotalAvgFat) : 0,
-                    shareVol: globalTotalAvgVol > 0 ? (avgVol / globalTotalAvgVol) : 0,
+                    shareFat: (globalTotalAvgFat > 0 && avgFat > 0) ? (avgFat / globalTotalAvgFat) : 0,
+                    shareVol: (globalTotalAvgVol > 0 && avgVol > 0) ? (avgVol / globalTotalAvgVol) : 0,
                     metaFat: metaFat,
                     metaVol: metaVol,
                     metaPos: metaPos,
@@ -3931,8 +3944,8 @@
                     cod: codCli, name: client.fantasia || client.razaoSocial, seller: sellerName,
                     avgFat, avgVol, prevFat: cPrevFat, prevVol: cPrevVol,
                     activeMonthsCount, isActivePrevMonth,
-                    shareFat: globalTotalAvgFat > 0 ? (avgFat / globalTotalAvgFat) : 0,
-                    shareVol: globalTotalAvgVol > 0 ? (avgVol / globalTotalAvgVol) : 0,
+                    shareFat: (globalTotalAvgFat > 0 && avgFat > 0) ? (avgFat / globalTotalAvgFat) : 0,
+                    shareVol: (globalTotalAvgVol > 0 && avgVol > 0) ? (avgVol / globalTotalAvgVol) : 0,
                     metaFat, metaVol, metaPos, monthlyValues
                 };
                 clientMetrics.push(metric);
@@ -4021,7 +4034,7 @@
                             btnDistributeMix.parentNode.replaceChild(newBtnDistributeMix, btnDistributeMix);
                             newBtnDistributeMix.style.display = '';
                             
-                            newBtnDistributeMix.addEventListener('click', () => {
+                            newBtnDistributeMix.onclick = () => {
                             const valStr = newMixInput.value;
                             const val = parseFloat(valStr.replace(/\./g, '').replace(',', '.')) || 0;
                             const filterDesc = getFilterDescription();
@@ -4063,7 +4076,7 @@
                             updateGoalsView();
                             }
                             });
-                            });
+                            };
                         }
                     } else {
                         newMixInput.readOnly = true;
@@ -4584,7 +4597,73 @@
                 });
 
                 // Group Supervisors
-                const supervisorGroups = new Map();
+
+                // --- APPLY ADJUSTMENTS TO SELLERS ---
+                sellerMap.forEach(seller => {
+                    const sellerName = seller.name;
+
+                    // 1. Positivation Adjustments
+                    // Map Column ID -> Adjustment Key
+                    // IDs: 'total_elma'->'ELMA_ALL', 'total_foods'->'FOODS_ALL', 'geral'->'PEPSICO_ALL'
+                    //      '707'->'707', etc.
+
+                    const posKeys = {
+                        'total_elma': 'ELMA_ALL',
+                        'total_foods': 'FOODS_ALL',
+                        'geral': 'PEPSICO_ALL', // GERAL uses PEPSICO_ALL for Positivação
+                        '707': '707', '708': '708', '752': '752',
+                        '1119_TODDYNHO': '1119_TODDY', // Wait, map keys?
+                        '1119_TODDY': '1119_TODDY', // Check keys in globalGoalsMetrics
+                        '1119_QUAKER_KEROCOCO': '1119_QUAKER_KEROCOCO'
+                    };
+
+                    // Specific Fix for Toddynho Key mismatch if any (1119_TODDYNHO vs 1119_TODDYNHO)
+                    // My previous code used '1119_TODDYNHO'.
+                    posKeys['1119_TODDYNHO'] = '1119_TODDYNHO';
+
+                    for (const [colId, data] of Object.entries(seller.data)) {
+                        // Apply Pos Adjustment
+                        const adjKey = posKeys[colId] || colId; // Fallback to ID
+                        if (goalsPosAdjustments[adjKey]) {
+                            const adj = goalsPosAdjustments[adjKey].get(sellerName) || 0;
+                            // Update Meta Pos: Natural (Summed from clients) + Adjustment
+                            // Note: 'data.metaPos' currently holds Natural Count from client loop.
+                            data.metaPos = data.metaPos + adj;
+                        }
+
+                        // Apply Mix Adjustment (Only for Mix Cols)
+                        if (colId === 'mix_salty') {
+                            const adj = goalsMixSaltyAdjustments['PEPSICO_ALL']?.get(sellerName) || 0;
+                            // metaMix was calculated as Math.round(active * 0.5).
+                            data.metaMix = data.metaMix + adj;
+                        }
+                        if (colId === 'mix_foods') {
+                            const adj = goalsMixFoodsAdjustments['PEPSICO_ALL']?.get(sellerName) || 0;
+                            data.metaMix = data.metaMix + adj;
+                        }
+
+                        // Apply Pedev Adjustment? (Calculated as 90% of Total Elma)
+                        // This is calculated LATER in the supervisor loop?
+                        // "sellerObj.data['pedev'] = { metaPos: Math.round(totalElma.metaPos * 0.9) };"
+                        // This line exists inside the client loop (aggregating).
+                        // Since we just updated total_elma.metaPos, we should re-calculate pedev here.
+                    }
+
+                    // Re-calculate PEDEV based on updated TOTAL ELMA
+                    if (seller.data['total_elma'] && seller.data['pedev']) {
+                         seller.data['pedev'].metaPos = Math.round(seller.data['total_elma'].metaPos * 0.9);
+                    }
+
+                    // Re-calculate GERAL based on updated components?
+                    // GERAL components: total_elma, total_foods.
+                    // "sellerObj.data['geral'] = { ... metaPos: activeClientsCount }"
+                    // The 'activeClientsCount' in the loop was based on (Total Fat > 1).
+                    // This is 'PEPSICO NATURAL'.
+                    // So 'geral' key maps to PEPSICO_ALL adjustment.
+                    // Handled above via posKeys['geral'] = 'PEPSICO_ALL'.
+                });
+
+const supervisorGroups = new Map();
                 sellerMap.forEach(seller => {
                     const supName = seller.supervisor;
                     if (!supervisorGroups.has(supName)) supervisorGroups.set(supName, { name: supName, id: supName.replace(/[^a-zA-Z0-9]/g, '_'), code: optimizedData.supervisorCodeByName.get(supName) || '', sellers: [], totals: {} });
