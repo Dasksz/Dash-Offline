@@ -3103,7 +3103,8 @@
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 if (isAmericanas) return true;
-                if (rca1 === '53') return false;
+                // STRICT FILTER: Exclude RCA 53 (Balcão) variants and Empty/Inativos
+                if (rca1 === '53' || rca1 === '053' || rca1 === '' || rca1 === 'INATIVOS') return false;
                 return true;
             });
 
@@ -3125,6 +3126,9 @@
                 '1119_TODDY': { fat: 0, vol: 0 },
                 '1119_QUAKER_KEROCOCO': { fat: 0, vol: 0 }
             };
+
+            // Calculate Base Total for Mix (Use PEPSICO_ALL metric)
+            const basePosCount = (displayMetrics['PEPSICO_ALL'] && displayMetrics['PEPSICO_ALL'].quarterlyPos) ? displayMetrics['PEPSICO_ALL'].quarterlyPos : uniquePosClientsSet.size;
 
             filteredSummaryClients.forEach(c => {
                 const codCli = c['Código'];
@@ -3290,23 +3294,27 @@
                 }
             });
             
-            const adjustedMixBase = naturalMixBaseCount + totalAdjustment;
+            // MIX KPIs - STRICTLY PEPSICO_ALL SOURCE & LOGIC
+            const naturalSaltyTarget = Math.round(basePosCount * 0.60);
 
             let mixSaltyAdjustment = 0;
-            if (goalsMixSaltyAdjustments[currentGoalsSupplier]) {
-                 goalsMixSaltyAdjustments[currentGoalsSupplier].forEach(val => mixSaltyAdjustment += val);
+            if (goalsMixSaltyAdjustments['PEPSICO_ALL']) {
+                 goalsMixSaltyAdjustments['PEPSICO_ALL'].forEach((val, sellerName) => {
+                     // Check if seller is in the filtered summary view
+                     if (activeSellersInSummary.has(sellerName)) mixSaltyAdjustment += val;
+                 });
             }
+            if(mixSaltyEl) mixSaltyEl.textContent = (naturalSaltyTarget + mixSaltyAdjustment).toLocaleString('pt-BR');
 
+            // Mix Foods
+            const naturalFoodsTarget = Math.round(basePosCount * 0.30);
             let mixFoodsAdjustment = 0;
-            if (goalsMixFoodsAdjustments[currentGoalsSupplier]) {
-                 goalsMixFoodsAdjustments[currentGoalsSupplier].forEach(val => mixFoodsAdjustment += val);
+            if (goalsMixFoodsAdjustments['PEPSICO_ALL']) {
+                 goalsMixFoodsAdjustments['PEPSICO_ALL'].forEach((val, sellerName) => {
+                     if (activeSellersInSummary.has(sellerName)) mixFoodsAdjustment += val;
+                 });
             }
-
-            const standardSaltyTarget = Math.round(adjustedMixBase * 0.50);
-            const standardFoodsTarget = Math.round(adjustedMixBase * 0.30);
-
-            if(mixSaltyEl) mixSaltyEl.textContent = (standardSaltyTarget + mixSaltyAdjustment).toLocaleString('pt-BR');
-            if(mixFoodsEl) mixFoodsEl.textContent = (standardFoodsTarget + mixFoodsAdjustment).toLocaleString('pt-BR');
+            if(mixFoodsEl) mixFoodsEl.textContent = (naturalFoodsTarget + mixFoodsAdjustment).toLocaleString('pt-BR');
         }
 
                 function calculateDistributedGoals(filteredClients, currentGoalsSupplier, currentGoalsBrand, goalFat, goalVol) {
@@ -3680,21 +3688,17 @@
             // Since we are in a helper, we re-filter for safety and accuracy.
             
             // Re-use logic for Active Clients counting
+            const sellerCode = optimizedData.rcaCodeByName.get(sellerName);
+
             const sellerClients = allClientsData.filter(c => {
                 const rca1 = String(c.rca1 || '').trim();
-                // Check if this client belongs to the seller
-                const sellerCode = optimizedData.rcaCodeByName.get(sellerName);
                 if (!sellerCode) return false;
                 
                 // Is client active check (Same as others)
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                if (!isAmericanas && rca1 === '53') return false;
+                if (!isAmericanas && (rca1 === '53' || rca1 === '053' || rca1 === '' || rca1 === 'INATIVOS')) return false;
                 
-                // Does client belong to seller?
-                // Check current assignment (rca1 or rcas list?)
-                // Dashboard logic uses 'rca1' primarily for current view assignment in lists, 
-                // but filters check 'rcas' array.
-                // Let's use 'rcas' includes code.
+                // Does client belong to seller? (Current Hierarchy)
                 return c.rcas.includes(sellerCode);
             });
             
@@ -3712,19 +3716,20 @@
                         }
                     });
                 }
-                if (sumFat > 1 && (sumFat / 3) > 0) naturalCount++;
+                if (sumFat > 1) naturalCount++;
             });
             
             // Apply 60% / 30% rule
-            const base = type === 'salty' ? Math.round(naturalCount * 0.50) : Math.round(naturalCount * 0.30);
+            const base = type === 'salty' ? Math.round(naturalCount * 0.60) : Math.round(naturalCount * 0.30);
             const adjustment = value - base;
             
+            // ALWAYS STORE IN PEPSICO_ALL (Unify Inputs)
             if (type === 'salty') {
-                if (!goalsMixSaltyAdjustments[currentGoalsSupplier]) goalsMixSaltyAdjustments[currentGoalsSupplier] = new Map();
-                goalsMixSaltyAdjustments[currentGoalsSupplier].set(sellerName, adjustment);
+                if (!goalsMixSaltyAdjustments['PEPSICO_ALL']) goalsMixSaltyAdjustments['PEPSICO_ALL'] = new Map();
+                goalsMixSaltyAdjustments['PEPSICO_ALL'].set(sellerName, adjustment);
             } else {
-                if (!goalsMixFoodsAdjustments[currentGoalsSupplier]) goalsMixFoodsAdjustments[currentGoalsSupplier] = new Map();
-                goalsMixFoodsAdjustments[currentGoalsSupplier].set(sellerName, adjustment);
+                if (!goalsMixFoodsAdjustments['PEPSICO_ALL']) goalsMixFoodsAdjustments['PEPSICO_ALL'] = new Map();
+                goalsMixFoodsAdjustments['PEPSICO_ALL'].set(sellerName, adjustment);
             }
             
             updateGoalsView();
@@ -4152,11 +4157,19 @@
                         }
                     };
                     
-                    if (goalsMixSaltyAdjustments[currentGoalsSupplier]) {
-                        handleMixCard('Salty', naturalSaltyTarget, goalsMixSaltyAdjustments[currentGoalsSupplier], 'goal-global-mix-salty', 'btn-distribute-mix-salty');
+                    // FORCE READ FROM PEPSICO_ALL KEY for Mix Cards
+                    // Calculate Natural Base using PEPSICO metrics for consistency in card display
+                    const pepsicoMetrics = displayMetrics['PEPSICO_ALL'] || { quarterlyPos: 0 };
+
+                    // Card Natural Targets (Global for the view)
+                    const globalNaturalSalty = Math.round(pepsicoMetrics.quarterlyPos * 0.60);
+                    const globalNaturalFoods = Math.round(pepsicoMetrics.quarterlyPos * 0.30);
+
+                    if (goalsMixSaltyAdjustments['PEPSICO_ALL']) {
+                        handleMixCard('Salty', globalNaturalSalty, goalsMixSaltyAdjustments['PEPSICO_ALL'], 'goal-global-mix-salty', 'btn-distribute-mix-salty');
                     }
-                    if (goalsMixFoodsAdjustments[currentGoalsSupplier]) {
-                        handleMixCard('Foods', naturalFoodsTarget, goalsMixFoodsAdjustments[currentGoalsSupplier], 'goal-global-mix-foods', 'btn-distribute-mix-foods');
+                    if (goalsMixFoodsAdjustments['PEPSICO_ALL']) {
+                        handleMixCard('Foods', globalNaturalFoods, goalsMixFoodsAdjustments['PEPSICO_ALL'], 'goal-global-mix-foods', 'btn-distribute-mix-foods');
                     }
 
                 } else {
@@ -4220,7 +4233,8 @@
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 if (isAmericanas) return true;
-                if (rca1 === '53') return false;
+                // STRICT FILTER: Exclude RCA 53 (Balcão) variants and Empty/Inativos
+                if (rca1 === '53' || rca1 === '053' || rca1 === '' || rca1 === 'INATIVOS') return false;
                 return true;
             });
 
