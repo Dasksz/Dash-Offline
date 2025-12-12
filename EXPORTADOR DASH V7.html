@@ -3148,7 +3148,21 @@
                 filteredSummaryClients = filteredSummaryClients.filter(c => c.rcas.some(r => rcasSet.has(r)));
             }
 
-            // 2. Sum up goals for these clients
+            // 2. Prepare Sets for fast lookup and Sum up goals
+            const filteredSummaryClientCodes = new Set();
+            const activeSellersInSummary = new Set();
+
+            filteredSummaryClients.forEach(c => {
+                filteredSummaryClientCodes.add(c['Código']);
+                // Resolve Seller Name for Adjustment Filtering
+                const rcaCode = String(c.rca1 || '').trim();
+                if (rcaCode) {
+                    const name = optimizedData.rcaNameByCode.get(rcaCode);
+                    if (name) activeSellersInSummary.add(name);
+                    else if (rcaCode === 'INATIVOS') activeSellersInSummary.add('INATIVOS');
+                }
+            });
+
             const summaryGoalsSums = {
                 '707': { fat: 0, vol: 0 },
                 '708': { fat: 0, vol: 0 },
@@ -3171,21 +3185,6 @@
                             summaryGoalsSums[key].vol += val.vol;
                         }
                     });
-                }
-            });
-
-            
-            const filteredSummaryClientCodes = new Set();
-            const activeSellersInSummary = new Set();
-
-            filteredSummaryClients.forEach(c => {
-                filteredSummaryClientCodes.add(c['Código']);
-                // Resolve Seller Name for Adjustment Filtering
-                const rcaCode = String(c.rca1 || '').trim();
-                if (rcaCode) {
-                    const name = optimizedData.rcaNameByCode.get(rcaCode);
-                    if (name) activeSellersInSummary.add(name);
-                    else if (rcaCode === 'INATIVOS') activeSellersInSummary.add('INATIVOS');
                 }
             });
 
