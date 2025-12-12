@@ -3847,6 +3847,9 @@
 
             if (quarterMonths.length === 0) identifyQuarterMonths();
 
+            // Calculate Metrics for Current View (Supervisor Filter)
+            const displayMetrics = getMetricsForSupervisors(selectedGoalsGvSupervisors);
+
             // Update Header (Dynamic) - Same as before
             const thead = document.querySelector('#goals-table-container table thead');
             if (thead) {
