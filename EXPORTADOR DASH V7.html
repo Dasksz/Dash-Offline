@@ -1762,9 +1762,9 @@
         let globalGoalsMetrics = {};
         let globalGoalsTotalsCache = {};
         let globalClientGoals = new Map();
-        let goalsPosAdjustments = { 'ELMA_ALL': new Map(), 'FOODS_ALL': new Map(), 'PEPSICO_ALL': new Map() }; // Map<CodCli, Map<Key, {fat: 0, vol: 0}>>
-        let goalsMixSaltyAdjustments = { 'PEPSICO_ALL': new Map() }; // Map<SellerName, adjustment>
-        let goalsMixFoodsAdjustments = { 'PEPSICO_ALL': new Map() }; // Map<SellerName, adjustment>
+        let goalsPosAdjustments = { 'ELMA_ALL': new Map(), 'FOODS_ALL': new Map(), 'PEPSICO_ALL': new Map(), '707': new Map(), '708': new Map(), '752': new Map(), '1119_TODDYNHO': new Map(), '1119_TODDY': new Map(), '1119_QUAKER_KEROCOCO': new Map() }; // Map<CodCli, Map<Key, {fat: 0, vol: 0}>>
+        let goalsMixSaltyAdjustments = { 'PEPSICO_ALL': new Map(), 'ELMA_ALL': new Map(), 'FOODS_ALL': new Map() }; // Map<SellerName, adjustment>
+        let goalsMixFoodsAdjustments = { 'PEPSICO_ALL': new Map(), 'ELMA_ALL': new Map(), 'FOODS_ALL': new Map() }; // Map<SellerName, adjustment>
         let quarterMonths = [];
 
         function identifyQuarterMonths() {
@@ -3264,13 +3264,13 @@
             const adjustedMixBase = naturalMixBaseCount + totalAdjustment;
 
             let mixSaltyAdjustment = 0;
-            if (goalsMixSaltyAdjustments['PEPSICO_ALL']) {
-                 goalsMixSaltyAdjustments['PEPSICO_ALL'].forEach(val => mixSaltyAdjustment += val);
+            if (goalsMixSaltyAdjustments[currentGoalsSupplier]) {
+                 goalsMixSaltyAdjustments[currentGoalsSupplier].forEach(val => mixSaltyAdjustment += val);
             }
 
             let mixFoodsAdjustment = 0;
-            if (goalsMixFoodsAdjustments['PEPSICO_ALL']) {
-                 goalsMixFoodsAdjustments['PEPSICO_ALL'].forEach(val => mixFoodsAdjustment += val);
+            if (goalsMixFoodsAdjustments[currentGoalsSupplier]) {
+                 goalsMixFoodsAdjustments[currentGoalsSupplier].forEach(val => mixFoodsAdjustment += val);
             }
 
             const standardSaltyTarget = Math.round(adjustedMixBase * 0.50);
@@ -3691,11 +3691,11 @@
             const adjustment = value - base;
             
             if (type === 'salty') {
-                if (!goalsMixSaltyAdjustments['PEPSICO_ALL']) goalsMixSaltyAdjustments['PEPSICO_ALL'] = new Map();
-                goalsMixSaltyAdjustments['PEPSICO_ALL'].set(sellerName, adjustment);
+                if (!goalsMixSaltyAdjustments[currentGoalsSupplier]) goalsMixSaltyAdjustments[currentGoalsSupplier] = new Map();
+                goalsMixSaltyAdjustments[currentGoalsSupplier].set(sellerName, adjustment);
             } else {
-                if (!goalsMixFoodsAdjustments['PEPSICO_ALL']) goalsMixFoodsAdjustments['PEPSICO_ALL'] = new Map();
-                goalsMixFoodsAdjustments['PEPSICO_ALL'].set(sellerName, adjustment);
+                if (!goalsMixFoodsAdjustments[currentGoalsSupplier]) goalsMixFoodsAdjustments[currentGoalsSupplier] = new Map();
+                goalsMixFoodsAdjustments[currentGoalsSupplier].set(sellerName, adjustment);
             }
             
             updateGoalsView();
@@ -4012,7 +4012,7 @@
                     const displayPos = naturalTotalPos + contextAdjustment;
                     newMixInput.value = displayPos.toLocaleString('pt-BR');
                     
-                    if (isAggregatedTab && isSingleSeller) {
+                    if (isSingleSeller) {
                         newMixInput.readOnly = false;
                         newMixInput.classList.remove('opacity-50', 'cursor-not-allowed');
                         
@@ -4022,16 +4022,47 @@
                             newBtnDistributeMix.style.display = '';
                             
                             newBtnDistributeMix.addEventListener('click', () => {
-                                const valStr = newMixInput.value;
-                                const filterDesc = getFilterDescription();
-                                showConfirmationModal(`Confirmar ajuste de Meta Positivação para ${valStr} (Cliente: ${filterDesc})?`, () => {
-                                    const val = parseFloat(valStr.replace(/\./g, '').replace(',', '.')) || 0;
-                                    const newAdjustment = val - naturalTotalPos;
-                                    if (adjustmentMap) {
-                                        adjustmentMap.set(selectedGoalsGvSellers[0], newAdjustment);
-                                        updateGoalsView();
-                                    }
-                                });
+                            const valStr = newMixInput.value;
+                            const val = parseFloat(valStr.replace(/\./g, '').replace(',', '.')) || 0;
+                            const filterDesc = getFilterDescription();
+                            // Validation: Check against PEPSICO Limit
+                            const sellerName = selectedGoalsGvSellers[0];
+                            let pepsicoNaturalPos = 0;
+                            // Calculate Natural PEPSICO Positivação for this seller
+                            const len = allClientsData.length;
+                            for(let i=0; i<len; i++) {
+                                const c = allClientsData instanceof ColumnarDataset ? allClientsData.get(i) : allClientsData[i];
+
+                            const rca = c.rcas[0];
+                            const sName = optimizedData.rcaNameByCode.get(rca) || rca;
+                            if (sName === sellerName) {
+                            const historyIds = optimizedData.indices.history.byClient.get(c['Código']);
+                            if (historyIds) {
+                            for (let id of historyIds) {
+                            const sale = optimizedData.historyById.get(id);
+                            if ((sale.TIPOVENDA === '1' || sale.TIPOVENDA === '9') &&
+                            ['707','708','752','1119'].includes(String(sale.CODFOR))) {
+                            pepsicoNaturalPos++;
+                            break;
+                            }
+                            }
+                            }
+                            }
+
+                            }
+                const pepsicoAdj = goalsPosAdjustments['PEPSICO_ALL'].get(sellerName) || 0;
+                            const pepsicoLimit = pepsicoNaturalPos + pepsicoAdj;
+                            if (val > pepsicoLimit) {
+                            alert(`O valor não pode ultrapassar a Meta de Positivação PEPSICO definida (${pepsicoLimit.toLocaleString('pt-BR')}).\n(Natural: ${pepsicoNaturalPos}, Ajuste PEPSICO: ${pepsicoAdj})`);
+                            return;
+                            }
+                            showConfirmationModal(`Confirmar ajuste de Meta Positivação para ${valStr} (Cliente: ${filterDesc})?`, () => {
+                            const newAdjustment = val - naturalTotalPos;
+                            if (adjustmentMap) {
+                            adjustmentMap.set(selectedGoalsGvSellers[0], newAdjustment);
+                            updateGoalsView();
+                            }
+                            });
                             });
                         }
                     } else {
@@ -4045,7 +4076,7 @@
                 const cardMixSalty = document.getElementById('card-mix-salty');
                 const cardMixFoods = document.getElementById('card-mix-foods');
                 
-                if (currentGoalsSupplier === 'PEPSICO_ALL') {
+                if (currentGoalsSupplier === 'PEPSICO_ALL' || currentGoalsSupplier === 'ELMA_ALL' || currentGoalsSupplier === 'FOODS_ALL') {
                     if(cardMixSalty) cardMixSalty.classList.remove('hidden');
                     if(cardMixFoods) cardMixFoods.classList.remove('hidden');
                     
@@ -4092,11 +4123,11 @@
                         }
                     };
                     
-                    if (goalsMixSaltyAdjustments['PEPSICO_ALL']) {
-                        handleMixCard('Salty', naturalSaltyTarget, goalsMixSaltyAdjustments['PEPSICO_ALL'], 'goal-global-mix-salty', 'btn-distribute-mix-salty');
+                    if (goalsMixSaltyAdjustments[currentGoalsSupplier]) {
+                        handleMixCard('Salty', naturalSaltyTarget, goalsMixSaltyAdjustments[currentGoalsSupplier], 'goal-global-mix-salty', 'btn-distribute-mix-salty');
                     }
-                    if (goalsMixFoodsAdjustments['PEPSICO_ALL']) {
-                        handleMixCard('Foods', naturalFoodsTarget, goalsMixFoodsAdjustments['PEPSICO_ALL'], 'goal-global-mix-foods', 'btn-distribute-mix-foods');
+                    if (goalsMixFoodsAdjustments[currentGoalsSupplier]) {
+                        handleMixCard('Foods', naturalFoodsTarget, goalsMixFoodsAdjustments[currentGoalsSupplier], 'goal-global-mix-foods', 'btn-distribute-mix-foods');
                     }
 
                 } else {
