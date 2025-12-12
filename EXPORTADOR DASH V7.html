@@ -1406,34 +1406,90 @@
             }, 0);
         }
 
+
         // --- DEBUG FUNCTION ADDED TEMPORARILY ---
         window.debugMixDiff = function() {
              console.clear();
              console.log("%c=== DEBUG MIX SALTY DIFFERENCE ===", "color: cyan; font-weight: bold; font-size: 14px;");
-             const resumoEl = document.getElementById('summary-mix-salty');
-             const resumoVal = resumoEl ? parseFloat(resumoEl.textContent.replace(/\./g,'').replace(',','.')) || 0 : 0;
-             const pepsicoEl = document.getElementById('goal-global-mix-salty');
-             const pepsicoVal = pepsicoEl ? parseFloat(pepsicoEl.value.replace(/\./g,'').replace(',','.')) || 0 : 0;
 
-             let internalSum = 0;
-             const details = [];
-             if (typeof goalsMixSaltyAdjustments !== 'undefined' && goalsMixSaltyAdjustments['PEPSICO_ALL']) {
-                 goalsMixSaltyAdjustments['PEPSICO_ALL'].forEach((val, key) => {
-                     internalSum += val;
-                     details.push({ seller: key, val: val });
+             // 1. Reconstruct Resumo Set (Set A)
+             if (typeof getMetricsForSupervisors !== 'function') {
+                 alert("Error: getMetricsForSupervisors not found.");
+                 return;
+             }
+
+             // Recalculate metrics for Resumo
+             const metricsData = getMetricsForSupervisors(selectedGoalsSummarySupervisors);
+             const uniquePosClientsSet = new Set();
+             const relevantKeys = ['707', '708', '752', '1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO'];
+
+             relevantKeys.forEach(key => {
+                 if (metricsData[key] && metricsData[key].quarterlyPosClientsSet) {
+                     metricsData[key].quarterlyPosClientsSet.forEach(c => uniquePosClientsSet.add(c));
+                 }
+             });
+
+             const resumoSet = new Set();
+             uniquePosClientsSet.forEach(clientCode => {
+                 const client = clientMapForKPIs.get(String(clientCode));
+                 if (client) {
+                      const rca1 = String(client.rca1 || '').trim();
+                      if (rca1 !== '1001') { // Resumo Logic: Exclude RCA 1001
+                          resumoSet.add(String(clientCode));
+                      }
+                 }
+             });
+
+             // 2. Reconstruct Pepsico Set (Set B)
+             // Use default filters (all) to match typical tab switching behavior unless filters are active
+             // Note: getGoalsFilteredData() reads the current DOM state of filters.
+
+             const pepsicoClients = getGoalsFilteredData();
+             const pepsicoResult = calculateDistributedGoals(pepsicoClients, 'PEPSICO_ALL', null, 0, 0);
+             const clientMetrics = pepsicoResult.clientMetrics;
+
+             const pepsicoSet = new Set();
+             clientMetrics.forEach(c => {
+                 // Pepsico Logic:
+                 const sellerCode = optimizedData.rcaCodeByName.get(c.seller) || '';
+                 if (sellerCode !== '1001') {
+                     if (c.metaPos > 0) {
+                         pepsicoSet.add(String(c.cod));
+                     }
+                 }
+             });
+
+             // 3. Compare
+             const inResumoOnly = [];
+             const inPepsicoOnly = [];
+
+             resumoSet.forEach(c => { if(!pepsicoSet.has(c)) inResumoOnly.push(c); });
+             pepsicoSet.forEach(c => { if(!resumoSet.has(c)) inPepsicoOnly.push(c); });
+
+             let msg = `Resumo Base Count: ${resumoSet.size}\nPepsico Base Count: ${pepsicoSet.size}\n\n`;
+
+             if (inResumoOnly.length > 0) {
+                 msg += "Clients in Resumo ONLY:\n";
+                 inResumoOnly.forEach(c => {
+                     const client = clientMapForKPIs.get(c) || {};
+                     msg += `[${c}] ${client.nomeCliente || 'N/A'} (RCA1: ${client.rca1})\n`;
                  });
              }
 
-             console.log(`RESUMO Display: ${resumoVal}`);
-             console.log(`PEPSICO Card Input: ${pepsicoVal}`);
-             console.log(`INTERNAL Sum: ${internalSum}`);
-             console.table(details);
+             if (inPepsicoOnly.length > 0) {
+                 msg += "\nClients in Pepsico ONLY:\n";
+                 inPepsicoOnly.forEach(c => {
+                     const client = clientMapForKPIs.get(c) || {};
+                     msg += `[${c}] ${client.nomeCliente || 'N/A'} (RCA1: ${client.rca1})\n`;
+                 });
+             }
 
-             let msg = `Resumo: ${resumoVal}\nPepsico Page: ${pepsicoVal}\nInternal Sum: ${internalSum}\n\n`;
-             if (Math.abs(resumoVal - internalSum) < 0.1) msg += "✅ Resumo matches Internal Sum.";
-             else msg += "❌ Resumo does NOT match Internal Sum.";
+             if (inResumoOnly.length === 0 && inPepsicoOnly.length === 0) {
+                 msg += "Sets are identical! Difference might be due to rounding logic (Math.round vs accumulation).";
+             }
 
-             alert(msg + "\n(Detalhes no Console)");
+             console.log(msg);
+             alert(msg);
         };
         // ----------------------------------------
 
@@ -3285,6 +3341,14 @@
             uniquePosClientsSet.forEach(clientCode => {
                 const client = clientMapForKPIs.get(String(clientCode));
                 if (client) {
+                     // Consistency Fix: Use same logic as Pepsico Table (rcaCodeByName from Seller Name)
+                     // or rely on remapped client.rca1 which should be accurate.
+                     // The issue might be that uniquePosClientsSet includes a client that Pepsico view excludes,
+                     // OR Pepsico view includes a client (via calculateDistributedGoals) that uniquePosClientsSet misses.
+
+                     // Pepsico view logic: if (c.metaPos > 0). metaPos is > 0 if Sum(Fat) > 1.
+                     // uniquePosClientsSet logic: if Sum(Fat) > 1 (in getMetricsForSupervisors).
+
                      const rca1 = String(client.rca1 || '').trim();
                      if (rca1 !== '1001') {
                          naturalMixBaseCount++;
