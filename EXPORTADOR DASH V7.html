@@ -3455,7 +3455,7 @@
                     }
                 }
 
-                const metaPos = sumFat > 1 ? 1 : 0; // Positivado se venda > 1 (threshold padrão)
+                const metaPos = (sumFat > 1 && avgFat > 0) ? 1 : 0; // Positivado se venda > 1 (threshold padrão)
 
                 clientMetrics.push({
                     cod: codCli,
@@ -3683,7 +3683,7 @@
                         }
                     });
                 }
-                if (sumFat > 1) naturalCount++;
+                if (sumFat > 1 && (sumFat / 3) > 0) naturalCount++;
             });
             
             // Apply 60% / 30% rule
@@ -3925,7 +3925,7 @@
                     }
                 }
 
-                const metaPos = cSumFat > 1 ? 1 : 0;
+                const metaPos = (cSumFat > 1 && avgFat > 0) ? 1 : 0;
 
                 const metric = {
                     cod: codCli, name: client.fantasia || client.razaoSocial, seller: sellerName,
