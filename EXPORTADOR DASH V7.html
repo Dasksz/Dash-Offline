@@ -4052,7 +4052,7 @@
                             }
                 const pepsicoAdj = goalsPosAdjustments['PEPSICO_ALL'].get(sellerName) || 0;
                             const pepsicoLimit = pepsicoNaturalPos + pepsicoAdj;
-                            if (val > pepsicoLimit) {
+                            if (currentGoalsSupplier !== 'PEPSICO_ALL' && val > pepsicoLimit) {
                             alert(`O valor não pode ultrapassar a Meta de Positivação PEPSICO definida (${pepsicoLimit.toLocaleString('pt-BR')}).\n(Natural: ${pepsicoNaturalPos}, Ajuste PEPSICO: ${pepsicoAdj})`);
                             return;
                             }
