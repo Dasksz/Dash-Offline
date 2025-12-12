@@ -2709,12 +2709,15 @@
                             
                             const fFat = `${getColLet(elmaIdx + 1)}${excelRow}+${getColLet(foodsIdx + 1)}${excelRow}`;
                             const fTon = `${getColLet(elmaTonIdx + 2)}${excelRow}+${getColLet(foodsTonIdx + 2)}${excelRow}`;
-                            const fPos = `${getColLet(elmaIdx + 3)}${excelRow}+${getColLet(foodsIdx + 3)}${excelRow}`;
+
+                            // REMOVED Formula for Positivation. Used static value instead.
+                            // const fPos = `${getColLet(elmaIdx + 3)}${excelRow}+${getColLet(foodsIdx + 3)}${excelRow}`;
 
                             rowData.push(createCell(d.avgFat, readOnlyStyle, fmtMoney));
                             rowData.push({ t: 'n', v: d.metaFat, f: fFat, s: { ...aggCellStyle, numFmt: fmtMoney }, z: fmtMoney });
                             rowData.push({ t: 'n', v: d.metaVol, f: fTon, s: { ...aggCellStyle, numFmt: fmtVol }, z: fmtVol });
-                            rowData.push({ t: 'n', v: d.metaPos, f: fPos, s: { ...aggCellStyle, numFmt: fmtInt }, z: fmtInt });
+                            // Use static adjusted value for Positivation (PEPSICO_ALL)
+                            rowData.push(createCell(d.metaPos, aggCellStyle, fmtInt));
 
                             colCellsForSupTotal[col.id].fat.push(`${getColLet(cIdx + 1)}${excelRow}`);
                             colCellsForSupTotal[col.id].vol.push(`${getColLet(cIdx + 2)}${excelRow}`);
@@ -3137,7 +3140,18 @@
 
             
             const filteredSummaryClientCodes = new Set();
-            filteredSummaryClients.forEach(c => filteredSummaryClientCodes.add(c['Código']));
+            const activeSellersInSummary = new Set();
+
+            filteredSummaryClients.forEach(c => {
+                filteredSummaryClientCodes.add(c['Código']);
+                // Resolve Seller Name for Adjustment Filtering
+                const rcaCode = String(c.rca1 || '').trim();
+                if (rcaCode) {
+                    const name = optimizedData.rcaNameByCode.get(rcaCode);
+                    if (name) activeSellersInSummary.add(name);
+                    else if (rcaCode === 'INATIVOS') activeSellersInSummary.add('INATIVOS');
+                }
+            });
 
             const summaryItems = [
                 { title: 'Extrusados', supplier: '707', brand: null, color: 'teal' },
@@ -3164,8 +3178,9 @@
                 
                 let subCategoryAdjustment = 0;
                 if (goalsPosAdjustments[key]) {
-                    goalsPosAdjustments[key].forEach((adjVal, clientCode) => {
-                        if (filteredSummaryClientCodes.has(clientCode)) {
+                    // goalsPosAdjustments keys are Seller Names, not Client Codes
+                    goalsPosAdjustments[key].forEach((adjVal, sellerName) => {
+                        if (activeSellersInSummary.has(sellerName)) {
                             subCategoryAdjustment += adjVal;
                         }
                     });
