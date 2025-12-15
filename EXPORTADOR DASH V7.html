@@ -2903,7 +2903,8 @@
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 if (isAmericanas) return true;
-                if (rca1 === '53' || rca1 === '' || rca1 === 'INATIVOS') return false;
+                // STRICT FILTER: Exclude RCA 53 (Balcão) variants and Empty/Inativos
+                if (rca1 === '53' || rca1 === '053' || rca1 === '' || rca1 === 'INATIVOS') return false;
                 return true;
             });
 
@@ -2972,7 +2973,8 @@
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 if (isAmericanas) return true;
-                if (rca1 === '53' || rca1 === '' || rca1 === 'INATIVOS') return false;
+                // STRICT FILTER: Exclude RCA 53 (Balcão) variants and Empty/Inativos
+                if (rca1 === '53' || rca1 === '053' || rca1 === '' || rca1 === 'INATIVOS') return false;
                 return true;
             });
 
@@ -3436,7 +3438,8 @@
                     const rca1 = String(c.rca1 || '').trim();
                     const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                     if (isAmericanas) return true;
-                    if (rca1 === '53') return false;
+                    // STRICT FILTER: Exclude RCA 53 (Balcão) variants and Empty/Inativos
+                    if (rca1 === '53' || rca1 === '053' || rca1 === '' || rca1 === 'INATIVOS') return false;
                     return true;
                 });
 
