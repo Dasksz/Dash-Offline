@@ -4656,7 +4656,12 @@
                         // Check if active (Total Fat > 1 in history)
                         const hIds = optimizedData.indices.history.byClient.get(c['Código']);
                         let totalFat = 0;
-                        if(hIds) { for (const id of hIds) totalFat += optimizedData.historyById.get(id).VLVENDA; }
+                        if(hIds) {
+                            for (const id of hIds) {
+                                const s = optimizedData.historyById.get(id);
+                                if (s.TIPOVENDA === '1' || s.TIPOVENDA === '9') totalFat += s.VLVENDA;
+                            }
+                        }
                         if (totalFat > 1) activeClientsCount++;
                     });
 
@@ -4666,6 +4671,7 @@
                     const monthlyData = new Map();
                     historyIds.forEach(id => {
                         const sale = optimizedData.historyById.get(id);
+                        if (sale.TIPOVENDA !== '1' && sale.TIPOVENDA !== '9') return; // Strict Type Check
                         const d = parseDate(sale.DTPED);
                         if (!d) return;
                         const mKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
@@ -4810,7 +4816,78 @@ const supervisorGroups = new Map();
                             }
                         });
                     });
+
+                    // Recalculate Mix Targets for Supervisor using Group Aggregates to match Global Logic
+                    // 1. Calculate Group Natural Base (Sum of sellers' natural bases)
+                    // Note: 'metaPos' in 'total_elma' is the Natural Elma Base (unique clients per seller)
+                    let groupElmaNatural = group.totals['total_elma'] ? group.totals['total_elma'].metaPos : 0;
+
+                    // 2. Calculate Group Adjustments
+                    let groupElmaAdj = 0;
+                    if (goalsPosAdjustments['ELMA_ALL']) {
+                        group.sellers.forEach(seller => {
+                            groupElmaAdj += (goalsPosAdjustments['ELMA_ALL'].get(seller.name) || 0);
+                        });
+                    }
+
+                    const groupElmaBase = groupElmaNatural + groupElmaAdj;
+
+                    // 3. Calculate Mix Targets
+                    let groupMixSaltyMeta = Math.round(groupElmaBase * 0.50);
+                    let groupMixFoodsMeta = Math.round(groupElmaBase * 0.30);
+
+                    // 4. Add Mix Adjustments
+                    let groupMixSaltyAdj = 0;
+                    let groupMixFoodsAdj = 0;
+                    if (goalsMixSaltyAdjustments['PEPSICO_ALL']) {
+                        group.sellers.forEach(seller => groupMixSaltyAdj += (goalsMixSaltyAdjustments['PEPSICO_ALL'].get(seller.name) || 0));
+                    }
+                    if (goalsMixFoodsAdjustments['PEPSICO_ALL']) {
+                        group.sellers.forEach(seller => groupMixFoodsAdj += (goalsMixFoodsAdjustments['PEPSICO_ALL'].get(seller.name) || 0));
+                    }
+
+                    // Override summed totals with recalculated totals
+                    if (group.totals['mix_salty']) group.totals['mix_salty'].metaMix = groupMixSaltyMeta + groupMixSaltyAdj;
+                    if (group.totals['mix_foods']) group.totals['mix_foods'].metaMix = groupMixFoodsMeta + groupMixFoodsAdj;
                 });
+
+                // Recalculate Grand Total (Geral PRIME) using Global Aggregates
+                // We can sum the recalculated Group totals which are now consistent, or redo Global.
+                // Let's redo Global to be absolutely sure "A = B".
+                const grandTotalRow = { totals: {} };
+                svColumns.forEach(col => grandTotalRow.totals[col.id] = { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0, avgFat: 0 });
+
+                // Sum standard metrics from groups
+                supervisorGroups.forEach(group => {
+                    svColumns.forEach(col => {
+                        const s = group.totals[col.id]; const t = grandTotalRow.totals[col.id];
+                        t.metaFat += s.metaFat; t.metaVol += s.metaVol; t.metaPos += s.metaPos;
+                        t.avgVol += s.avgVol; t.avgMix += s.avgMix; t.avgFat += s.avgFat;
+                        // Don't sum metaMix yet
+                    });
+                });
+
+                // Recalculate Grand Total Mix
+                let globalElmaNatural = grandTotalRow.totals['total_elma'].metaPos;
+                let globalElmaAdj = 0;
+                let globalMixSaltyAdj = 0;
+                let globalMixFoodsAdj = 0;
+
+                // Iterate ALL sellers to get total adjustments
+                sellerMap.forEach(seller => {
+                    globalElmaAdj += (goalsPosAdjustments['ELMA_ALL'] ? (goalsPosAdjustments['ELMA_ALL'].get(seller.name) || 0) : 0);
+                    globalMixSaltyAdj += (goalsMixSaltyAdjustments['PEPSICO_ALL'] ? (goalsMixSaltyAdjustments['PEPSICO_ALL'].get(seller.name) || 0) : 0);
+                    globalMixFoodsAdj += (goalsMixFoodsAdjustments['PEPSICO_ALL'] ? (goalsMixFoodsAdjustments['PEPSICO_ALL'].get(seller.name) || 0) : 0);
+                });
+
+                const globalElmaBase = globalElmaNatural + globalElmaAdj;
+                grandTotalRow.totals['mix_salty'].metaMix = Math.round(globalElmaBase * 0.50) + globalMixSaltyAdj;
+                grandTotalRow.totals['mix_foods'].metaMix = Math.round(globalElmaBase * 0.30) + globalMixFoodsAdj;
+
+                // We inject this fake Grand Total row logic into the sortedSupervisors array or handle it in rendering?
+                // The rendering logic likely expects sortedSupervisors to contain only supervisors.
+                // The "Geral PRIME" row is usually rendered separately in the footer.
+                // Let's check the rendering loop below.
 
                 const sortedSupervisors = Array.from(supervisorGroups.values()).sort((a, b) => (b.totals['total_elma']?.metaFat || 0) - (a.totals['total_elma']?.metaFat || 0));
                 currentGoalsSvData = sortedSupervisors;
@@ -4898,14 +4975,23 @@ const supervisorGroups = new Map();
                 // Grand Total
                 bodyHTML += `<tr class="bg-[#0f172a] font-bold text-white border-t-2 border-slate-500 sticky bottom-0 z-20"><td class="px-2 py-3 text-center uppercase tracking-wider">GV</td><td class="px-2 py-3 text-left uppercase tracking-wider">Geral PRIME</td>`;
                 svColumns.forEach(col => {
-                    const d = grandTotals[col.id];
+                    // Use recalculated grandTotalRow.totals instead of summed grandTotals
+                    const d = grandTotalRow.totals[col.id] || { metaFat: 0, metaVol: 0, metaPos: 0, avgVol: 0, avgMix: 0, metaMix: 0, avgFat: 0 };
+                    // Fallback to monthlyValues from original summation if needed (recalculation didn't handle it, but it's not critical for Meta Mix/Pos)
+                    // Actually, let's use grandTotals for monthly/avgs and grandTotalRow for Metas if recalculated.
+                    const dOrig = grandTotals[col.id];
+                    const monthlyVals = dOrig ? dOrig.monthlyValues : {};
+                    const avgFat = dOrig ? dOrig.avgFat : 0;
+                    const avgVol = dOrig ? dOrig.avgVol : 0;
+                    const avgMix = dOrig ? dOrig.avgMix : 0;
+
                     if (col.type === 'standard') {
-                        quarterMonths.forEach(m => bodyHTML += `<td class="px-1 py-2 text-right text-slate-400 border-r border-slate-700 text-[10px] bg-blue-900/5">${(d.monthlyValues[m.key] || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`);
-                        bodyHTML += `<td class="px-1 py-2 text-right text-teal-400 border-r border-slate-700 bg-blue-900/10">${d.avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-right text-teal-400 border-r border-slate-700">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-right text-teal-600/70 border-r border-slate-700" id="total-grand-${col.id}-fat">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-center text-purple-400 border-r border-slate-700">${d.metaPos}</td><td class="px-1 py-2 text-center text-purple-600/70 border-r border-slate-700" id="total-grand-${col.id}-pos">${d.metaPos}</td>`;
-                    } else if (col.type === 'tonnage') bodyHTML += `<td class="px-1 py-2 text-right text-slate-400 border-r border-slate-700">${d.avgVol.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-right text-orange-400 border-r border-slate-700">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-right text-orange-600/70 border-r border-slate-700" id="total-grand-${col.id}-vol">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
-                    else if (col.type === 'mix') bodyHTML += `<td class="px-1 py-2 text-right text-slate-400 border-r border-slate-700">${d.avgMix.toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1})}</td><td class="px-1 py-2 text-right text-cyan-400 border-r border-slate-700">${d.metaMix}</td><td class="px-1 py-2 text-right text-cyan-600/70 border-r border-slate-700" id="total-grand-${col.id}-mix">${d.metaMix}</td>`;
-                    else if (col.type === 'geral') bodyHTML += `<td class="px-1 py-2 text-right text-slate-500 border-r border-slate-700">${d.avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-right text-white border-r border-slate-700" id="total-grand-geral-fat">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-right text-white border-r border-slate-700" id="total-grand-geral-ton">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-center text-white border-r border-slate-700" id="total-grand-geral-pos">${d.metaPos}</td>`;
-                    else if (col.type === 'pedev') bodyHTML += `<td class="px-1 py-2 text-center text-pink-400 border-r border-slate-700" id="total-grand-pedev-pos">${Math.round(grandTotals['total_elma']?.metaPos * 0.9)}</td>`;
+                        quarterMonths.forEach(m => bodyHTML += `<td class="px-1 py-2 text-right text-slate-400 border-r border-slate-700 text-[10px] bg-blue-900/5">${(monthlyVals[m.key] || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`);
+                        bodyHTML += `<td class="px-1 py-2 text-right text-teal-400 border-r border-slate-700 bg-blue-900/10">${avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-right text-teal-400 border-r border-slate-700">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-right text-teal-600/70 border-r border-slate-700" id="total-grand-${col.id}-fat">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-center text-purple-400 border-r border-slate-700">${d.metaPos}</td><td class="px-1 py-2 text-center text-purple-600/70 border-r border-slate-700" id="total-grand-${col.id}-pos">${d.metaPos}</td>`;
+                    } else if (col.type === 'tonnage') bodyHTML += `<td class="px-1 py-2 text-right text-slate-400 border-r border-slate-700">${avgVol.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-right text-orange-400 border-r border-slate-700">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-right text-orange-600/70 border-r border-slate-700" id="total-grand-${col.id}-vol">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
+                    else if (col.type === 'mix') bodyHTML += `<td class="px-1 py-2 text-right text-slate-400 border-r border-slate-700">${avgMix.toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1})}</td><td class="px-1 py-2 text-right text-cyan-400 border-r border-slate-700">${d.metaMix}</td><td class="px-1 py-2 text-right text-cyan-600/70 border-r border-slate-700" id="total-grand-${col.id}-mix">${d.metaMix}</td>`;
+                    else if (col.type === 'geral') bodyHTML += `<td class="px-1 py-2 text-right text-slate-500 border-r border-slate-700">${avgFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-right text-white border-r border-slate-700" id="total-grand-geral-fat">${d.metaFat.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-right text-white border-r border-slate-700" id="total-grand-geral-ton">${d.metaVol.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td><td class="px-1 py-2 text-center text-white border-r border-slate-700" id="total-grand-geral-pos">${d.metaPos}</td>`;
+                    else if (col.type === 'pedev') bodyHTML += `<td class="px-1 py-2 text-center text-pink-400 border-r border-slate-700" id="total-grand-pedev-pos">${Math.round(grandTotalRow.totals['total_elma']?.metaPos * 0.9)}</td>`;
                 });
                 bodyHTML += `</tr></tbody>`;
                 mainTable.innerHTML = headerHTML + bodyHTML;
