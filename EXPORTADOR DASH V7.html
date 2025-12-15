@@ -1824,7 +1824,8 @@
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 if (isAmericanas) return true;
-                if (rca1 === '53' || rca1 === '' || rca1 === 'INATIVOS') return false;
+                // STRICT FILTER: Exclude RCA 53 (Balcão) variants and Empty/Inativos
+                if (rca1 === '53' || rca1 === '053' || rca1 === '' || rca1 === 'INATIVOS') return false;
                 return true;
             });
 
@@ -2956,6 +2957,8 @@
                 '1119_TODDYNHO': createMetric(),
                 '1119_TODDY': createMetric(),
                 '1119_QUAKER_KEROCOCO': createMetric(),
+                'ELMA_ALL': createMetric(),
+                'FOODS_ALL': createMetric(),
                 'PEPSICO_ALL': createMetric()
             };
 
@@ -3068,6 +3071,35 @@
                 }
             });
 
+            // Helper for aggregation (copied from calculateGoalsMetrics)
+            const aggregateToAll = (targetKey, sourceKeys) => {
+                const target = metricsMap[targetKey];
+                sourceKeys.forEach(key => {
+                    const source = metricsMap[key];
+                    if (!source) return;
+                    
+                    target.fat += source.fat;
+                    target.vol += source.vol;
+                    target.prevFat += source.prevFat;
+                    target.prevVol += source.prevVol; 
+                    
+                    source.prevClientsSet.forEach(c => target.prevClientsSet.add(c));
+                    source.quarterlyPosClientsSet.forEach(c => target.quarterlyPosClientsSet.add(c));
+                    
+                    source.monthlyClientsSets.forEach((set, monthKey) => {
+                        if (!target.monthlyClientsSets.has(monthKey)) {
+                            target.monthlyClientsSets.set(monthKey, new Set());
+                        }
+                        const targetSet = target.monthlyClientsSets.get(monthKey);
+                        set.forEach(c => targetSet.add(c));
+                    });
+                });
+            };
+
+            aggregateToAll('ELMA_ALL', ['707', '708', '752']);
+            aggregateToAll('FOODS_ALL', ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO']);
+            aggregateToAll('PEPSICO_ALL', ['707', '708', '752', '1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO']);
+
             // Calculate Averages and Finalize
             for (const key in metricsMap) {
                 const m = metricsMap[key];
@@ -3102,7 +3134,8 @@
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 if (isAmericanas) return true;
-                if (rca1 === '53') return false;
+                // STRICT FILTER: Exclude RCA 53 (Balcão) variants and Empty/Inativos
+                if (rca1 === '53' || rca1 === '053' || rca1 === '' || rca1 === 'INATIVOS') return false;
                 return true;
             });
 
@@ -3115,30 +3148,7 @@
                 filteredSummaryClients = filteredSummaryClients.filter(c => c.rcas.some(r => rcasSet.has(r)));
             }
 
-            // 2. Sum up goals for these clients
-            const summaryGoalsSums = {
-                '707': { fat: 0, vol: 0 },
-                '708': { fat: 0, vol: 0 },
-                '752': { fat: 0, vol: 0 },
-                '1119_TODDYNHO': { fat: 0, vol: 0 },
-                '1119_TODDY': { fat: 0, vol: 0 },
-                '1119_QUAKER_KEROCOCO': { fat: 0, vol: 0 }
-            };
-
-            filteredSummaryClients.forEach(c => {
-                const codCli = c['Código'];
-                if (globalClientGoals.has(codCli)) {
-                    const cGoals = globalClientGoals.get(codCli);
-                    cGoals.forEach((val, key) => {
-                        if (summaryGoalsSums[key]) {
-                            summaryGoalsSums[key].fat += val.fat;
-                            summaryGoalsSums[key].vol += val.vol;
-                        }
-                    });
-                }
-            });
-
-            
+            // 2. Prepare Sets for fast lookup and Sum up goals
             const filteredSummaryClientCodes = new Set();
             const activeSellersInSummary = new Set();
             
@@ -3150,6 +3160,31 @@
                     const name = optimizedData.rcaNameByCode.get(rcaCode);
                     if (name) activeSellersInSummary.add(name);
                     else if (rcaCode === 'INATIVOS') activeSellersInSummary.add('INATIVOS');
+                }
+            });
+
+            const summaryGoalsSums = {
+                '707': { fat: 0, vol: 0 },
+                '708': { fat: 0, vol: 0 },
+                '752': { fat: 0, vol: 0 },
+                '1119_TODDYNHO': { fat: 0, vol: 0 },
+                '1119_TODDY': { fat: 0, vol: 0 },
+                '1119_QUAKER_KEROCOCO': { fat: 0, vol: 0 }
+            };
+
+            // Calculate Base Total for Mix (Use ELMA_ALL metric with exclusion)
+            const elmaTargetBase = getElmaTargetBase(displayMetrics, goalsPosAdjustments, activeSellersInSummary);
+
+            filteredSummaryClients.forEach(c => {
+                const codCli = c['Código'];
+                if (globalClientGoals.has(codCli)) {
+                    const cGoals = globalClientGoals.get(codCli);
+                    cGoals.forEach((val, key) => {
+                        if (summaryGoalsSums[key]) {
+                            summaryGoalsSums[key].fat += val.fat;
+                            summaryGoalsSums[key].vol += val.vol;
+                        }
+                    });
                 }
             });
 
@@ -3265,7 +3300,8 @@
             if(totalVolEl) totalVolEl.textContent = totalVol.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
             
             // Calculate Base Total (Use PEPSICO_ALL metric instead of Union)
-            const basePosCount = (displayMetrics['PEPSICO_ALL'] && displayMetrics['PEPSICO_ALL'].quarterlyPos) ? displayMetrics['PEPSICO_ALL'].quarterlyPos : uniquePosClientsSet.size;
+            // basePosCount is already defined at the top of the function
+            const basePosCount = displayMetrics['PEPSICO_ALL'].quarterlyPos;
             
             let totalAdjustment = 0;
             // Only PEPSICO adjustments affect the Global/Summary Total Pos
@@ -3289,23 +3325,65 @@
                 }
             });
             
-            const adjustedMixBase = naturalMixBaseCount + totalAdjustment;
-
+            // MIX KPIs - Based on ELMA Target (50% Salty / 30% Foods)
+            const naturalSaltyTarget = Math.round(elmaTargetBase * 0.50);
+            
             let mixSaltyAdjustment = 0;
-            if (goalsMixSaltyAdjustments[currentGoalsSupplier]) {
-                 goalsMixSaltyAdjustments[currentGoalsSupplier].forEach(val => mixSaltyAdjustment += val);
+            if (goalsMixSaltyAdjustments['PEPSICO_ALL']) {
+                 goalsMixSaltyAdjustments['PEPSICO_ALL'].forEach((val, sellerName) => {
+                     // Check if seller is in the filtered summary view
+                     if (activeSellersInSummary.has(sellerName)) mixSaltyAdjustment += val;
+                 });
             }
+            if(mixSaltyEl) mixSaltyEl.textContent = (naturalSaltyTarget + mixSaltyAdjustment).toLocaleString('pt-BR');
 
+            // Mix Foods - Based on ELMA Target (30%)
+            const naturalFoodsTarget = Math.round(elmaTargetBase * 0.30);
             let mixFoodsAdjustment = 0;
-            if (goalsMixFoodsAdjustments[currentGoalsSupplier]) {
-                 goalsMixFoodsAdjustments[currentGoalsSupplier].forEach(val => mixFoodsAdjustment += val);
+            if (goalsMixFoodsAdjustments['PEPSICO_ALL']) {
+                 goalsMixFoodsAdjustments['PEPSICO_ALL'].forEach((val, sellerName) => {
+                     if (activeSellersInSummary.has(sellerName)) mixFoodsAdjustment += val;
+                 });
+            }
+            if(mixFoodsEl) mixFoodsEl.textContent = (naturalFoodsTarget + mixFoodsAdjustment).toLocaleString('pt-BR');
+        }
+
+        function getElmaTargetBase(displayMetrics, goalsPosAdjustments, activeSellersSet) {
+            // 1. Natural Base (Historical Positive Clients)
+            let naturalCount = 0;
+            const elmaMetrics = displayMetrics['ELMA_ALL'];
+            
+            if (elmaMetrics && elmaMetrics.quarterlyPosClientsSet) {
+                elmaMetrics.quarterlyPosClientsSet.forEach(codCli => {
+                    const client = clientMapForKPIs.get(String(codCli));
+                    if (client) {
+                        // Check if Americanas
+                        const rca1 = String(client.rca1 || '').trim();
+                        const isAmericanas = (client.razaoSocial || '').toUpperCase().includes('AMERICANAS');
+                        // Exclude Americanas (RCA 1001) from the base
+                        if (rca1 !== '1001' && !isAmericanas) {
+                            naturalCount++;
+                        }
+                    }
+                });
             }
 
-            const standardSaltyTarget = Math.round(adjustedMixBase * 0.50);
-            const standardFoodsTarget = Math.round(adjustedMixBase * 0.30);
+            // 2. Adjustments (Meta Pos)
+            let adjustment = 0;
+            const elmaAdj = goalsPosAdjustments['ELMA_ALL'];
+            if (elmaAdj) {
+                elmaAdj.forEach((val, sellerName) => {
+                    // Check if seller is in current view (activeSellersSet)
+                    // AND not Americanas (Name check as adjustments are keyed by name)
+                    const isAmericanasSeller = sellerName.toUpperCase().includes('AMERICANAS');
+                    
+                    if ((!activeSellersSet || activeSellersSet.has(sellerName)) && !isAmericanasSeller) {
+                        adjustment += val;
+                    }
+                });
+            }
 
-            if(mixSaltyEl) mixSaltyEl.textContent = (standardSaltyTarget + mixSaltyAdjustment).toLocaleString('pt-BR');
-            if(mixFoodsEl) mixFoodsEl.textContent = (standardFoodsTarget + mixFoodsAdjustment).toLocaleString('pt-BR');
+            return naturalCount + adjustment;
         }
 
                 function calculateDistributedGoals(filteredClients, currentGoalsSupplier, currentGoalsBrand, goalFat, goalVol) {
@@ -3674,31 +3752,25 @@
         }
 
         function saveMixAdjustment(type, value, sellerName) {
-            // Find natural base for this seller
-            // We can iterate the 'filteredClients' from 'updateGoalsView' context if we had it, or re-filter.
-            // Since we are in a helper, we re-filter for safety and accuracy.
+            // Find natural base for this seller based on ELMA metrics (excluding Americanas)
+            const sellerCode = optimizedData.rcaCodeByName.get(sellerName);
             
             // Re-use logic for Active Clients counting
             const sellerClients = allClientsData.filter(c => {
                 const rca1 = String(c.rca1 || '').trim();
-                // Check if this client belongs to the seller
-                const sellerCode = optimizedData.rcaCodeByName.get(sellerName);
                 if (!sellerCode) return false;
                 
                 // Is client active check (Same as others)
+                // Exclude Americanas explicitly from this calculation as per requirement
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                if (!isAmericanas && rca1 === '53') return false;
+                if (isAmericanas || (rca1 === '53' || rca1 === '053' || rca1 === '' || rca1 === 'INATIVOS')) return false;
                 
-                // Does client belong to seller?
-                // Check current assignment (rca1 or rcas list?)
-                // Dashboard logic uses 'rca1' primarily for current view assignment in lists, 
-                // but filters check 'rcas' array.
-                // Let's use 'rcas' includes code.
+                // Does client belong to seller? (Current Hierarchy)
                 return c.rcas.includes(sellerCode);
             });
             
             let naturalCount = 0;
-            // Count "Meta Pos" (Revenue > 1 in PEPSICO_ALL) for these clients
+            // Count "Meta Pos" (Revenue > 1 in ELMA_ALL: 707, 708, 752) for these clients
             sellerClients.forEach(c => {
                 const codCli = c['Código'];
                 const hIds = optimizedData.indices.history.byClient.get(codCli);
@@ -3706,24 +3778,34 @@
                 if (hIds) {
                     hIds.forEach(id => {
                         const s = optimizedData.historyById.get(id);
-                        if (['707', '708', '752', '1119'].includes(String(s.CODFOR))) {
+                        if (['707', '708', '752'].includes(String(s.CODFOR))) {
                             if (s.TIPOVENDA === '1' || s.TIPOVENDA === '9') sumFat += s.VLVENDA;
                         }
                     });
                 }
-                if (sumFat > 1 && (sumFat / 3) > 0) naturalCount++;
+                if (sumFat > 1) naturalCount++;
             });
             
-            // Apply 60% / 30% rule
-            const base = type === 'salty' ? Math.round(naturalCount * 0.50) : Math.round(naturalCount * 0.30);
+            // Check if seller has specific adjustment for ELMA_ALL (Meta Pos)
+            let adjustmentPos = 0;
+            if (goalsPosAdjustments['ELMA_ALL'] && goalsPosAdjustments['ELMA_ALL'].has(sellerName)) {
+                adjustmentPos = goalsPosAdjustments['ELMA_ALL'].get(sellerName);
+            }
+
+            // Base = Natural Elma Count + Elma Adjustment
+            const totalElmaBase = naturalCount + adjustmentPos;
+
+            // Apply 50% / 30% rule
+            const base = type === 'salty' ? Math.round(totalElmaBase * 0.50) : Math.round(totalElmaBase * 0.30);
             const adjustment = value - base;
             
+            // ALWAYS STORE IN PEPSICO_ALL (Unify Inputs)
             if (type === 'salty') {
-                if (!goalsMixSaltyAdjustments[currentGoalsSupplier]) goalsMixSaltyAdjustments[currentGoalsSupplier] = new Map();
-                goalsMixSaltyAdjustments[currentGoalsSupplier].set(sellerName, adjustment);
+                if (!goalsMixSaltyAdjustments['PEPSICO_ALL']) goalsMixSaltyAdjustments['PEPSICO_ALL'] = new Map();
+                goalsMixSaltyAdjustments['PEPSICO_ALL'].set(sellerName, adjustment);
             } else {
-                if (!goalsMixFoodsAdjustments[currentGoalsSupplier]) goalsMixFoodsAdjustments[currentGoalsSupplier] = new Map();
-                goalsMixFoodsAdjustments[currentGoalsSupplier].set(sellerName, adjustment);
+                if (!goalsMixFoodsAdjustments['PEPSICO_ALL']) goalsMixFoodsAdjustments['PEPSICO_ALL'] = new Map();
+                goalsMixFoodsAdjustments['PEPSICO_ALL'].set(sellerName, adjustment);
             }
             
             updateGoalsView();
@@ -3840,6 +3922,9 @@
             }
 
             if (quarterMonths.length === 0) identifyQuarterMonths();
+
+            // Calculate Metrics for Current View (Supervisor Filter)
+            const displayMetrics = getMetricsForSupervisors(selectedGoalsGvSupervisors);
 
             // Update Header (Dynamic) - Same as before
             const thead = document.querySelector('#goals-table-container table thead');
@@ -4151,11 +4236,22 @@
                         }
                     };
                     
-                    if (goalsMixSaltyAdjustments[currentGoalsSupplier]) {
-                        handleMixCard('Salty', naturalSaltyTarget, goalsMixSaltyAdjustments[currentGoalsSupplier], 'goal-global-mix-salty', 'btn-distribute-mix-salty');
+                    // FORCE READ FROM PEPSICO_ALL KEY for Mix Cards
+                    // Calculate Natural Base using ELMA metrics (excluding Americanas) for consistency
+                    
+                    // Determine visible sellers set for filtering adjustments in helper
+                    const visibleSellersSet = new Set(clientMetrics.map(c => c.seller));
+                    const elmaTargetBase = getElmaTargetBase(displayMetrics, goalsPosAdjustments, visibleSellersSet);
+                    
+                    // Card Natural Targets (Based on ELMA: 50% Salty / 30% Foods)
+                    const globalNaturalSalty = Math.round(elmaTargetBase * 0.50);
+                    const globalNaturalFoods = Math.round(elmaTargetBase * 0.30);
+
+                    if (goalsMixSaltyAdjustments['PEPSICO_ALL']) {
+                        handleMixCard('Salty', globalNaturalSalty, goalsMixSaltyAdjustments['PEPSICO_ALL'], 'goal-global-mix-salty', 'btn-distribute-mix-salty');
                     }
-                    if (goalsMixFoodsAdjustments[currentGoalsSupplier]) {
-                        handleMixCard('Foods', naturalFoodsTarget, goalsMixFoodsAdjustments[currentGoalsSupplier], 'goal-global-mix-foods', 'btn-distribute-mix-foods');
+                    if (goalsMixFoodsAdjustments['PEPSICO_ALL']) {
+                        handleMixCard('Foods', globalNaturalFoods, goalsMixFoodsAdjustments['PEPSICO_ALL'], 'goal-global-mix-foods', 'btn-distribute-mix-foods');
                     }
 
                 } else {
@@ -4219,7 +4315,8 @@
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
                 if (isAmericanas) return true;
-                if (rca1 === '53') return false;
+                // STRICT FILTER: Exclude RCA 53 (Balcão) variants and Empty/Inativos
+                if (rca1 === '53' || rca1 === '053' || rca1 === '' || rca1 === 'INATIVOS') return false;
                 return true;
             });
 
@@ -11618,7 +11715,7 @@ const supervisorGroups = new Map();
                                             </button>
                                         </div>
                                         <div class="flex justify-between text-[10px] text-slate-400 mt-1">
-                                            <span>60% Ativos</span>
+                                            <span>50% Ativos</span>
                                         </div>
                                     </div>
                                     <!-- Mix Foods Card (Hidden by Default) -->
