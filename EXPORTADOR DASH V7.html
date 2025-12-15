@@ -4689,8 +4689,14 @@
                         sumSalty += mSalty; sumFoods += mFoods;
                     });
 
-                    let mixSaltyMeta = Math.round(activeClientsCount * 0.50);
-                    let mixFoodsMeta = Math.round(activeClientsCount * 0.30);
+                    // Calculate Mix Targets using ELMA Base (Natural + Adjustment) to match GV logic
+                    // We need to fetch the adjustment here because Mix calculation happens before the main adjustment loop
+                    const elmaAdjForMix = goalsPosAdjustments['ELMA_ALL'] ? (goalsPosAdjustments['ELMA_ALL'].get(sellerObj.name) || 0) : 0;
+                    const elmaBaseForMix = (sellerObj.elmaPos || 0) + elmaAdjForMix;
+
+                    let mixSaltyMeta = Math.round(elmaBaseForMix * 0.50);
+                    let mixFoodsMeta = Math.round(elmaBaseForMix * 0.30);
+
                     if (sellerObj.code === '1001') { mixSaltyMeta = 0; mixFoodsMeta = 0; }
 
                     sellerObj.data['mix_salty'] = { avgMix: sumSalty / divisor, metaMix: mixSaltyMeta };
@@ -4699,12 +4705,17 @@
                     // Geral & Pedev
                     const totalElma = sellerObj.data['total_elma'];
                     const totalFoods = sellerObj.data['total_foods'];
+
+                    // Note: 'activeClientsCount' here is the Pepsico Natural Active Count.
+                    // The 'geral' column will receive the 'PEPSICO_ALL' adjustment in the loop below.
+
                     sellerObj.data['geral'] = {
                         avgFat: (totalElma.avgFat || 0) + (totalFoods.avgFat || 0),
                         metaFat: totalElma.metaFat + totalFoods.metaFat,
                         metaVol: totalElma.metaVol + totalFoods.metaVol,
                         metaPos: activeClientsCount
                     };
+                    // Pedev uses Total Elma (Natural). We'll update it after adjustment loop to be safe.
                     sellerObj.data['pedev'] = { metaPos: Math.round(totalElma.metaPos * 0.9) };
                 });
 
