@@ -1831,10 +1831,10 @@
             // Filter clients to match the "Active Structure" definition (Same as Coverage/Goals Table)
             const activeClients = allClientsData.filter(c => {
                 const rca1 = String(c.rca1 || '').trim();
-                const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                if (isAmericanas) return true;
-                // STRICT FILTER: Exclude ONLY RCA 53 (Balcão)
+                // STRICT FILTER: Exclude RCA 53 (Balcão) regardless of client type
                 if (rca1 === '53') return false;
+
+                // For all other clients (including Americanas, provided they are not RCA 53)
                 return true;
             });
 
@@ -2910,10 +2910,10 @@
             // Apply "Active" Filter logic
             clients = clients.filter(c => {
                 const rca1 = String(c.rca1 || '').trim();
-                const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                if (isAmericanas) return true;
-                // STRICT FILTER: Exclude ONLY RCA 53 (Balcão)
+                // STRICT FILTER: Exclude RCA 53 (Balcão) regardless of client type
                 if (rca1 === '53') return false;
+
+                // For all other clients (including Americanas, provided they are not RCA 53)
                 return true;
             });
 
@@ -2980,10 +2980,10 @@
             // Filter clients to match the "Active Structure" definition (Same as Coverage/Goals Table)
             let activeClients = allClientsData.filter(c => {
                 const rca1 = String(c.rca1 || '').trim();
-                const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                if (isAmericanas) return true;
-                // STRICT FILTER: Exclude ONLY RCA 53 (Balcão)
+                // STRICT FILTER: Exclude RCA 53 (Balcão) regardless of client type
                 if (rca1 === '53') return false;
+
+                // For all other clients (including Americanas, provided they are not RCA 53)
                 return true;
             });
 
@@ -3143,10 +3143,10 @@
             // Apply "Active" Filter logic (Consistent with other Goal Views)
             filteredSummaryClients = filteredSummaryClients.filter(c => {
                 const rca1 = String(c.rca1 || '').trim();
-                const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                if (isAmericanas) return true;
-                // STRICT FILTER: Exclude ONLY RCA 53 (Balcão)
+                // STRICT FILTER: Exclude RCA 53 (Balcão) regardless of client type
                 if (rca1 === '53') return false;
+
+                // For all other clients (including Americanas, provided they are not RCA 53)
                 return true;
             });
 
@@ -3445,10 +3445,10 @@
             } else {
                 const allActiveClients = allClientsData.filter(c => {
                     const rca1 = String(c.rca1 || '').trim();
-                    const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                    if (isAmericanas) return true;
-                    // STRICT FILTER: Exclude ONLY RCA 53 (Balcão)
+                    // STRICT FILTER: Exclude RCA 53 (Balcão) regardless of client type
                     if (rca1 === '53') return false;
+
+                    // For all other clients (including Americanas, provided they are not RCA 53)
                     return true;
                 });
 
@@ -4325,10 +4325,10 @@
 
             clients = clients.filter(c => {
                 const rca1 = String(c.rca1 || '').trim();
-                const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                if (isAmericanas) return true;
-                // STRICT FILTER: Exclude ONLY RCA 53 (Balcão)
+                // STRICT FILTER: Exclude RCA 53 (Balcão) regardless of client type
                 if (rca1 === '53') return false;
+
+                // For all other clients (including Americanas, provided they are not RCA 53)
                 return true;
             });
 
