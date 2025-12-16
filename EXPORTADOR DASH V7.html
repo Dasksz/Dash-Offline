@@ -4919,28 +4919,30 @@ const supervisorGroups = new Map();
                 });
 
                 // Recalculate Grand Total Mix
-                // Calculate Global Natural Base excluding Americanas (using GERAL/PEPSICO base)
-                let globalPepsicoNatural = 0;
+                // Calculate Global Natural Base excluding Americanas (using TOTAL_ELMA base as per RESUMO logic)
+                let globalElmaNatural = 0;
                 sellerMap.forEach(seller => {
                     if (seller.code !== '1001') {
-                        globalPepsicoNatural += (seller.data['geral'] ? seller.data['geral'].metaPos : 0);
+                        globalElmaNatural += (seller.data['total_elma'] ? seller.data['total_elma'].metaPos : 0);
                     }
                 });
 
-                let globalPepsicoAdj = 0;
+                let globalElmaAdj = 0;
                 let globalMixSaltyAdj = 0;
                 let globalMixFoodsAdj = 0;
                 
                 // Iterate ALL sellers to get total adjustments
                 sellerMap.forEach(seller => {
-                    globalPepsicoAdj += (goalsPosAdjustments['PEPSICO_ALL'] ? (goalsPosAdjustments['PEPSICO_ALL'].get(seller.name) || 0) : 0);
-                    globalMixSaltyAdj += (goalsMixSaltyAdjustments['PEPSICO_ALL'] ? (goalsMixSaltyAdjustments['PEPSICO_ALL'].get(seller.name) || 0) : 0);
-                    globalMixFoodsAdj += (goalsMixFoodsAdjustments['PEPSICO_ALL'] ? (goalsMixFoodsAdjustments['PEPSICO_ALL'].get(seller.name) || 0) : 0);
+                    if (seller.code !== '1001') {
+                        globalElmaAdj += (goalsPosAdjustments['ELMA_ALL'] ? (goalsPosAdjustments['ELMA_ALL'].get(seller.name) || 0) : 0);
+                        globalMixSaltyAdj += (goalsMixSaltyAdjustments['PEPSICO_ALL'] ? (goalsMixSaltyAdjustments['PEPSICO_ALL'].get(seller.name) || 0) : 0);
+                        globalMixFoodsAdj += (goalsMixFoodsAdjustments['PEPSICO_ALL'] ? (goalsMixFoodsAdjustments['PEPSICO_ALL'].get(seller.name) || 0) : 0);
+                    }
                 });
                 
-                const globalPepsicoBase = globalPepsicoNatural + globalPepsicoAdj;
-                grandTotalRow.totals['mix_salty'].metaMix = Math.round(globalPepsicoBase * 0.50) + globalMixSaltyAdj;
-                grandTotalRow.totals['mix_foods'].metaMix = Math.round(globalPepsicoBase * 0.30) + globalMixFoodsAdj;
+                const globalElmaBase = globalElmaNatural + globalElmaAdj;
+                grandTotalRow.totals['mix_salty'].metaMix = Math.round(globalElmaBase * 0.50) + globalMixSaltyAdj;
+                grandTotalRow.totals['mix_foods'].metaMix = Math.round(globalElmaBase * 0.30) + globalMixFoodsAdj;
                 
                 // We inject this fake Grand Total row logic into the sortedSupervisors array or handle it in rendering?
                 // The rendering logic likely expects sortedSupervisors to contain only supervisors.
