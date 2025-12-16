@@ -3370,9 +3370,12 @@
 
         function getElmaTargetBase(displayMetrics, goalsPosAdjustments, activeSellersSet) {
             // MATCH LOGIC WITH "RELATÓRIO" (SV): Base is "Total ELMA" (707, 708, 752)
-            // Logic derived from `updateGoalsSvView` and `getGoalsSvFilteredData`
+            // Logic derived from `updateGoalsSvView`:
+            // - The Grand Total for Mix Salty/Foods EXCLUDES Americanas (Seller 1001) from the base.
+            // - It INCLUDES normal clients.
+
             // 1. Iterate ALL valid clients (Active Structure)
-            // 2. INCLUDE Americanas (as SV does)
+            // 2. EXCLUDE Americanas (RCA 1001) for this specific KPI base (matches SV footer logic)
             // 3. Exclude Balcão (53) and Inativos
             // 4. Check if Client has > 1 Total Sales in History (Elma: 707, 708, 752)
             // 5. Match Active Sellers
@@ -3389,10 +3392,11 @@
                 const rca1 = String(client.rca1 || '').trim();
                 const isAmericanas = (client.razaoSocial || '').toUpperCase().includes('AMERICANAS');
 
-                // Exclude Balcão (53) and Inativos - BUT KEEP Americanas even if RCA 1001 (as SV does)
-                if (!isAmericanas) {
-                    if (rca1 === '53' || rca1 === '') continue;
-                }
+                // Exclude Americanas (Specific Rule for Mix Base)
+                if (rca1 === '1001' || isAmericanas) continue;
+
+                // Exclude Balcão (53) and Inativos
+                if (rca1 === '53' || rca1 === '') continue;
 
                 // 2. Active Seller Check
                 let belongsToActiveSeller = true;
