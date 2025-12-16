@@ -1832,7 +1832,7 @@
             const activeClients = allClientsData.filter(c => {
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                if (isAmericanas) return false;
+                if (isAmericanas) return true;
                 // STRICT FILTER: Exclude RCA 53 (Balcão) and INATIVOS (Empty RCA1)
                 if (rca1 === '53') return false;
                 if (rca1 === '') return false; // Exclude INATIVOS
@@ -2912,7 +2912,7 @@
             clients = clients.filter(c => {
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                if (isAmericanas) return false;
+                if (isAmericanas) return true;
                 // STRICT FILTER: Exclude RCA 53 (Balcão) and INATIVOS
                 if (rca1 === '53') return false;
                 if (rca1 === '') return false; // Exclude INATIVOS
@@ -4257,9 +4257,11 @@
                     // Logic to populate values and handle edit
                     let naturalMixBase = 0;
                     clientMetrics.forEach(c => {
-                        // Check if not seller 1001 (Americanas)
-                        const sellerCode = optimizedData.rcaCodeByName.get(c.seller) || '';
-                        if (sellerCode !== '1001') {
+                        // Check if not seller 1001 (Americanas) - Name based check to be safe
+                        const sellerName = (c.seller || '').toUpperCase();
+                        const isAmericanasSeller = sellerName === 'AMERICANAS';
+
+                        if (!isAmericanasSeller) {
                             if (c.metaPos > 0) naturalMixBase++; // Count positivations in PEPSICO_ALL (Total Pos)
                         }
                     });
@@ -4382,7 +4384,7 @@
             clients = clients.filter(c => {
                 const rca1 = String(c.rca1 || '').trim();
                 const isAmericanas = (c.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                if (isAmericanas) return false;
+                if (isAmericanas) return true;
                 // STRICT FILTER: Exclude RCA 53 (Balcão) and INATIVOS
                 if (rca1 === '53') return false;
                 if (rca1 === '') return false; // Exclude INATIVOS
