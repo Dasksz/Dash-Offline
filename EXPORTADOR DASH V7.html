@@ -3045,9 +3045,11 @@
                                 }
 
                                 // 2. Accumulate for Client Count Check (Balance per period)
+                                // Standardized Logic: Track GLOBAL FAT sum regardless of date validity for positivation
+                                if (!clientTotals[procKey]) clientTotals[procKey] = { prevFat: 0, monthlyFat: new Map(), globalFat: 0 };
+                                clientTotals[procKey].globalFat += sale.VLVENDA;
+
                                 if (d) {
-                                    if (!clientTotals[procKey]) clientTotals[procKey] = { prevFat: 0, monthlyFat: new Map() };
-                                    
                                     if (isPrevMonth) clientTotals[procKey].prevFat += sale.VLVENDA;
                                     
                                     const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
@@ -3064,10 +3066,8 @@
                     const t = clientTotals[key];
 
                     // Calculate Total Quarter Fat for this client/key to determine Meta Pos
-                    let totalQuarterFat = 0;
-                    t.monthlyFat.forEach(val => totalQuarterFat += val);
-
-                    if (totalQuarterFat > 1) {
+                    // MODIFIED: Use globalFat (Sum of ALL sales, including invalid dates) to match PEPSICO Logic
+                    if (t.globalFat > 1) {
                         metricsMap[key].quarterlyPosClientsSet.add(codCli);
                     }
 
@@ -4735,13 +4735,13 @@
                         sumSalty += mSalty; sumFoods += mFoods;
                     });
 
-                    // Calculate Mix Targets using PEPSICO Base (Natural + Adjustment) to match GV 'PEPSICO' Logic
-                    const pepsicoAdjForMix = goalsPosAdjustments['PEPSICO_ALL'] ? (goalsPosAdjustments['PEPSICO_ALL'].get(sellerObj.name) || 0) : 0;
-                    // 'activeClientsCount' is the Natural Pepsico Active count (clients with >0 revenue)
-                    const pepsicoBaseForMix = activeClientsCount + pepsicoAdjForMix;
+                    // Calculate Mix Targets using ELMA Base (Natural + Adjustment) to match GV 'RESUMO' Logic
+                    // Base logic: Active Elma Clients (elmaPos) + ELMA Adjustments
+                    const elmaAdjForMix = goalsPosAdjustments['ELMA_ALL'] ? (goalsPosAdjustments['ELMA_ALL'].get(sellerObj.name) || 0) : 0;
+                    const elmaBaseForMix = (sellerObj.elmaPos || 0) + elmaAdjForMix;
 
-                    let mixSaltyMeta = Math.round(pepsicoBaseForMix * 0.50);
-                    let mixFoodsMeta = Math.round(pepsicoBaseForMix * 0.30);
+                    let mixSaltyMeta = Math.round(elmaBaseForMix * 0.50);
+                    let mixFoodsMeta = Math.round(elmaBaseForMix * 0.30);
                     
                     if (sellerObj.code === '1001') { mixSaltyMeta = 0; mixFoodsMeta = 0; }
 
