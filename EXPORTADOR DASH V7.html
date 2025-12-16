@@ -3174,7 +3174,7 @@
                 if (rcaCode) {
                     const name = optimizedData.rcaNameByCode.get(rcaCode);
                     if (name) activeSellersInSummary.add(name);
-                    else if (rcaCode === 'INATIVOS') activeSellersInSummary.add('INATIVOS');
+                    else activeSellersInSummary.add(rcaCode); // Fallback: Use code if name not found
                 }
             });
 
