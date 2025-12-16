@@ -4701,7 +4701,10 @@
                         if(hIds) { 
                             for (const id of hIds) {
                                 const s = optimizedData.historyById.get(id);
-                                if (s.TIPOVENDA === '1' || s.TIPOVENDA === '9') totalFat += s.VLVENDA; 
+                                const codFor = String(s.CODFOR);
+                                if (['707', '708', '752', '1119'].includes(codFor)) {
+                                    if (s.TIPOVENDA === '1' || s.TIPOVENDA === '9') totalFat += s.VLVENDA;
+                                }
                             }
                         }
                         if (totalFat > 1) activeClientsCount++;
