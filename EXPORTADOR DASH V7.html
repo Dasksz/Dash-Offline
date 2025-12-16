@@ -3369,11 +3369,12 @@
         }
 
         function getElmaTargetBase(displayMetrics, goalsPosAdjustments, activeSellersSet) {
-            // MATCH LOGIC WITH "RELATÓRIO" (SV): Base is "Positivados Geral" (PEPSICO)
+            // MATCH LOGIC WITH "RELATÓRIO" (SV): Base is "Total ELMA" (707, 708, 752)
+            // Logic derived from `updateGoalsSvView` and `getGoalsSvFilteredData`
             // 1. Iterate ALL valid clients (Active Structure)
-            // 2. Exclude Americanas (RCA 1001)
+            // 2. INCLUDE Americanas (as SV does)
             // 3. Exclude Balcão (53) and Inativos
-            // 4. Check if Client has > 1 Total Sales in History (Pepsico: 707, 708, 752, 1119)
+            // 4. Check if Client has > 1 Total Sales in History (Elma: 707, 708, 752)
             // 5. Match Active Sellers
 
             let naturalCount = 0;
@@ -3388,11 +3389,10 @@
                 const rca1 = String(client.rca1 || '').trim();
                 const isAmericanas = (client.razaoSocial || '').toUpperCase().includes('AMERICANAS');
 
-                // Exclude Americanas (Global Rule for Base Calculation in SV)
-                if (rca1 === '1001' || isAmericanas) continue;
-
-                // Exclude Balcão and Inativos
-                if (rca1 === '53' || rca1 === '') continue;
+                // Exclude Balcão (53) and Inativos - BUT KEEP Americanas even if RCA 1001 (as SV does)
+                if (!isAmericanas) {
+                    if (rca1 === '53' || rca1 === '') continue;
+                }
 
                 // 2. Active Seller Check
                 let belongsToActiveSeller = true;
@@ -3411,7 +3411,7 @@
 
                 if (!belongsToActiveSeller) continue;
 
-                // 3. Check History (Positive Pepsico: 707, 708, 752, 1119)
+                // 3. Check History (Positive ELMA: 707, 708, 752)
                 const hIds = optimizedData.indices.history.byClient.get(codCli);
                 let totalFat = 0;
                 if (hIds) {
@@ -3419,7 +3419,7 @@
                     for (const id of hIds) {
                         const s = optimizedData.historyById.get(id);
                         const codFor = String(s.CODFOR);
-                         if (['707', '708', '752', '1119'].includes(codFor)) {
+                         if (['707', '708', '752'].includes(codFor)) {
                             if (s.TIPOVENDA === '1' || s.TIPOVENDA === '9') totalFat += s.VLVENDA;
                         }
                     }
@@ -3436,10 +3436,7 @@
             if (elmaAdj) {
                 elmaAdj.forEach((val, sellerName) => {
                     // Check if seller is in current view (activeSellersSet)
-                    // AND not Americanas (Name check as adjustments are keyed by name)
-                    const isAmericanasSeller = sellerName.toUpperCase().includes('AMERICANAS');
-                    
-                    if ((!activeSellersSet || activeSellersSet.has(sellerName)) && !isAmericanasSeller) {
+                    if (!activeSellersSet || activeSellersSet.has(sellerName)) {
                         adjustment += val;
                     }
                 });
