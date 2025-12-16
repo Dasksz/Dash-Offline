@@ -3375,6 +3375,21 @@
                         // Check if Americanas
                         const rca1 = String(client.rca1 || '').trim();
                         const isAmericanas = (client.razaoSocial || '').toUpperCase().includes('AMERICANAS');
+                        
+                        // Resolve Seller Name to check against activeSellersSet
+                        let sellerName = 'N/A';
+                        const rcaCode = (client.rcas && client.rcas.length > 0) ? client.rcas[0] : '';
+                        if (rcaCode) {
+                            sellerName = optimizedData.rcaNameByCode.get(rcaCode) || rcaCode;
+                        } else {
+                            sellerName = 'INATIVOS';
+                        }
+
+                        // Filter: If activeSellersSet is provided, client MUST belong to one of them
+                        if (activeSellersSet && activeSellersSet.size > 0 && !activeSellersSet.has(sellerName)) {
+                            return; 
+                        }
+
                         // Exclude Americanas (RCA 1001) from the base
                         if (rca1 !== '1001' && !isAmericanas) {
                             naturalCount++;
@@ -4257,7 +4272,14 @@
                     // Calculate Natural Base using ELMA metrics (excluding Americanas) for consistency
                     
                     // Determine visible sellers set for filtering adjustments in helper
-                    const visibleSellersSet = new Set(clientMetrics.map(c => c.seller));
+                    let visibleSellersSet = new Set(clientMetrics.map(c => c.seller));
+                    
+                    // Bugfix: If table is empty (e.g. no active clients) but we have a specific seller filter, 
+                    // use the filter to prevent getElmaTargetBase from returning global counts (empty set bypass).
+                    if (visibleSellersSet.size === 0 && selectedGoalsGvSellers.length > 0) {
+                         visibleSellersSet = new Set(selectedGoalsGvSellers);
+                    }
+
                     const elmaTargetBase = getElmaTargetBase(displayMetrics, goalsPosAdjustments, visibleSellersSet);
                     
                     // Card Natural Targets (Based on ELMA: 50% Salty / 30% Foods)
