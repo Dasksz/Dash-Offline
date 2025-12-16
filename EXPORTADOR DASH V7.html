@@ -3321,7 +3321,12 @@
             let totalAdjustment = 0;
             // Only PEPSICO adjustments affect the Global/Summary Total Pos
             if (goalsPosAdjustments['PEPSICO_ALL']) {
-                goalsPosAdjustments['PEPSICO_ALL'].forEach(val => totalAdjustment += val);
+                goalsPosAdjustments['PEPSICO_ALL'].forEach((val, sellerName) => {
+                    // Only include adjustment if seller is active in current summary view
+                    if (activeSellersInSummary.has(sellerName)) {
+                        totalAdjustment += val;
+                    }
+                });
             }
             
             const adjustedTotalPos = basePosCount + totalAdjustment;
@@ -4696,7 +4701,10 @@
                         if(hIds) { 
                             for (const id of hIds) {
                                 const s = optimizedData.historyById.get(id);
-                                if (s.TIPOVENDA === '1' || s.TIPOVENDA === '9') totalFat += s.VLVENDA; 
+                                const codFor = String(s.CODFOR);
+                                if (['707', '708', '752', '1119'].includes(codFor)) {
+                                    if (s.TIPOVENDA === '1' || s.TIPOVENDA === '9') totalFat += s.VLVENDA;
+                                } 
                             }
                         }
                         if (totalFat > 1) activeClientsCount++;
