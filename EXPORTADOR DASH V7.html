@@ -3369,41 +3369,68 @@
         }
 
         function getElmaTargetBase(displayMetrics, goalsPosAdjustments, activeSellersSet) {
-            // 1. Natural Base (Historical Positive Clients)
+            // MATCH LOGIC WITH "RELATÓRIO" (SV): Base is "Positivados Geral" (PEPSICO)
+            // 1. Iterate ALL valid clients (Active Structure)
+            // 2. Exclude Americanas (RCA 1001)
+            // 3. Exclude Balcão (53) and Inativos
+            // 4. Check if Client has > 1 Total Sales in History (Pepsico: 707, 708, 752, 1119)
+            // 5. Match Active Sellers
+
             let naturalCount = 0;
-            const elmaMetrics = displayMetrics['ELMA_ALL'];
-            
-            if (elmaMetrics && elmaMetrics.quarterlyPosClientsSet) {
-                elmaMetrics.quarterlyPosClientsSet.forEach(codCli => {
-                    const client = clientMapForKPIs.get(String(codCli));
-                    if (client) {
-                        // Check if Americanas
-                        const rca1 = String(client.rca1 || '').trim();
-                        const isAmericanas = (client.razaoSocial || '').toUpperCase().includes('AMERICANAS');
-                        
-                        // Resolve Seller Name to check against activeSellersSet
-                        let sellerName = 'N/A';
-                        const rcaCode = (client.rcas && client.rcas.length > 0) ? client.rcas[0] : '';
-                        if (rcaCode) {
-                            sellerName = optimizedData.rcaNameByCode.get(rcaCode) || rcaCode;
-                        } else {
-                            sellerName = 'INATIVOS';
-                        }
 
-                        // Filter: If activeSellersSet is provided, client MUST belong to one of them
-                        if (activeSellersSet && activeSellersSet.size > 0 && !activeSellersSet.has(sellerName)) {
-                            return; 
-                        }
+            // Iterate all clients (global allClientsData)
+            // Use standard loop for performance
+            for (let i = 0; i < allClientsData.length; i++) {
+                const client = allClientsData instanceof ColumnarDataset ? allClientsData.get(i) : allClientsData[i];
+                const codCli = client['Código'];
 
-                        // Exclude Americanas (RCA 1001) from the base
-                        if (rca1 !== '1001' && !isAmericanas) {
-                            naturalCount++;
+                // 1. Exclusions (Structure)
+                const rca1 = String(client.rca1 || '').trim();
+                const isAmericanas = (client.razaoSocial || '').toUpperCase().includes('AMERICANAS');
+
+                // Exclude Americanas (Global Rule for Base Calculation in SV)
+                if (rca1 === '1001' || isAmericanas) continue;
+
+                // Exclude Balcão and Inativos
+                if (rca1 === '53' || rca1 === '') continue;
+
+                // 2. Active Seller Check
+                let belongsToActiveSeller = true;
+                if (activeSellersSet && activeSellersSet.size > 0) {
+                    let sellerName = 'N/A';
+                    // In SV, we map rcas[0] to Name.
+                    const rcaCode = (client.rcas && client.rcas.length > 0) ? client.rcas[0] : '';
+                    if (rcaCode) {
+                         sellerName = optimizedData.rcaNameByCode.get(rcaCode) || rcaCode;
+                    } else {
+                        sellerName = 'INATIVOS';
+                    }
+
+                    if (!activeSellersSet.has(sellerName)) belongsToActiveSeller = false;
+                }
+
+                if (!belongsToActiveSeller) continue;
+
+                // 3. Check History (Positive Pepsico: 707, 708, 752, 1119)
+                const hIds = optimizedData.indices.history.byClient.get(codCli);
+                let totalFat = 0;
+                if (hIds) {
+                    // hIds is Set<string> (id)
+                    for (const id of hIds) {
+                        const s = optimizedData.historyById.get(id);
+                        const codFor = String(s.CODFOR);
+                         if (['707', '708', '752', '1119'].includes(codFor)) {
+                            if (s.TIPOVENDA === '1' || s.TIPOVENDA === '9') totalFat += s.VLVENDA;
                         }
                     }
-                });
+                }
+
+                if (totalFat > 1) {
+                    naturalCount++;
+                }
             }
 
-            // 2. Adjustments (Meta Pos)
+            // 2. Adjustments (Meta Pos) - Preserve Logic
             let adjustment = 0;
             const elmaAdj = goalsPosAdjustments['ELMA_ALL'];
             if (elmaAdj) {
