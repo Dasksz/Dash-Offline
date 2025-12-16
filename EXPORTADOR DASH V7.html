@@ -4933,9 +4933,11 @@ const supervisorGroups = new Map();
                 
                 // Iterate ALL sellers to get total adjustments
                 sellerMap.forEach(seller => {
-                    globalPepsicoAdj += (goalsPosAdjustments['PEPSICO_ALL'] ? (goalsPosAdjustments['PEPSICO_ALL'].get(seller.name) || 0) : 0);
-                    globalMixSaltyAdj += (goalsMixSaltyAdjustments['PEPSICO_ALL'] ? (goalsMixSaltyAdjustments['PEPSICO_ALL'].get(seller.name) || 0) : 0);
-                    globalMixFoodsAdj += (goalsMixFoodsAdjustments['PEPSICO_ALL'] ? (goalsMixFoodsAdjustments['PEPSICO_ALL'].get(seller.name) || 0) : 0);
+                    if (seller.code !== '1001') {
+                        globalPepsicoAdj += (goalsPosAdjustments['PEPSICO_ALL'] ? (goalsPosAdjustments['PEPSICO_ALL'].get(seller.name) || 0) : 0);
+                        globalMixSaltyAdj += (goalsMixSaltyAdjustments['PEPSICO_ALL'] ? (goalsMixSaltyAdjustments['PEPSICO_ALL'].get(seller.name) || 0) : 0);
+                        globalMixFoodsAdj += (goalsMixFoodsAdjustments['PEPSICO_ALL'] ? (goalsMixFoodsAdjustments['PEPSICO_ALL'].get(seller.name) || 0) : 0);
+                    }
                 });
                 
                 const globalPepsicoBase = globalPepsicoNatural + globalPepsicoAdj;
