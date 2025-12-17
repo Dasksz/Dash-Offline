@@ -358,7 +358,14 @@
 
         const processSalesData = (rawData, clientMap, productMasterMap, newRcaSupervisorMap) => {
             return rawData.map(rawRow => {
-                let codCliStr = normalizeKey(rawRow['CODCLI']);
+                // --- INTEGRATED: VIRTUAL FORKING FOR CLIENT 9569 ---
+                let codCliOriginal = normalizeKey(rawRow['CODCLI']);
+                const rcaCheck = String(rawRow['CODUSUR'] || '').trim();
+                if (codCliOriginal === '9569' && (rcaCheck === '53' || rcaCheck === '053')) {
+                    codCliOriginal = '7706';
+                }
+
+                let codCliStr = codCliOriginal;
                 const clientInfo = clientMap.get(codCliStr) || {};
                 
                 // --- INÍCIO DA MODIFICAÇÃO: LÓGICA DE ATRIBUIÇÃO DE VENDEDOR ---
@@ -487,8 +494,8 @@
                     PEDIDO: pedido, NOME: vendorName, SUPERV: supervisorName, PRODUTO: productCode,
                     DESCRICAO: String(rawRow['DESCRICAO'] || ''), FORNECEDOR: String(rawRow['FORNECEDOR'] || ''),
                     OBSERVACAOFOR: String(rawRow['OBSERVACAOFOR'] || '').trim(), CODFOR: String(rawRow['CODFOR'] || '').trim(),
-                    CODUSUR: codUsur, CODCLI: codCliStr, CLIENTE_NOME: clientInfo.nomeCliente || 'N/A',
-                    CIDADE: clientInfo.cidade || 'N/A', BAIRRO: clientInfo.bairro || 'N/A',
+                    CODUSUR: codUsur, CODCLI: codCliStr, 
+                    // OPTIMIZATION: Removed CLIENTE_NOME, CIDADE, BAIRRO to save file size (Lookup in runtime)
                     QTVENDA: qtVenda,
                     CODSUPERVISOR: codSupervisor, // Added to ensure supervisor code is available for indexing
                     
@@ -558,27 +565,6 @@
                     readFile(innovationsFile, 'innovations')
                 ]);
 
-                // --- INJECTED: VIRTUAL FORKING FOR CLIENT 9569 ---
-                // Goal: Physically separate RCA 53 sales from Main RCA sales for Client 9569 at the raw data level.
-                
-                // 2. Remap Sales for RCA 53 to the new Shadow Client ID
-                const remapSalesFor9569 = (dataset) => {
-                    for (let i = 0; i < dataset.length; i++) {
-                        const row = dataset[i];
-                        const codCli = normalizeKey(row['CODCLI']);
-                        if (codCli === '9569') {
-                            const rca = String(row['CODUSUR'] || '').trim();
-                            // Check for 53 or 053
-                            if (rca === '53' || rca === '053') {
-                                row['CODCLI'] = '7706'; // Redirect this sale to Client 7706 (Valid RCA 53 Client)
-                            }
-                        }
-                    }
-                };
-
-                remapSalesFor9569(salesDataRaw);
-                remapSalesFor9569(historyDataRaw);
-                // ------------------------------------------------
 
 
                 self.postMessage({ type: 'progress', status: 'Criando mapa mestre de supervisores...', percentage: 20 });
@@ -800,8 +786,12 @@
                         const row = data[i];
                         if (!row.PEDIDO) continue;
                         if (!orders.has(row.PEDIDO)) {
+                            // Restore Client Info for Order Header (needed for Modal)
+                            const client = clientMap.get(row.CODCLI);
                             orders.set(row.PEDIDO, {
                                 ...row,
+                                CLIENTE_NOME: client ? (client.nomeCliente || client.fantasia) : 'N/A',
+                                CIDADE: client ? client.cidade : 'N/A',
                                 QTVENDA: 0,
                                 VLVENDA: 0,
                                 VLBONIFIC: 0,
@@ -1298,53 +1288,44 @@
                 const { bySupervisor, byRca, byPasta, bySupplier, byClient, byPosition, byRede, byTipoVenda, byProduct, byCity, byFilial } = indexSet;
 
                 const isColumnar = data instanceof ColumnarDataset;
+                const colValues = isColumnar ? data.values : null;
+
+                // Optimization: Helper to read values without creating Proxy
+                const getVal = (i, prop) => {
+                    if (isColumnar && colValues[prop]) {
+                        return colValues[prop][i];
+                    }
+                    return data[i][prop];
+                };
 
                 for (let i = 0; i < data.length; i++) {
-                    const sale = isColumnar ? data.get(i) : data[i];
-                    
-                    // Convert Timestamp Number to Date Object if not already
-                    if (sale.DTPED && !(sale.DTPED instanceof Date)) sale.DTPED = new Date(sale.DTPED);
-                    if (sale.DTSAIDA && !(sale.DTSAIDA instanceof Date)) sale.DTSAIDA = new Date(sale.DTSAIDA);
-
-                    if (sale.CODCLI !== americanasCodCli) {
-                        // EXCEPTION: Do not remap if Client 9569, RCA 53, and Type 1/9 (Preserve Balcão)
-                        
-                        if (true) {
-                            const currentSellerCode = clientToCurrentSellerMap.get(sale.CODCLI);
-                            if (currentSellerCode) {
-                                const sellerDetails = sellerDetailsMap.get(currentSellerCode);
-                                if (sellerDetails) {
-                                    sale.CODUSUR = currentSellerCode;
-                                    sale.NOME = sellerDetails.name;
-                                    sale.SUPERV = sellerDetails.supervisor;
-                                }
-                            }
-                        }
-                    }
-                    
-                    sale.SUPERV = sale.SUPERV || 'N/A';
-                    sale.NOME = sale.NOME || 'N/A';
+                    // Optimized: Do not create Proxy 'sale' object here. Read directly.
+                    // This avoids massive Proxy creation and Date object conversion overhead.
                     
                     const id = `${isHistory ? 'h' : 'c'}_${i}`;
 
-                    // --- KEY CHANGE: Store Index if using IndexMap, otherwise Object ---
                     if (dataMap instanceof IndexMap) {
                         dataMap.set(id, i);
                     } else {
-                        dataMap.set(id, sale);
+                        // For non-IndexMap usage, we store the object (or Proxy if Columnar)
+                        dataMap.set(id, isColumnar ? data.get(i) : data[i]);
                     }
 
-                    const supervisor = sale.SUPERV;
-                    const rca = sale.NOME;
-                    const pasta = sale.OBSERVACAOFOR || 'N/A';
-                    const supplier = sale.CODFOR;
-                    const client = sale.CODCLI;
-                    const position = sale.POSICAO || 'N/A';
+                    const supervisor = getVal(i, 'SUPERV') || 'N/A';
+                    const rca = getVal(i, 'NOME') || 'N/A';
+                    const pasta = getVal(i, 'OBSERVACAOFOR') || 'N/A';
+                    const supplier = getVal(i, 'CODFOR');
+                    const client = getVal(i, 'CODCLI');
+                    const position = getVal(i, 'POSICAO') || 'N/A';
                     const rede = clientRamoMap.get(client) || 'N/A';
-                    const tipoVenda = sale.TIPOVENDA;
-                    const product = sale.PRODUTO;
-                    const city = (sale.CIDADE || 'N/A').toLowerCase();
-                    const filial = sale.FILIAL;
+                    const tipoVenda = getVal(i, 'TIPOVENDA');
+                    const product = getVal(i, 'PRODUTO');
+                    // Optimized: Lookup City from Client Map (Removed from Sales Data to save space)
+                    const clientObj = clientMapForKPIs.get(String(client));
+                    const city = (clientObj ? (clientObj.cidade || clientObj['Nome da Cidade']) : 'N/A').toLowerCase();
+                    const filial = getVal(i, 'FILIAL');
+                    const codUsur = getVal(i, 'CODUSUR');
+                    const codSupervisor = getVal(i, 'CODSUPERVISOR');
                     
                     if (!bySupervisor.has(supervisor)) bySupervisor.set(supervisor, new Set()); bySupervisor.get(supervisor).add(id);
                     if (!byRca.has(rca)) byRca.set(rca, new Set()); byRca.get(rca).add(id);
@@ -1358,20 +1339,34 @@
                     if (city) { if (!byCity.has(city)) byCity.set(city, new Set()); byCity.get(city).add(id); }
                     if (filial) { if (!byFilial.has(filial)) byFilial.set(filial, new Set()); byFilial.get(filial).add(id); }
                     
-                    if (sale.CODUSUR && supervisor) { if (!supervisorToRcaMap.has(supervisor)) supervisorToRcaMap.set(supervisor, new Set()); supervisorToRcaMap.get(supervisor).add(sale.CODUSUR); }
+                    if (codUsur && supervisor) { if (!supervisorToRcaMap.has(supervisor)) supervisorToRcaMap.set(supervisor, new Set()); supervisorToRcaMap.get(supervisor).add(codUsur); }
                     if (supplier && product) { if (!optimizedData.productsBySupplier.has(supplier)) optimizedData.productsBySupplier.set(supplier, new Set()); optimizedData.productsBySupplier.get(supplier).add(product); }
-                    if (rca && sale.CODUSUR) { optimizedData.rcaCodeByName.set(rca, sale.CODUSUR); optimizedData.rcaNameByCode.set(sale.CODUSUR, rca); }
-                    if (supervisor && sale.CODSUPERVISOR) { optimizedData.supervisorCodeByName.set(supervisor, sale.CODSUPERVISOR); }
+                    if (rca && codUsur) { optimizedData.rcaCodeByName.set(rca, codUsur); optimizedData.rcaNameByCode.set(codUsur, rca); }
+                    if (supervisor && codSupervisor) { optimizedData.supervisorCodeByName.set(supervisor, codSupervisor); }
                     if (client && filial) { clientLastBranch.set(client, filial); }
                     if (product && pasta && !optimizedData.productPastaMap.has(product)) { optimizedData.productPastaMap.set(product, pasta); }
                     
-                    const date = sale.DTPED;
-                    if (date) { const dayOfWeek = date.getUTCDay(); if (dayOfWeek >= 1 && dayOfWeek <= 5) workingDaysSet.add(date.toISOString().split('T')[0]); }
+                    const dtPed = getVal(i, 'DTPED');
+                    if (dtPed) { 
+                        // dtPed is likely a number (timestamp).
+                        // If it's a number, new Date(dtPed) works.
+                        // If it's a string, parseDate(dtPed) (from local function or global?) 
+                        // Global parseDate handles numbers too.
+                        const dateObj = (typeof dtPed === 'number') ? new Date(dtPed) : parseDate(dtPed);
+                        
+                        if(dateObj && !isNaN(dateObj.getTime())) {
+                            const dayOfWeek = dateObj.getUTCDay(); 
+                            if (dayOfWeek >= 1 && dayOfWeek <= 5) workingDaysSet.add(dateObj.toISOString().split('T')[0]); 
+                        }
+                    }
                     
                     if (product) {
                         const targetMap = isHistory ? optimizedData.salesByProduct.history : optimizedData.salesByProduct.current;
                         if (!targetMap.has(product)) targetMap.set(product, []);
-                        targetMap.get(product).push(sale);
+                        // Here we still push the item object because consumers expect it.
+                        // Ideally we would store indices, but that requires larger refactor.
+                        // Since this is subset by product, it might be acceptable, or we create Proxy on demand.
+                        targetMap.get(product).push(isColumnar ? data.get(i) : data[i]);
                     }
                 }
             };
@@ -6374,7 +6369,17 @@ const supervisorGroups = new Map();
 
         function updateCitySuggestions(filterInput, suggestionsContainer, dataSource) {
             const inputValue = filterInput.value.toLowerCase();
-            const allAvailableCities = [...new Set(dataSource.map(c => c.CIDADE || c.cidade).filter(c => c && c !== 'N/A'))].sort();
+            // Optimized: Handle datasource which might be Sales (no CIDADE) or Clients (has cidade)
+            const allAvailableCities = [...new Set(dataSource.map(item => {
+                if (item.CIDADE) return item.CIDADE; // Legacy / Aggregated
+                if (item.cidade) return item.cidade; // Client Object
+                // Lookup if sales object
+                if (item.CODCLI) {
+                    const c = clientMapForKPIs.get(String(item.CODCLI));
+                    if (c) return c.cidade || c['Nome da Cidade'];
+                }
+                return 'N/A';
+            }).filter(c => c && c !== 'N/A'))].sort();
             const filteredCities = inputValue ? allAvailableCities.filter(c => c.toLowerCase().includes(inputValue)) : allAvailableCities;
 
             if (filteredCities.length > 0 && (document.activeElement === filterInput || !suggestionsContainer.classList.contains('manual-hide'))) {
@@ -6531,13 +6536,29 @@ const supervisorGroups = new Map();
                 if (cidadeFiltro) {
                     cityChartTitleEl.textContent = 'Top 10 Bairros';
                     const salesByBairro = {};
-                    salesForAnalysis.forEach(sale => { const bairro = sale.BAIRRO || 'N/A'; salesByBairro[bairro] = (salesByBairro[bairro] || 0) + sale.VLVENDA; });
+                    salesForAnalysis.forEach(sale => { 
+                        let bairro = sale.BAIRRO;
+                        if (!bairro && sale.CODCLI) {
+                            const c = clientMapForKPIs.get(String(sale.CODCLI));
+                            if (c) bairro = c.bairro;
+                        }
+                        bairro = bairro || 'N/A';
+                        salesByBairro[bairro] = (salesByBairro[bairro] || 0) + sale.VLVENDA; 
+                    });
                     const sortedBairros = Object.entries(salesByBairro).sort(([, a], [, b]) => b - a).slice(0, 10);
                     createChart('salesByClientInCityChart', 'bar', sortedBairros.map(([name]) => name), sortedBairros.map(([, total]) => total), cityChartOptions);
                 } else {
                     cityChartTitleEl.textContent = 'Top 10 Cidades';
                     const salesByCity = {};
-                    salesForAnalysis.forEach(sale => { const cidade = sale.CIDADE || 'N/A'; salesByCity[cidade] = (salesByCity[cidade] || 0) + sale.VLVENDA; });
+                    salesForAnalysis.forEach(sale => { 
+                        let cidade = sale.CIDADE;
+                        if (!cidade && sale.CODCLI) {
+                            const c = clientMapForKPIs.get(String(sale.CODCLI));
+                            if (c) cidade = c.cidade || c['Nome da Cidade'];
+                        }
+                        cidade = cidade || 'N/A';
+                        salesByCity[cidade] = (salesByCity[cidade] || 0) + sale.VLVENDA; 
+                    });
                     const sortedCidades = Object.entries(salesByCity).sort(([, a], [, b]) => b - a).slice(0, 10);
                     createChart('salesByClientInCityChart', 'bar', sortedCidades.map(([name]) => name), sortedCidades.map(([, total]) => total), cityChartOptions);
                 }
@@ -6731,7 +6752,15 @@ const supervisorGroups = new Map();
 
         function updateComparisonCitySuggestions(dataSource) {
             const inputValue = comparisonCityFilter.value.toLowerCase();
-            const allAvailableCities = [...new Set(dataSource.map(c => c.CIDADE).filter(c => c && c !== 'N/A'))].sort();
+            // Optimized Lookup
+            const allAvailableCities = [...new Set(dataSource.map(item => {
+                if (item.CIDADE) return item.CIDADE;
+                if (item.CODCLI) {
+                    const c = clientMapForKPIs.get(String(item.CODCLI));
+                    if (c) return c.cidade || c['Nome da Cidade'];
+                }
+                return 'N/A';
+            }).filter(c => c && c !== 'N/A'))].sort();
             const filteredCities = inputValue ? allAvailableCities.filter(c => c.toLowerCase().includes(inputValue)) : allAvailableCities;
             if (filteredCities.length > 0 && document.activeElement === comparisonCityFilter) {
                 comparisonCitySuggestions.innerHTML = filteredCities.map(c => `<div class="p-2 hover:bg-slate-600 cursor-pointer">${c}</div>`).join('');
@@ -7578,7 +7607,15 @@ const supervisorGroups = new Map();
 
         function updateStockCitySuggestions(dataSource) {
             const inputValue = stockCityFilter.value.toLowerCase();
-            const allAvailableCities = [...new Set(dataSource.map(c => c.CIDADE).filter(c => c && c !== 'N/A'))].sort();
+            // Optimized Lookup
+            const allAvailableCities = [...new Set(dataSource.map(item => {
+                if (item.CIDADE) return item.CIDADE;
+                if (item.CODCLI) {
+                    const c = clientMapForKPIs.get(String(item.CODCLI));
+                    if (c) return c.cidade || c['Nome da Cidade'];
+                }
+                return 'N/A';
+            }).filter(c => c && c !== 'N/A'))].sort();
             const filteredCities = inputValue ? allAvailableCities.filter(c => c.toLowerCase().includes(inputValue)) : allAvailableCities;
             if (filteredCities.length > 0 && document.activeElement === stockCityFilter) {
                 stockCitySuggestions.innerHTML = filteredCities.map(c => `<div class="p-2 hover:bg-slate-600 cursor-pointer">${c}</div>`).join('');
