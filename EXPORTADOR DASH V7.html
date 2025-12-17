@@ -357,7 +357,10 @@
         };
 
         const processSalesData = (rawData, clientMap, productMasterMap, newRcaSupervisorMap) => {
-            return rawData.map(rawRow => {
+            // Filtrar linhas que não possuem código de vendedor (CODUSUR), pois são linhas de "estoque apenas"
+            const filteredData = rawData.filter(r => String(r['CODUSUR'] || '').trim() !== '');
+
+            return filteredData.map(rawRow => {
                 let codCliStr = normalizeKey(rawRow['CODCLI']);
                 const clientInfo = clientMap.get(codCliStr) || {};
                 
@@ -617,20 +620,35 @@
                 self.postMessage({ type: 'progress', status: 'Extraindo estoque do arquivo de vendas...', percentage: 25 });
                 const stockMap05 = new Map();
                 const stockMap08 = new Map();
+                const stockOnlyProducts = new Map(); // Coleta detalhes para produtos que só aparecem como estoque
 
                 salesDataRaw.forEach(item => {
                     const productCode = String(item['PRODUTO'] || '').trim();
                     let branch = String(item['FILIAL'] || '').trim();
                     const stockQtyCx = parseBrazilianNumber(item['ESTOQUECX']);
+                    const codUsur = String(item['CODUSUR'] || '').trim();
 
-                    if (productCode && branch) {
-                        if (branch === '5') branch = '05';
-                        if (branch === '8') branch = '08';
+                    if (productCode) {
+                        if (branch) {
+                            if (branch === '5') branch = '05';
+                            if (branch === '8') branch = '08';
 
-                        if (branch === '05') {
-                            stockMap05.set(productCode, stockQtyCx);
-                        } else if (branch === '08') {
-                            stockMap08.set(productCode, stockQtyCx);
+                            if (branch === '05') {
+                                stockMap05.set(productCode, stockQtyCx);
+                            } else if (branch === '08') {
+                                stockMap08.set(productCode, stockQtyCx);
+                            }
+                        }
+
+                        // Lógica para linhas de "Estoque Apenas" (Sem vendedor)
+                        if (codUsur === '') {
+                            if (!stockOnlyProducts.has(productCode)) {
+                                stockOnlyProducts.set(productCode, {
+                                    descricao: String(item['DESCRICAO'] || `Produto ${productCode}`),
+                                    fornecedor: String(item['FORNECEDOR'] || 'N/A'),
+                                    codfor: String(item['CODFOR'] || 'N/A')
+                                });
+                            }
                         }
                     }
                 });
@@ -657,6 +675,22 @@
                             });
                         }
                 });
+
+                // Mesclar produtos apenas de estoque nas listas de ativos
+                stockOnlyProducts.forEach((details, code) => {
+                    activeProductCodesFromCadastro.add(code);
+                    if (!productDetailsMap.has(code)) {
+                        productDetailsMap.set(code, {
+                            descricao: details.descricao,
+                            fornecedor: details.fornecedor,
+                            codfor: details.codfor,
+                            dtCadastro: null
+                        });
+                    }
+                    if (!productMasterMap.has(code)) {
+                        productMasterMap.set(code, 1);
+                    }
+                });
 
 
                 const clientRcaOverrides = new Map();
@@ -8330,7 +8364,7 @@ const supervisorGroups = new Map();
                         }
                      } else if (p.soldThisMonth && !p.hasHistory) {
                         newProducts.push(p);
-                     } else if (!p.soldThisMonth && p.hasHistory) {
+                  } else if (!p.soldThisMonth && p.hasHistory && p.stock > 0) {
                         lostProducts.push(p);
                      }
                 });
