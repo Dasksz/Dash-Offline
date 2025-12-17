@@ -5618,25 +5618,31 @@ const supervisorGroups = new Map();
             // 1. Lógica de Positivação (Cobertura)
             // Registar clientes que tiveram *qualquer* operação (Venda OU Bonificação)
             const positiveClients = new Set();
+            const clientUniqueSkus = new Map(); // Map<CodCli, Set<Produto>>
+
             data.forEach(sale => {
                 // Se o cliente teve Venda (VLVENDA > 0) OU Bonificação (VLBONIFIC > 0), ele é considerado positivado.
                 if (sale.CODCLI && (sale.VLVENDA > 0 || sale.VLBONIFIC > 0)) {
                     positiveClients.add(sale.CODCLI);
+
+                    // Rastrear SKUs únicos por cliente para o cálculo correto de SKU/PDV (Mix)
+                    if (!clientUniqueSkus.has(sale.CODCLI)) {
+                        clientUniqueSkus.set(sale.CODCLI, new Set());
+                    }
+                    clientUniqueSkus.get(sale.CODCLI).add(sale.PRODUTO);
                 }
             });
             summary.positivacaoCount = positiveClients.size;
 
-
             let totalSkus = 0;
+            // Somar a quantidade de SKUs ÚNICOS por cliente
+            clientUniqueSkus.forEach(skus => {
+                totalSkus += skus.size;
+            });
+
             data.forEach(item => {
                 summary.totalFaturamento += item.VLVENDA;
                 summary.totalPeso += item.TOTPESOLIQ;
-
-                // 2. Lógica de SKU/PDV
-                // Contamos o SKU se for uma Venda OU uma Bonificação
-                if(item.VLVENDA > 0 || item.VLBONIFIC > 0) {
-                    totalSkus++;
-                }
 
                 const vendedor = item.NOME || 'N/A';
                 summary.vendasPorVendedor[vendedor] = (summary.vendasPorVendedor[vendedor] || 0) + item.VLVENDA;
