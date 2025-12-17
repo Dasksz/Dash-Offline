@@ -7721,6 +7721,7 @@ const supervisorGroups = new Map();
                     monthlyData: [],
                     supervisorData: {}
                 },
+                historicalDayTotals: new Array(7).fill(0), // 0=Sun, 6=Sat
                 overlapSales: []
             };
 
@@ -7823,6 +7824,11 @@ const supervisorGroups = new Map();
                         metrics.charts.supervisorData[s.SUPERV].history += s.VLVENDA;
                     }
 
+                    // Accumulate Day Totals for Day Weight Calculation
+                    if (isValidType) {
+                        metrics.historicalDayTotals[d.getUTCDay()] += s.VLVENDA;
+                    }
+
                     if (!monthWeeksCache.has(monthKey)) monthWeeksCache.set(monthKey, getMonthWeeks(d.getUTCFullYear(), d.getUTCMonth()));
                     const weeks = monthWeeksCache.get(monthKey);
                     const wIdx = weeks.findIndex(w => d >= w.start && d <= w.end);
@@ -7841,6 +7847,10 @@ const supervisorGroups = new Map();
                     metrics.history.avgPeso = metrics.history.peso / QUARTERLY_DIVISOR;
                     metrics.charts.weeklyHistory = metrics.charts.weeklyHistory.map(v => v / QUARTERLY_DIVISOR);
                     Object.values(metrics.charts.supervisorData).forEach(d => d.history /= QUARTERLY_DIVISOR);
+                    
+                    // Calculate Day Weights
+                    const totalHistoryDays = metrics.historicalDayTotals.reduce((a, b) => a + b, 0);
+                    metrics.dayWeights = metrics.historicalDayTotals.map(v => totalHistoryDays > 0 ? v / totalHistoryDays : 0);
 
                     const sortedMonths = Array.from(historyMonths.keys()).sort((a, b) => {
                         const [y1, m1] = a.split('-').map(Number);
@@ -7968,13 +7978,100 @@ const supervisorGroups = new Map();
                     currentSales.forEach(s => { const d = parseDate(s.DTPED); if(d) { const wIdx = currentMonthWeeks.findIndex(w => d >= w.start && d <= w.end); if(wIdx !== -1) salesByWeekAndDay[wIdx+1][d.getUTCDay()] += s.VLVENDA; } });
                     if (m.overlapSales && m.overlapSales.length > 0) { m.overlapSales.forEach(s => { const d = parseDate(s.DTPED); if (d) salesByWeekAndDay[1][d.getUTCDay()] += s.VLVENDA; }); }
 
+                    // --- INICIO DA MODIFICAÇÃO: Tendência no Gráfico Diário ---
+                    if (useTendencyComparison) {
+                        const today = lastSaleDate;
+                        const currentWeekIndex = currentMonthWeeks.findIndex(w => today >= w.start && today <= w.end);
+                        
+                        // 1. Project Current Week
+                        if (currentWeekIndex !== -1) {
+                            const currentWeek = currentMonthWeeks[currentWeekIndex];
+                            let workingDaysPassed = 0; let totalWorkingDays = 0;
+                            const remainingDaysIndices = [];
+                            
+                            for (let d = new Date(currentWeek.start); d <= currentWeek.end; d.setUTCDate(d.getUTCDate() + 1)) {
+                                const dayOfWeek = d.getUTCDay();
+                                if (dayOfWeek >= 1 && dayOfWeek <= 5 && !isHoliday(d, selectedHolidays)) {
+                                    totalWorkingDays++;
+                                    if (d <= today) workingDaysPassed++;
+                                    else remainingDaysIndices.push(dayOfWeek);
+                                }
+                            }
+                            
+                            if (workingDaysPassed > 0 && totalWorkingDays > 0) {
+                                const weekData = salesByWeekAndDay[currentWeekIndex + 1];
+                                const salesSoFar = weekData.reduce((a, b) => a + b, 0);
+                                const projectedWeekTotal = (salesSoFar / workingDaysPassed) * totalWorkingDays;
+                                const remainder = projectedWeekTotal - salesSoFar;
+                                
+                                if (remainder > 0 && remainingDaysIndices.length > 0) {
+                                    const weightsForRemaining = remainingDaysIndices.map(d => m.dayWeights[d] || 0);
+                                    const totalWeightRemaining = weightsForRemaining.reduce((a, b) => a + b, 0);
+                                    
+                                    remainingDaysIndices.forEach(dayIndex => {
+                                        const weight = m.dayWeights[dayIndex] || 0;
+                                        // If weights are available, use them. Otherwise distribute evenly.
+                                        const share = totalWeightRemaining > 0 ? (weight / totalWeightRemaining) : (1 / remainingDaysIndices.length);
+                                        weekData[dayIndex] = remainder * share;
+                                    });
+                                }
+                            }
+                        }
+
+                        // 2. Fill Future Weeks with Historical Average (Distributed by Day Weights)
+                        const weightsMonFri = [1, 2, 3, 4, 5].map(d => m.dayWeights[d] || 0);
+                        const totalWeightMonFri = weightsMonFri.reduce((a, b) => a + b, 0);
+
+                        for (let i = currentWeekIndex + 1; i < currentMonthWeeks.length; i++) {
+                            const historicalTotal = m.charts.weeklyHistory[i] || 0;
+                            if (historicalTotal > 0) {
+                                const weekData = salesByWeekAndDay[i + 1];
+                                // Fill Mon(1) to Fri(5)
+                                for (let d = 1; d <= 5; d++) {
+                                    const weight = m.dayWeights[d] || 0;
+                                    const share = totalWeightMonFri > 0 ? (weight / totalWeightMonFri) : (1 / 5);
+                                    weekData[d] = historicalTotal * share;
+                                }
+                            }
+                        }
+                    }
+                    // --- FIM DA MODIFICAÇÃO ---
+
                     const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
                     const professionalPalette = ['#a855f7', '#6366f1', '#ec4899', '#f97316', '#8b5cf6', '#06b6d4', '#f59e0b'];
                     const dailyBreakdownDatasets = dayNames.map((dayName, dayIndex) => ({ label: dayName, data: currentMonthWeeks.map((week, weekIndex) => salesByWeekAndDay[weekIndex + 1][dayIndex]), backgroundColor: professionalPalette[dayIndex % professionalPalette.length] }));
                     const weekLabelsForDailyChart = currentMonthWeeks.map((week, index) => { const startDateStr = week.start.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }); const endDateStr = week.end.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }); return `S${index + 1} (${startDateStr} à ${endDateStr})`; });
 
                     if (dailyBreakdownDatasets.some(ds => ds.data.some(d => d > 0))) {
-                        createChart('dailyWeeklyComparisonChart', 'bar', weekLabelsForDailyChart, dailyBreakdownDatasets, { plugins: { legend: { display: true, position: 'top' }, tooltip: { mode: 'point', intersect: true }, datalabels: { display: false } }, scales: { x: { stacked: false }, y: { stacked: false, ticks: { callback: (v) => (v / 1000).toFixed(0) + 'k' } } } });
+                        createChart('dailyWeeklyComparisonChart', 'bar', weekLabelsForDailyChart, dailyBreakdownDatasets, { 
+                            plugins: { 
+                                legend: { display: true, position: 'top' }, 
+                                tooltip: { 
+                                    mode: 'point', 
+                                    intersect: true,
+                                    callbacks: {
+                                        label: function(context) {
+                                            let label = context.dataset.label || '';
+                                            if (label) label += ': ';
+                                            if (context.parsed.y !== null) {
+                                                label += new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed.y);
+                                            }
+                                            return label;
+                                        },
+                                        afterBody: function(context) {
+                                            // Calculate Week Total
+                                            const weekIndex = context[0].dataIndex; // All items in tooltip share same index (if grouped) or point
+                                            // Ensure we are accessing the modified salesByWeekAndDay
+                                            const weekData = salesByWeekAndDay[weekIndex + 1];
+                                            const total = weekData.reduce((a, b) => a + b, 0);
+                                            return '\nSemana: ' + new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(total);
+                                        }
+                                    }
+                                }, 
+                                datalabels: { display: false } 
+                            }, 
+                            scales: { x: { stacked: false }, y: { stacked: false, ticks: { callback: (v) => (v / 1000).toFixed(0) + 'k' } } } 
+                        });
                     } else {
                         showNoDataMessage('dailyWeeklyComparisonChart', 'Sem dados para exibir.');
                     }
