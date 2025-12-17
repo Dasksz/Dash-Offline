@@ -7721,6 +7721,7 @@ const supervisorGroups = new Map();
                     monthlyData: [],
                     supervisorData: {}
                 },
+                historicalDayTotals: new Array(7).fill(0), // 0=Sun, 6=Sat
                 overlapSales: []
             };
 
@@ -7823,6 +7824,11 @@ const supervisorGroups = new Map();
                         metrics.charts.supervisorData[s.SUPERV].history += s.VLVENDA;
                     }
 
+                    // Accumulate Day Totals for Day Weight Calculation
+                    if (isValidType) {
+                        metrics.historicalDayTotals[d.getUTCDay()] += s.VLVENDA;
+                    }
+
                     if (!monthWeeksCache.has(monthKey)) monthWeeksCache.set(monthKey, getMonthWeeks(d.getUTCFullYear(), d.getUTCMonth()));
                     const weeks = monthWeeksCache.get(monthKey);
                     const wIdx = weeks.findIndex(w => d >= w.start && d <= w.end);
@@ -7841,6 +7847,10 @@ const supervisorGroups = new Map();
                     metrics.history.avgPeso = metrics.history.peso / QUARTERLY_DIVISOR;
                     metrics.charts.weeklyHistory = metrics.charts.weeklyHistory.map(v => v / QUARTERLY_DIVISOR);
                     Object.values(metrics.charts.supervisorData).forEach(d => d.history /= QUARTERLY_DIVISOR);
+
+                    // Calculate Day Weights
+                    const totalHistoryDays = metrics.historicalDayTotals.reduce((a, b) => a + b, 0);
+                    metrics.dayWeights = metrics.historicalDayTotals.map(v => totalHistoryDays > 0 ? v / totalHistoryDays : 0);
 
                     const sortedMonths = Array.from(historyMonths.keys()).sort((a, b) => {
                         const [y1, m1] = a.split('-').map(Number);
@@ -7977,32 +7987,50 @@ const supervisorGroups = new Map();
                         if (currentWeekIndex !== -1) {
                             const currentWeek = currentMonthWeeks[currentWeekIndex];
                             let workingDaysPassed = 0; let totalWorkingDays = 0;
+                            const remainingDaysIndices = [];
+
                             for (let d = new Date(currentWeek.start); d <= currentWeek.end; d.setUTCDate(d.getUTCDate() + 1)) {
                                 const dayOfWeek = d.getUTCDay();
                                 if (dayOfWeek >= 1 && dayOfWeek <= 5 && !isHoliday(d, selectedHolidays)) {
                                     totalWorkingDays++;
                                     if (d <= today) workingDaysPassed++;
+                                    else remainingDaysIndices.push(dayOfWeek);
                                 }
                             }
+
                             if (workingDaysPassed > 0 && totalWorkingDays > 0) {
-                                const factor = totalWorkingDays / workingDaysPassed;
-                                // Apply factor to existing daily values of current week
                                 const weekData = salesByWeekAndDay[currentWeekIndex + 1];
-                                for (let d = 0; d < 7; d++) {
-                                    if (weekData[d] > 0) weekData[d] *= factor;
+                                const salesSoFar = weekData.reduce((a, b) => a + b, 0);
+                                const projectedWeekTotal = (salesSoFar / workingDaysPassed) * totalWorkingDays;
+                                const remainder = projectedWeekTotal - salesSoFar;
+
+                                if (remainder > 0 && remainingDaysIndices.length > 0) {
+                                    const weightsForRemaining = remainingDaysIndices.map(d => m.dayWeights[d] || 0);
+                                    const totalWeightRemaining = weightsForRemaining.reduce((a, b) => a + b, 0);
+
+                                    remainingDaysIndices.forEach(dayIndex => {
+                                        const weight = m.dayWeights[dayIndex] || 0;
+                                        // If weights are available, use them. Otherwise distribute evenly.
+                                        const share = totalWeightRemaining > 0 ? (weight / totalWeightRemaining) : (1 / remainingDaysIndices.length);
+                                        weekData[dayIndex] = remainder * share;
+                                    });
                                 }
                             }
                         }
 
-                        // 2. Fill Future Weeks with Historical Average (Distributed Mon-Fri)
+                        // 2. Fill Future Weeks with Historical Average (Distributed by Day Weights)
+                        const weightsMonFri = [1, 2, 3, 4, 5].map(d => m.dayWeights[d] || 0);
+                        const totalWeightMonFri = weightsMonFri.reduce((a, b) => a + b, 0);
+
                         for (let i = currentWeekIndex + 1; i < currentMonthWeeks.length; i++) {
                             const historicalTotal = m.charts.weeklyHistory[i] || 0;
                             if (historicalTotal > 0) {
-                                const dailyAvg = historicalTotal / 5; // Assume 5 working days
                                 const weekData = salesByWeekAndDay[i + 1];
                                 // Fill Mon(1) to Fri(5)
                                 for (let d = 1; d <= 5; d++) {
-                                    weekData[d] = dailyAvg;
+                                    const weight = m.dayWeights[d] || 0;
+                                    const share = totalWeightMonFri > 0 ? (weight / totalWeightMonFri) : (1 / 5);
+                                    weekData[d] = historicalTotal * share;
                                 }
                             }
                         }
