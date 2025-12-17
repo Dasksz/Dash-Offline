@@ -3022,6 +3022,10 @@
 
                         const keysToProcess = [];
                         if (key && metricsMap[key]) keysToProcess.push(key);
+
+                        // Direct calculation for Groups to ensure correct Net Total logic (handling returns across brands)
+                        if (['707', '708', '752'].includes(codFor)) keysToProcess.push('ELMA_ALL');
+                        if (codFor === '1119') keysToProcess.push('FOODS_ALL');
                         if (['707', '708', '752', '1119'].includes(codFor)) keysToProcess.push('PEPSICO_ALL');
 
                         keysToProcess.forEach(procKey => {
@@ -3078,35 +3082,6 @@
                     });
                 }
             });
-
-            // Helper for aggregation (copied from calculateGoalsMetrics)
-            const aggregateToAll = (targetKey, sourceKeys) => {
-                const target = metricsMap[targetKey];
-                sourceKeys.forEach(key => {
-                    const source = metricsMap[key];
-                    if (!source) return;
-                    
-                    target.fat += source.fat;
-                    target.vol += source.vol;
-                    target.prevFat += source.prevFat;
-                    target.prevVol += source.prevVol; 
-                    
-                    source.prevClientsSet.forEach(c => target.prevClientsSet.add(c));
-                    source.quarterlyPosClientsSet.forEach(c => target.quarterlyPosClientsSet.add(c));
-                    
-                    source.monthlyClientsSets.forEach((set, monthKey) => {
-                        if (!target.monthlyClientsSets.has(monthKey)) {
-                            target.monthlyClientsSets.set(monthKey, new Set());
-                        }
-                        const targetSet = target.monthlyClientsSets.get(monthKey);
-                        set.forEach(c => targetSet.add(c));
-                    });
-                });
-            };
-
-            aggregateToAll('ELMA_ALL', ['707', '708', '752']);
-            aggregateToAll('FOODS_ALL', ['1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO']);
-            aggregateToAll('PEPSICO_ALL', ['707', '708', '752', '1119_TODDYNHO', '1119_TODDY', '1119_QUAKER_KEROCOCO']);
 
             // Calculate Averages and Finalize
             for (const key in metricsMap) {
