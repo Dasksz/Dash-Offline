@@ -358,6 +358,15 @@
 
         const processSalesData = (rawData, clientMap, productMasterMap, newRcaSupervisorMap) => {
             return rawData.map(rawRow => {
+                // --- INÍCIO DA MODIFICAÇÃO: FILTRO DE LINHAS DE ESTOQUE (SEM VENDEDOR) ---
+                const productCheck = String(rawRow['PRODUTO'] || '').trim();
+                const codUsurCheck = String(rawRow['CODUSUR'] || '').trim();
+                // Se existe produto mas não tem vendedor, é uma linha apenas de estoque (inserida artificialmente)
+                if (productCheck !== '' && codUsurCheck === '') {
+                    return null;
+                }
+                // --- FIM DA MODIFICAÇÃO ---
+
                 // --- INTEGRATED: VIRTUAL FORKING FOR CLIENT 9569 ---
                 let codCliOriginal = normalizeKey(rawRow['CODCLI']);
                 const rcaCheck = String(rawRow['CODUSUR'] || '').trim();
@@ -518,7 +527,7 @@
                     FILIAL: filialValue 
                     // --- FIM DA MODIFICAÇÃO ---
                 };
-            });
+            }).filter(item => item !== null);
         };
 
         function getPassedWorkingDaysInSpecificMonth(year, month, today) {
@@ -8368,7 +8377,7 @@ const supervisorGroups = new Map();
                         }
                      } else if (p.soldThisMonth && !p.hasHistory) {
                         newProducts.push(p);
-                     } else if (!p.soldThisMonth && p.hasHistory) {
+                     } else if (!p.soldThisMonth && p.stock > 0) {
                         lostProducts.push(p);
                      }
                 });
