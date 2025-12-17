@@ -7968,13 +7968,82 @@ const supervisorGroups = new Map();
                     currentSales.forEach(s => { const d = parseDate(s.DTPED); if(d) { const wIdx = currentMonthWeeks.findIndex(w => d >= w.start && d <= w.end); if(wIdx !== -1) salesByWeekAndDay[wIdx+1][d.getUTCDay()] += s.VLVENDA; } });
                     if (m.overlapSales && m.overlapSales.length > 0) { m.overlapSales.forEach(s => { const d = parseDate(s.DTPED); if (d) salesByWeekAndDay[1][d.getUTCDay()] += s.VLVENDA; }); }
 
+                    // --- INICIO DA MODIFICAÇÃO: Tendência no Gráfico Diário ---
+                    if (useTendencyComparison) {
+                        const today = lastSaleDate;
+                        const currentWeekIndex = currentMonthWeeks.findIndex(w => today >= w.start && today <= w.end);
+
+                        // 1. Project Current Week
+                        if (currentWeekIndex !== -1) {
+                            const currentWeek = currentMonthWeeks[currentWeekIndex];
+                            let workingDaysPassed = 0; let totalWorkingDays = 0;
+                            for (let d = new Date(currentWeek.start); d <= currentWeek.end; d.setUTCDate(d.getUTCDate() + 1)) {
+                                const dayOfWeek = d.getUTCDay();
+                                if (dayOfWeek >= 1 && dayOfWeek <= 5 && !isHoliday(d, selectedHolidays)) {
+                                    totalWorkingDays++;
+                                    if (d <= today) workingDaysPassed++;
+                                }
+                            }
+                            if (workingDaysPassed > 0 && totalWorkingDays > 0) {
+                                const factor = totalWorkingDays / workingDaysPassed;
+                                // Apply factor to existing daily values of current week
+                                const weekData = salesByWeekAndDay[currentWeekIndex + 1];
+                                for (let d = 0; d < 7; d++) {
+                                    if (weekData[d] > 0) weekData[d] *= factor;
+                                }
+                            }
+                        }
+
+                        // 2. Fill Future Weeks with Historical Average (Distributed Mon-Fri)
+                        for (let i = currentWeekIndex + 1; i < currentMonthWeeks.length; i++) {
+                            const historicalTotal = m.charts.weeklyHistory[i] || 0;
+                            if (historicalTotal > 0) {
+                                const dailyAvg = historicalTotal / 5; // Assume 5 working days
+                                const weekData = salesByWeekAndDay[i + 1];
+                                // Fill Mon(1) to Fri(5)
+                                for (let d = 1; d <= 5; d++) {
+                                    weekData[d] = dailyAvg;
+                                }
+                            }
+                        }
+                    }
+                    // --- FIM DA MODIFICAÇÃO ---
+
                     const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
                     const professionalPalette = ['#a855f7', '#6366f1', '#ec4899', '#f97316', '#8b5cf6', '#06b6d4', '#f59e0b'];
                     const dailyBreakdownDatasets = dayNames.map((dayName, dayIndex) => ({ label: dayName, data: currentMonthWeeks.map((week, weekIndex) => salesByWeekAndDay[weekIndex + 1][dayIndex]), backgroundColor: professionalPalette[dayIndex % professionalPalette.length] }));
                     const weekLabelsForDailyChart = currentMonthWeeks.map((week, index) => { const startDateStr = week.start.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }); const endDateStr = week.end.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }); return `S${index + 1} (${startDateStr} à ${endDateStr})`; });
 
                     if (dailyBreakdownDatasets.some(ds => ds.data.some(d => d > 0))) {
-                        createChart('dailyWeeklyComparisonChart', 'bar', weekLabelsForDailyChart, dailyBreakdownDatasets, { plugins: { legend: { display: true, position: 'top' }, tooltip: { mode: 'point', intersect: true }, datalabels: { display: false } }, scales: { x: { stacked: false }, y: { stacked: false, ticks: { callback: (v) => (v / 1000).toFixed(0) + 'k' } } } });
+                        createChart('dailyWeeklyComparisonChart', 'bar', weekLabelsForDailyChart, dailyBreakdownDatasets, {
+                            plugins: {
+                                legend: { display: true, position: 'top' },
+                                tooltip: {
+                                    mode: 'point',
+                                    intersect: true,
+                                    callbacks: {
+                                        label: function(context) {
+                                            let label = context.dataset.label || '';
+                                            if (label) label += ': ';
+                                            if (context.parsed.y !== null) {
+                                                label += new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed.y);
+                                            }
+                                            return label;
+                                        },
+                                        afterBody: function(context) {
+                                            // Calculate Week Total
+                                            const weekIndex = context[0].dataIndex; // All items in tooltip share same index (if grouped) or point
+                                            // Ensure we are accessing the modified salesByWeekAndDay
+                                            const weekData = salesByWeekAndDay[weekIndex + 1];
+                                            const total = weekData.reduce((a, b) => a + b, 0);
+                                            return '\nSemana: ' + new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(total);
+                                        }
+                                    }
+                                },
+                                datalabels: { display: false }
+                            },
+                            scales: { x: { stacked: false }, y: { stacked: false, ticks: { callback: (v) => (v / 1000).toFixed(0) + 'k' } } }
+                        });
                     } else {
                         showNoDataMessage('dailyWeeklyComparisonChart', 'Sem dados para exibir.');
                     }
